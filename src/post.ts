@@ -148,9 +148,12 @@ export class Post {
               // 1/z is linear across any flat surface on screen, so its second difference is zero except at a step
               float lap = abs(1.0 / pr.z + 1.0 / pl.z - 2.0 / p0.z) + abs(1.0 / pu.z + 1.0 / pd.z - 2.0 / p0.z);
               float outline = smoothstep(0.02, 0.06, lap * dist);
+              // a step shows up on both sides of it: keep only the nearer side, so the line is one pixel wide
+              float nearest = min(min(-pr.z, -pl.z), min(-pu.z, -pd.z));
+              outline *= step(dist * 0.997, nearest);
               vec3 n1 = normalize(cross(pr - p0, pu - p0)), n2 = normalize(cross(pl - p0, pd - p0));
-              float crease = smoothstep(0.3, 0.7, 1.0 - dot(n1, n2));
-              float ink = max(outline, crease * 0.85) * reach * uLines;
+              float crease = smoothstep(0.55, 0.95, 1.0 - dot(n1, n2));
+              float ink = max(outline, crease * 0.8) * reach * uLines;
               c *= 1.0 - ink * 0.82;
             }
           }
@@ -281,7 +284,7 @@ export class Post {
     f.uAO.value = 0.8;
     f.uTexel.value.set(1 / this.w, 1 / this.h);
     f.uLines.value = this.lines;
-    f.uLineWidth.value = Math.max(1.25, this.h / 620);
+    f.uLineWidth.value = 1; // one pixel either side: the thinnest line the screen can show
     this.pass(this.mFinal, null);
   }
 }
