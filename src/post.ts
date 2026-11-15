@@ -35,6 +35,7 @@ export class Post {
   private mAO: THREE.ShaderMaterial; private mBlur: THREE.ShaderMaterial; private mBright: THREE.ShaderMaterial;
   private mRays: THREE.ShaderMaterial; private mFinal: THREE.ShaderMaterial;
   private w = 4; private h = 4;
+  private pixelRatio = 1;
   private white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   private black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
   private _v = new THREE.Vector3();
@@ -198,10 +199,10 @@ export class Post {
   setQuality(q: number) {
     this.ao = q >= 2; this.rays = q >= 1; this.bloom = q >= 1;
     const samples = q >= 2 ? 2 : 0;
-    if (samples !== this.samples) { this.samples = samples; this.build(); this.setSize(this.w, this.h, 1); }
+    if (samples !== this.samples) { this.samples = samples; this.build(); this.setSize(this.w / this.pixelRatio, this.h / this.pixelRatio, this.pixelRatio); }
   }
 
-  setSamples(n: number) { if (n !== this.samples) { this.samples = n; this.build(); this.setSize(this.w, this.h, 1); } }
+  setSamples(n: number) { if (n !== this.samples) { this.samples = n; this.build(); this.setSize(this.w / this.pixelRatio, this.h / this.pixelRatio, this.pixelRatio); } }
 
   private build() {
     this.sceneRT?.dispose();
@@ -216,6 +217,7 @@ export class Post {
   }
 
   setSize(w: number, h: number, pixelRatio: number) {
+    this.pixelRatio = pixelRatio;
     this.w = Math.max(2, Math.floor(w * pixelRatio)); this.h = Math.max(2, Math.floor(h * pixelRatio));
     this.sceneRT.setSize(this.w, this.h);
     for (const t of this.half) t.setSize(this.w >> 1, this.h >> 1);
@@ -284,7 +286,8 @@ export class Post {
     f.uAO.value = 0.8;
     f.uTexel.value.set(1 / this.w, 1 / this.h);
     f.uLines.value = this.lines;
-    f.uLineWidth.value = 1; // one pixel either side: the thinnest line the screen can show
+    // one pixel on an ordinary screen; on a high-density screen, never finer than three quarters of a point
+    f.uLineWidth.value = Math.max(1, this.pixelRatio * 0.75);
     this.pass(this.mFinal, null);
   }
 }
