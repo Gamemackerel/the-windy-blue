@@ -1,6 +1,6 @@
 # WATERWORLD (working title) — Game Spec
 
-A silent, third-person sailing mystery for the browser. A drowned world, a handful of strange places, almost nobody left, and one enormous thing in the atoll.
+A silent, first-person sailing mystery for the browser. A drowned world, a handful of strange places, almost nobody left, and one enormous thing in the atoll.
 
 Touchstones: the open-sea wonder of *Wind Waker*, the wordless mechanical puzzles of *Myst*, the rusted flotsam world of *Waterworld*. These are references for feeling only. All places, characters, art and puzzles are original.
 
@@ -20,7 +20,7 @@ This spec describes a **demo**: a compact, complete slice of the game, about 60�
 
 ## 2. Player experience
 
-- **Perspective:** third person, orbit camera. On foot it sits close over the shoulder; on the boat it pulls back and lower to the water; in places of scale it widens further (windmill exterior, atoll, tower).
+- **Perspective:** first person. The player's body is never seen; a held item is shown in the lower right of the view. On the boat the view sits at the helm and turns with the hull.
 - **Session length:** 60–90 minutes for a first playthrough. No fail state other than losing the boat (see 6.4).
 - **Structure:** open. After the boat is built, every location can be visited in any order. Progress is gated by items, not by walls.
 - **Saving:** automatic and invisible (browser local storage), every few seconds and on mooring.

@@ -1,67 +1,56 @@
 import * as THREE from 'three';
 import { Input } from './input';
-import { waveHeight } from './waves';
-import { World } from './world';
 
-/** Third-person orbit camera. On the boat it trails the heading; on foot it is free. */
-export class OrbitRig {
+/**
+ * First-person view. yaw/pitch describe where the eye looks:
+ * direction = (-sin yaw cos pitch, -sin pitch, -cos yaw cos pitch).
+ * On the boat the view turns with the hull, so you keep facing the same way relative to it.
+ */
+export class ViewRig {
   yaw = 0;
-  pitch = 0.2;
-  dist = 13;
-  /** distance the current situation wants (the wheel still adjusts it) */
-  wantDist = 13;
-  height = 1.7;
-  /** true below the surface, where the sea must not push the camera up */
-  submerged = false;
-  /** over-the-shoulder aiming */
+  pitch = 0;
+  /** narrowed view while aiming */
   aim = false;
   private aimK = 0;
   private lastHeading: number | null = null;
-  private target = new THREE.Vector3();
+  private eye = new THREE.Vector3();
   private ready = false;
-  private h = 1.7;
+  private bobT = 0;
+  private bobAmt = 0;
 
   constructor(readonly camera: THREE.PerspectiveCamera) {}
 
   snap() { this.ready = false; this.lastHeading = null; }
 
-  update(dt: number, t: number, input: Input, focus: THREE.Vector3, heading: number | null, world: World) {
-    this.yaw -= input.lookX * 0.0032;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + input.lookY * 0.0026, -0.35, 1.3);
-    this.wantDist = THREE.MathUtils.clamp(this.wantDist * Math.exp(input.wheel * 0.001), 2.2, 60);
-    this.dist += (this.wantDist - this.dist) * Math.min(1, dt * 3);
-    this.h += (this.height - this.h) * Math.min(1, dt * 3);
+  /** eye: where the head is. heading: the boat's heading while sailing, else null. speed: walking speed, for head bob. */
+  update(dt: number, input: Input, eye: THREE.Vector3, heading: number | null, speed: number) {
+    const sens = this.aim ? 0.0016 : 0.0026;
+    this.yaw -= input.lookX * sens;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + input.lookY * sens, -1.45, 1.45);
 
     if (heading !== null) {
-      if (this.lastHeading !== null) {
-        const dh = Math.atan2(Math.sin(heading - this.lastHeading), Math.cos(heading - this.lastHeading));
-        this.yaw += dh * 0.85; // turns are felt, but the view mostly stays behind the boat
-      }
+      if (this.lastHeading !== null) this.yaw += Math.atan2(Math.sin(heading - this.lastHeading), Math.cos(heading - this.lastHeading));
       this.lastHeading = heading;
     } else this.lastHeading = null;
 
-    if (!this.ready) { this.target.copy(focus); this.ready = true; }
-    this.target.lerp(focus, Math.min(1, dt * 9));
-
     this.aimK += ((this.aim ? 1 : 0) - this.aimK) * Math.min(1, dt * 9);
-    const fov = 52 - 14 * this.aimK;
+    const fov = 62 - 24 * this.aimK;
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+
+    // the head follows the body closely but not rigidly, which takes the edge off steps and swell
+    if (!this.ready) { this.eye.copy(eye); this.ready = true; }
+    this.eye.x = eye.x; this.eye.z = eye.z;
+    this.eye.y += (eye.y - this.eye.y) * Math.min(1, dt * 14);
+
+    // a little bob with each step
+    this.bobAmt += ((speed > 0.2 ? Math.min(1, speed / 2.2) : 0) - this.bobAmt) * Math.min(1, dt * 6);
+    this.bobT += dt * (5.2 + speed * 1.5);
+    const bobY = Math.sin(this.bobT * 2) * 0.022 * this.bobAmt, bobX = Math.sin(this.bobT) * 0.012 * this.bobAmt;
+
     const cp = Math.cos(this.pitch);
+    const dx = -Math.sin(this.yaw) * cp, dy = -Math.sin(this.pitch), dz = -Math.cos(this.yaw) * cp;
     const cam = this.camera;
-    // when aiming, the view slides over the right shoulder
-    const ox = -Math.cos(this.yaw) * 0.5 * this.aimK, oz = Math.sin(this.yaw) * 0.5 * this.aimK;
-    const tx = this.target.x + ox, ty = this.target.y + this.h + 0.12 * this.aimK, tz = this.target.z + oz;
-    const dx = Math.sin(this.yaw) * cp, dy = Math.sin(this.pitch), dz = Math.cos(this.yaw) * cp;
-    // pull in if the ground or a wall is in the way
-    let d = this.dist;
-    for (let i = 1; i <= 8; i++) {
-      const k = (this.dist * i) / 8;
-      const x = tx + dx * k, y = ty + dy * k, z = tz + dz * k;
-      if (world.blocked(x, y, z)) { d = Math.max(0.6, k - this.dist / 8 - 0.15); break; }
-    }
-    cam.position.set(tx + dx * d, ty + dy * d, tz + dz * d);
-    const floor = this.submerged ? -1e9 : Math.max(waveHeight(cam.position.x, cam.position.z, t) + 0.45, world.terrainHeight(cam.position.x, cam.position.z) + 0.4);
-    if (cam.position.y < floor) cam.position.y = floor;
-    cam.lookAt(tx, ty, tz);
+    cam.position.set(this.eye.x + Math.cos(this.yaw) * bobX, this.eye.y + bobY, this.eye.z - Math.sin(this.yaw) * bobX);
+    cam.lookAt(cam.position.x + dx, cam.position.y + dy, cam.position.z + dz);
   }
 }

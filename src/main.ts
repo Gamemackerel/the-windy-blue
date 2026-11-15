@@ -4,7 +4,8 @@ import { Ocean } from './ocean';
 import { Wind } from './wind';
 import { Boat } from './boat';
 import { Input } from './input';
-import { OrbitRig } from './camera';
+import { ViewRig } from './camera';
+import { makeItem } from './items';
 import { World } from './world';
 import { GameState } from './state';
 import { Player } from './player';
@@ -48,7 +49,8 @@ const scene = new THREE.Scene();
   scene.environment = pmrem.fromScene(envScene, 0.04).texture;
   pmrem.dispose();
 }
-const camera = new THREE.PerspectiveCamera(52, 1, 0.15, 20000);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.07, 20000);
+scene.add(camera); // the held item rides on the camera
 const post = new Post(renderer);
 
 // ---- state ----
@@ -68,7 +70,7 @@ const world = new World();
 const boat = new Boat(scene, 0, 0, 0);
 boat.mode = 'cradle';
 const input = new Input(canvas);
-const rig = new OrbitRig(camera);
+const rig = new ViewRig(camera);
 const audio = new Audio(camera);
 
 const _hand = new THREE.Vector3();
@@ -80,7 +82,8 @@ let reading = false;
 const ctx: Ctx = {
   scene, world, env, boat, state, wind, input,
   hold: (s) => { player.busy = Math.max(player.busy, s); },
-  playerHand: () => player.handWorld(_hand),
+  // the offering hand is just in front of and below the eyes
+  playerHand: () => camera.getWorldDirection(_hand).multiplyScalar(0.55).add(camera.position).setY(camera.position.y - 0.28),
   playerPos: () => player.pos,
   held: () => player.held,
   takeHeld: () => { if (player.held) { state.take(player.held); player.setHeld(null); } },
@@ -159,8 +162,8 @@ function wreckBoat() {
     player.mode = 'foot';
     player.place(x, params.has('aty') ? num('aty', 0) : world.groundAt(x, z, 1000), z, num('face', 0));
   }
-  rig.yaw = num('yaw', player.mode === 'sail' ? boat.state.psi + Math.PI + 0.35 : player.yaw + Math.PI);
-  rig.pitch = num('pitch', 0.2);
+  rig.yaw = num('yaw', player.mode === 'sail' ? boat.state.psi + Math.PI : player.yaw + Math.PI);
+  rig.pitch = num('pitch', 0.04);
 }
 
 const debugEl = document.getElementById('debug')!;
@@ -252,9 +255,11 @@ let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 
 let last = performance.now();
 let fps = 60;
 let saveTimer = 0;
-let rigZone = '';
 let wakeT = 0, wakeI = 0;
-const focus = new THREE.Vector3();
+const focus = new THREE.Vector3(), eyePos = new THREE.Vector3();
+const viewModel = new THREE.Group();
+camera.add(viewModel);
+let viewHeld: string | null = null;
 const safe = new THREE.Vector3().copy(player.pos);
 // open on black and let the world come up slowly
 fadeEl.style.transition = 'none'; fadeEl.style.opacity = '1';
@@ -336,18 +341,33 @@ function frame() {
     else if (player.pos.y < -3) { player.pos.copy(safe); player.resetMotion(); }
   }
 
-  // camera
+  // the view
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside();
-  const nearGiant = Math.hypot(player.pos.x - ATOLL.x, player.pos.z - ATOLL.z) < 260 && giant.phase !== 'asleep';
-  const zone = aiming ? 'aim' : sailing ? (nearGiant ? 'giant' : 'sail') : indoors ? 'in' : tower.near(player.pos) ? 'tower' : player.mode;
-  if (rigZone !== zone) {
-    rig.wantDist = ({ aim: 1.9, giant: 19, sail: 12, in: 2.9, tower: 8, climb: 4.5, foot: 5.2 } as Record<string, number>)[zone] ?? 5.2;
-    rigZone = zone;
+  rig.update(dt, input, player.eye(eyePos), sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
+  // what is held is seen in the lower right of the view; it comes up to the eye when aiming and goes out when offered
+  if (viewHeld !== player.held) {
+    viewModel.clear();
+    viewHeld = player.held;
+    if (viewHeld) {
+      const o = makeItem(viewHeld as ItemId);
+      const box = new THREE.Box3().setFromObject(o);
+      o.scale.multiplyScalar(0.13 / Math.max(0.01, box.getSize(_hand).length()));
+      if (viewHeld === 'revolver') { o.rotation.y = Math.PI; o.scale.multiplyScalar(1.7); }
+      else if (viewHeld === 'chart') { o.rotation.set(0.5, 0, 0); o.scale.multiplyScalar(1.7); }
+      else o.rotation.set(0.2, 0.6, 0);
+      o.traverse((m) => { m.castShadow = false; m.frustumCulled = false; });
+      viewModel.add(o);
+    }
   }
-  rig.height = sailing ? 1.8 : 1.45;
-  rig.submerged = lab.inside();
-  rig.update(dt, t, input, focus, sailing ? boat.state.psi : null, world);
+  {
+    const k = Math.min(1, dt * 10), out = player.reaching;
+    const tx = aiming ? 0.0 : 0.17, ty = (aiming ? -0.075 : -0.15) + out * 0.05, tz = (aiming ? -0.36 : -0.42) - out * 0.22;
+    viewModel.position.x += (tx - viewModel.position.x) * k;
+    viewModel.position.y += (ty - viewModel.position.y + Math.sin(t * 1.3) * 0.0015) * k;
+    viewModel.position.z += (tz - viewModel.position.z) * k;
+    viewModel.rotation.x = kick * 6;
+  }
   if (fixedCam) {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
@@ -355,7 +375,7 @@ function frame() {
 
   // shadows hug the action
   const sc = env.sun.shadow.camera;
-  const ext = sailing ? 16 : quality >= 2 ? 46 : 30;
+  const ext = quality >= 2 ? 46 : 30;
   if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
 
   env.update(dt, camera.position, focus);

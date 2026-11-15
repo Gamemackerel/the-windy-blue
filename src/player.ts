@@ -6,7 +6,7 @@ import { Boat } from './boat';
 import { Input } from './input';
 import { Wind } from './wind';
 import { GameState } from './state';
-import { makeItem, ItemId } from './items';
+import { ItemId } from './items';
 
 const RADIUS = 0.3;
 const WALK = 2.1, RUN = 4.8;
@@ -39,21 +39,13 @@ export class Player {
 
   constructor(scene: THREE.Scene, private world: World, private boat: Boat, private state: GameState) {
     scene.add(this.figure.group);
+    this.figure.group.visible = false; // first person: the body is never seen
   }
 
-  /** hold an item in the right hand (null puts it away) */
-  setHeld(id: ItemId | null) {
-    const slot = this.figure.rightHandSlot;
-    slot.clear();
-    this.held = id;
-    if (!id) return;
-    const obj = makeItem(id);
-    obj.scale.multiplyScalar(id === 'chart' ? 1.1 : id === 'sail' ? 1.2 : 1);
-    // the hand's +Y runs along the forearm toward the fingers
-    obj.rotation.set(-Math.PI / 2, 0, 0);
-    obj.position.set(0, 0.07, 0.03);
-    slot.add(obj);
-  }
+  /** hold an item (null puts it away); the view model is drawn by the main loop */
+  setHeld(id: ItemId | null) { this.held = id; this.reach = 0; }
+  /** 0..1 pulse after using or offering something, for the view model */
+  get reaching() { return Math.sin(Math.min(1, Math.max(0, this.reach)) * Math.PI); }
   handWorld(out: THREE.Vector3) { return this.figure.rightHandSlot.getWorldPosition(out); }
 
   /** after a teleport: no carried-over falling or climbing */
@@ -67,6 +59,13 @@ export class Player {
   focus(out: THREE.Vector3) {
     if (this.mode === 'sail') return out.copy(this.boat.position);
     return out.copy(this.pos);
+  }
+
+  /** where the eyes are */
+  eye(out: THREE.Vector3) {
+    if (this.mode === 'sail') { this.boat.seat(out, this.sideSmooth); out.y += 0.82; return out; }
+    if (this.mode === 'climb') return out.set(this.pos.x, this.pos.y + 1.6, this.pos.z);
+    return out.set(this.pos.x, this.pos.y + 1.64, this.pos.z);
   }
 
   update(dt: number, t: number, input: Input, camYaw: number, wind: Wind) {
@@ -88,10 +87,10 @@ export class Player {
     let mx = fx * iz + -fz * ix, mz = fz * iz + fx * ix;
     const ml = Math.hypot(mx, mz);
     const prevYaw = this.yaw;
+    this.yaw = camYaw + Math.PI;
     let speed = 0;
     if (ml > 0.01) {
       mx /= ml; mz /= ml;
-      this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * 10));
       speed = input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
       const step = speed * dt;
       const tryMove = (dx: number, dz: number) => {
