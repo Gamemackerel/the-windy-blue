@@ -111,25 +111,63 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   rig.add(flesh, bones);
 
   const rot = { value: 0 };
-  const skin = new THREE.MeshStandardMaterial({ color: '#8f9c9e', roughness: 0.42 });
+  // Skin: the pattern is baked to the body (attribute lp) so it never slides as
+  // the giant moves. Wet, faintly translucent at the edges, veined and mottled.
+  const skin = new THREE.MeshPhysicalMaterial({ color: '#8b999c', roughness: 0.5, clearcoat: 0.55, clearcoatRoughness: 0.28 });
   skin.onBeforeCompile = (sh) => {
     sh.uniforms.uRot = rot;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vWPos;\nuniform float uRot;\n${NOISE_GLSL}`)
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 lp;\nvarying vec3 vLp;\nvarying float vWY;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvLp = lp * 250.0;\nvWY = (modelMatrix * vec4(transformed, 1.0)).y;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vLp;\nvarying float vWY;\nuniform float uRot;\n${NOISE_GLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        float wwBump = 0.0;
         {
-          vec3 p = vWPos;
+          vec3 p = vLp;
           float big = fbm(p.xz * 0.02 + p.y * 0.017), mid = fbm(p.xy * 0.09 + p.z * 0.05), fine = fbm(p.yz * 0.5 + p.x * 0.4);
-          vec3 col = diffuseColor.rgb * (0.72 + 0.4 * big) * (0.85 + 0.3 * fine);
-          col = mix(col, col * vec3(0.55, 0.62, 0.7), smoothstep(0.5, 0.7, mid) * 0.5);       // veining
-          col *= mix(0.55, 1.0, smoothstep(-2.0, 9.0, p.y));                                    // dark and wet at the waterline
+          float pore = vnoise(p.xy * 0.9 + p.z * 0.7);
+          // branching veins: thin dark lines where two noise fields cross
+          float vein = 1.0 - smoothstep(0.0, 0.035, abs(fbm(p.xy * 0.035 + p.z * 0.02 + 7.0) - 0.5));
+          vein *= smoothstep(0.35, 0.6, mid);
+          vec3 col = diffuseColor.rgb * (0.7 + 0.42 * big) * (0.86 + 0.28 * fine) * (0.95 + 0.1 * pore);
+          col = mix(col, col * vec3(0.5, 0.58, 0.7), smoothstep(0.5, 0.7, mid) * 0.45);     // bruised mottling
+          col = mix(col, vec3(0.16, 0.2, 0.27), vein * 0.5);
+          float wet = smoothstep(14.0, -2.0, vWY);
+          col *= mix(1.0, 0.55, wet);                                                        // dark and wet toward the waterline
           vec3 rotCol = mix(vec3(0.07, 0.11, 0.04), vec3(0.3, 0.36, 0.14), mid);
-          rotCol = mix(rotCol, vec3(0.42, 0.4, 0.33), smoothstep(0.62, 0.75, big) * 0.7);       // sloughed pale patches
+          rotCol = mix(rotCol, vec3(0.42, 0.4, 0.33), smoothstep(0.62, 0.75, big) * 0.7);    // sloughed pale patches
           rotCol = mix(rotCol, vec3(0.03, 0.02, 0.02), smoothstep(0.6, 0.8, fine) * 0.5);
           diffuseColor.rgb = mix(col, rotCol, uRot);
-          roughnessFactor = mix(0.34 + 0.2 * fine, 0.8, uRot);
-        }`);
+          roughnessFactor = mix(0.3 + 0.25 * fine - wet * 0.12, 0.85, uRot);
+          wwBump = (fine * 0.5 + pore * 0.12 - vein * 0.25 + smoothstep(0.55, 0.8, big) * uRot * 2.0);
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec3 dpdx = dFdx(vViewPosition), dpdy = dFdy(vViewPosition);
+          float dhx = dFdx(wwBump), dhy = dFdy(wwBump);
+          vec3 r1 = cross(dpdy, normal), r2 = cross(normal, dpdx);
+          float det = dot(dpdx, r1);
+          vec3 wwN = abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2) * 0.22;
+          if (dot(wwN, wwN) > 1e-20) normal = normalize(wwN);
+        }`)
+      .replace('#include <opaque_fragment>', `
+        {
+          // light bleeding round the edges of something this large and soft
+          float rim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+          #if NUM_DIR_LIGHTS > 0
+            float back = pow(clamp(dot(normalize(-vViewPosition), -directionalLights[0].direction) * 0.5 + 0.5, 0.0, 1.0), 2.0);
+            outgoingLight += vec3(0.5, 0.36, 0.3) * directionalLights[0].color * rim * back * 0.16 * (1.0 - uRot);
+          #endif
+          outgoingLight += diffuseColor.rgb * rim * 0.1 * (1.0 - uRot);
+        }
+        #include <opaque_fragment>`);
+  };
+  skin.customProgramCacheKey = () => 'giantskin';
+  /** bake the body-fixed pattern coordinates onto a piece of skin */
+  const tag = <G extends THREE.BufferGeometry>(g: G, sy = 1, ox = 0, oy = 0, oz = 0) => {
+    const p = g.attributes.position, a = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { a[i * 3] = p.getX(i) + ox; a[i * 3 + 1] = p.getY(i) * sy + oy; a[i * 3 + 2] = p.getZ(i) + oz; }
+    g.setAttribute('lp', new THREE.BufferAttribute(a, 3));
+    return g;
   };
   const boneMat = patch(new THREE.MeshStandardMaterial({ color: '#cfc8b4', roughness: 0.85 }), /* glsl */ `
     col *= 0.7 + 0.45 * tri(wp, wn, 0.06); col = mix(col, vec3(0.2, 0.19, 0.15), smoothstep(0.55, 0.8, tri(wp, wn, 0.3)) * 0.5);
@@ -139,15 +177,31 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   // turned profiles are smoothed through a spline so the body has no facets
   const lathe = (pts: [number, number][], seg = 40) =>
     new THREE.LatheGeometry(new THREE.SplineCurve(pts.map(([r, y]) => new THREE.Vector2(r, y))).getPoints(48).map((v) => (v.x = Math.max(v.x, 0.0005), v)), seg);
-  // torso
-  const torsoG = lathe([[0.001, 0.1], [0.05, 0.085], [0.07, 0.06], [0.16, 0.03], [0.215, -0.02], [0.205, -0.1], [0.19, -0.2], [0.165, -0.32], [0.15, -0.42], [0.17, -0.55], [0.15, -0.8]]);
-  torsoG.scale(1, 1, 0.58);
-  const torso = new THREE.Mesh(torsoG, skin);
+  // torso: shoulders that run into the neck, with collarbones and a hollow at the throat
+  const torsoG = lathe([[0.001, 0.075], [0.06, 0.07], [0.12, 0.05], [0.2, 0.024], [0.25, -0.012], [0.265, -0.055], [0.25, -0.12], [0.215, -0.2], [0.176, -0.32], [0.155, -0.42], [0.172, -0.55], [0.15, -0.8]], 56);
+  torsoG.scale(1, 1, 0.6);
+  {
+    const p = torsoG.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i); let z = p.getZ(i);
+      if (z > 0) {
+        z += Math.exp(-(((y + 0.012 + Math.abs(x) * 0.12) / 0.012) ** 2)) * 0.012 * smooth(0.02, 0.06, Math.abs(x)) * smooth(0.2, 0.14, Math.abs(x)); // collarbones
+        z -= Math.exp(-(x * x) / 0.0006 - ((y - 0.0) ** 2) / 0.0008) * 0.012;                                                                          // throat notch
+        z += Math.exp(-((Math.abs(x) - 0.09) ** 2) / 0.005 - ((y + 0.13) ** 2) / 0.006) * 0.012;                                                       // chest
+        z -= Math.exp(-(x * x) / 0.0008 - ((y + 0.2) ** 2) / 0.03) * 0.008;                                                                            // sternum line
+      } else z -= Math.exp(-(x * x) / 0.0006) * 0.006 * smooth(0.0, -0.1, y);                                                                         // spine furrow
+      p.setZ(i, z);
+    }
+    torsoG.computeVertexNormals();
+  }
+  const torso = new THREE.Mesh(tag(torsoG), skin);
   flesh.add(torso);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.058, 0.13, 18), skin);
-  neck.position.set(0, 0.11, 0.005);
+  // the neck flares into the shoulders, so there is no collar edge
+  const neckG = lathe([[0.046, 0.21], [0.047, 0.13], [0.051, 0.09], [0.064, 0.062], [0.095, 0.04], [0.14, 0.018], [0.17, 0.0]], 40);
+  neckG.scale(1, 1, 0.8);
+  const neck = new THREE.Mesh(tag(neckG, 1, 0, 0, 0.005), skin);
+  neck.position.set(0, 0, 0.005);
   flesh.add(neck);
-
   // head
   const HEAD = new THREE.Vector3(0, 0.215, 0.02);
   const headPivot = new THREE.Group();
@@ -156,26 +210,36 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const headFlesh = new THREE.Group();
   headPivot.add(headFlesh);
   const skullGeo = () => {
-    const g = new THREE.SphereGeometry(0.115, 48, 36);
+    const g = new THREE.SphereGeometry(0.115, 96, 72);
     const p = g.attributes.position;
+    const G = (a: number, w: number) => Math.exp(-(a * a) / w);
     for (let i = 0; i < p.count; i++) {
       let x = p.getX(i) / 0.115, y = p.getY(i) / 0.115, z = p.getZ(i) / 0.115;
       const jaw = Math.max(0, -y - 0.15);
       x *= (1 - jaw * 0.55) * 0.86;                         // narrow toward the chin
-      y *= y < 0 ? 1.22 : 1.06;                             // long face
-      z *= 1.04 + (z < 0 ? 0.14 * (1 - Math.abs(y)) : 0);   // long skull behind
+      x *= 1 - G(y - 0.05, 0.05) * 0.05 * (z > -0.2 ? 1 : 0); // temples
+      y *= y < 0 ? 1.22 : 1.08;                             // long face
+      z *= 1.04 + (z < 0 ? 0.16 * (1 - Math.abs(y)) : 0);   // long skull behind
       if (z > 0) {
+        const ax = Math.abs(x);
         z -= jaw * 0.12;                                    // receding chin
-        const brow = Math.exp(-(((y - 0.22) / 0.1) ** 2)) * 0.085 * (0.6 + 0.4 * Math.min(1, Math.abs(x) * 3)); z += brow;        // brow ridge
-        const socket = Math.exp(-((Math.abs(x) - 0.36) ** 2) / 0.022 - ((y - 0.04) ** 2) / 0.02) * 0.17; z -= socket;
-        const nose = Math.exp(-(x * x) / 0.005 - ((y + 0.1) ** 2) / 0.06) * 0.13 * (y > -0.26 ? 1 : 0.4); z += nose;
-        const lips = Math.exp(-(x * x) / 0.03 - ((y + 0.5) ** 2) / 0.006) * 0.03; z += lips;
-        const cheek = Math.exp(-((Math.abs(x) - 0.45) ** 2) / 0.03 - ((y + 0.12) ** 2) / 0.03) * 0.03; z += cheek;
+        z += G(y - 0.24, 0.012) * 0.05 * (0.6 + 0.4 * Math.min(1, ax * 3));                  // brow ridge
+        z -= G(ax - 0.36, 0.022) * G(y - 0.04, 0.02) * 0.17;                                 // sockets
+        z += G(x, 0.005) * G(y + 0.1, 0.06) * 0.13 * (y > -0.26 ? 1 : 0.4);                  // nose
+        z += G(ax - 0.07, 0.0025) * G(y + 0.27, 0.003) * 0.03;                               // nostril wings
+        z -= G(ax - 0.05, 0.0008) * G(y + 0.3, 0.0008) * 0.04;                               // nostrils
+        z += G(ax - 0.45, 0.03) * G(y + 0.12, 0.03) * 0.035;                                 // cheekbones
+        z -= G(ax - 0.3, 0.02) * G(y + 0.45, 0.03) * 0.03;                                   // hollow cheeks
+        z += G(x, 0.04) * G(y + 0.47, 0.004) * 0.035;                                        // upper lip
+        z += G(x, 0.035) * G(y + 0.58, 0.004) * 0.03;                                        // lower lip
+        z -= G(x, 0.07) * G(y + 0.525, 0.00035) * 0.05;                                      // the line of the mouth
+        z -= G(x, 0.002) * G(y + 0.38, 0.004) * 0.012;                                       // philtrum
+        z += G(x, 0.03) * G(y + 0.86, 0.02) * 0.05;                                          // chin
       }
       p.setXYZ(i, x * 0.115, y * 0.115, z * 0.115);
     }
     g.computeVertexNormals();
-    return g;
+    return tag(g, 1, 0, 0.215, 0.02);
   };
   const sg = skullGeo();
   headFlesh.add(new THREE.Mesh(sg, skin));
@@ -187,26 +251,31 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const EYE_R = 0.027;
   const eyes: THREE.Group[] = [], lids: THREE.Mesh[] = [];
   const sclera = new THREE.MeshStandardMaterial({ color: '#b9c1bd', roughness: 0.12 });
-  const iris = new THREE.MeshStandardMaterial({ color: '#1a1410', roughness: 0.08, emissive: '#3a2a12', emissiveIntensity: 0.25 });
+  const iris = patch(new THREE.MeshStandardMaterial({ color: '#4a3418', roughness: 0.15, emissive: '#5a3a14', emissiveIntensity: 0.18 }), /* glsl */ `
+    float a = atan(wp.y, wp.x); float r = length(wp.xy) / 0.02;
+    col *= 0.45 + 0.9 * vnoise(vec2(a * 14.0, r * 3.0)); col = mix(col, vec3(0.02, 0.015, 0.01), smoothstep(0.72, 1.0, r) * 0.8);`, 'iris', true);
   for (const s of [-1, 1]) {
     const eye = new THREE.Group();
     eye.position.set(s * 0.0415, 0.006, 0.082);
     eye.add(new THREE.Mesh(new THREE.SphereGeometry(EYE_R, 24, 18), sclera));
     const ir = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.66, 20, 14), iris); ir.position.z = EYE_R * 0.58; ir.scale.z = 0.7; eye.add(ir);
     const pu = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.4, 16, 10), new THREE.MeshStandardMaterial({ color: '#000', roughness: 0.05 })); pu.position.z = EYE_R * 0.93; pu.scale.z = 0.36; eye.add(pu);
+    const cornea = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.03, 24, 18), new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, transparent: true, opacity: 0.16, clearcoat: 1, clearcoatRoughness: 0.02, depthWrite: false }));
+    eye.add(cornea);
     headFlesh.add(eye); eyes.push(eye);
     const lid = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.08, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), skin);
     lid.position.copy(eye.position);
     headFlesh.add(lid); lids.push(lid);
   }
   // arms and hands
-  const SH = [new THREE.Vector3(0.215, -0.02, 0), new THREE.Vector3(-0.215, -0.02, 0)];
+  const SH = [new THREE.Vector3(0.205, -0.045, 0), new THREE.Vector3(-0.205, -0.045, 0)];
   const UPV = new THREE.Vector3(0, 1, 0);
   const limb = (r0: number, r1: number, parent: THREE.Object3D, mat: THREE.Material) => {
-    const g = new THREE.CylinderGeometry(r1, r0, 1, 16);
+    const g = new THREE.CylinderGeometry(r1, r0, 1, 28, 6);
     g.translate(0, 0.5, 0);
+    tag(g, 0.42, r0 * 7.0, 0, 0);
     const m = new THREE.Mesh(g, mat);
-    const c0 = new THREE.Mesh(new THREE.SphereGeometry(r0, 14, 10), mat), c1 = new THREE.Mesh(new THREE.SphereGeometry(r1, 14, 10), mat);
+    const c0 = new THREE.Mesh(tag(new THREE.SphereGeometry(r0, 24, 16), 1, r0 * 7.0, 0, 0), mat), c1 = new THREE.Mesh(tag(new THREE.SphereGeometry(r1, 24, 16), 1, r0 * 7.0, 0.42, 0), mat);
     c1.position.y = 1;
     m.add(c0, c1);
     m.userData.caps = [c0, c1];
@@ -226,8 +295,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const arms: Arm[] = SH.map((sh, i) => {
     const s = i === 0 ? 1 : -1;
     const hand = new THREE.Group();
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.024, 0.095, 2, 1, 2), skin);
-    palm.position.z = 0.05;
+    const pg = new THREE.SphereGeometry(0.05, 24, 16);
+    pg.scale(0.9, 0.3, 1.05);
+    const palm = new THREE.Mesh(tag(pg, 1, 0.3, 0.2, 0.1), skin);
+    palm.position.z = 0.048;
     hand.add(palm);
     const fingers: THREE.Group[] = [];
     for (let f = 0; f < 5; f++) {
@@ -236,16 +307,16 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       fg.position.set(thumb ? s * -0.045 : s * (-0.032 + (f - 1) * 0.0215), 0, thumb ? 0.03 : 0.098);
       fg.rotation.y = thumb ? s * -1.0 : (f - 2.5) * 0.06 * s;
       const len = thumb ? 0.05 : 0.075 - Math.abs(f - 2.4) * 0.008;
-      const p1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, len * 0.55, 3, 8), skin); p1.rotation.x = Math.PI / 2; p1.position.z = len * 0.3;
+      const p1 = new THREE.Mesh(tag(new THREE.CapsuleGeometry(0.0095, len * 0.55, 4, 12), 1, 0.1 * f, 0.3, 0.2), skin); p1.rotation.x = Math.PI / 2; p1.position.z = len * 0.3;
       const kn = new THREE.Group(); kn.position.z = len * 0.62;
-      const p2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, len * 0.45, 3, 8), skin); p2.rotation.x = Math.PI / 2; p2.position.z = len * 0.25;
+      const p2 = new THREE.Mesh(tag(new THREE.CapsuleGeometry(0.0085, len * 0.45, 4, 12), 1, 0.1 * f, 0.35, 0.2), skin); p2.rotation.x = Math.PI / 2; p2.position.z = len * 0.25;
       kn.add(p2); fg.add(p1, kn); fg.userData.kn = kn;
       hand.add(fg); fingers.push(fg);
     }
     flesh.add(hand);
     const rest = new THREE.Vector3(s * 0.3, -0.76, 0.06);
     return {
-      upper: limb(0.05, 0.04, flesh, skin), fore: limb(0.04, 0.03, flesh, skin), hand, fingers,
+      upper: limb(0.056, 0.042, flesh, skin), fore: limb(0.042, 0.03, flesh, skin), hand, fingers,
       elbow: new THREE.Vector3(), wrist: new THREE.Vector3(), pos: rest.clone(), vel: new THREE.Vector3(), target: rest.clone(),
       flat: 0, flatT: 0, curl: 0.5, curlT: 0.5, k: 6, c: 4.2,
       bUpper: limb(0.016, 0.013, bones, boneMat), bFore: limb(0.013, 0.01, bones, boneMat),
@@ -304,7 +375,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
   const pGeo = new THREE.BufferGeometry();
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ map: softDot(), color: '#dfe6e6', size: 1.7, transparent: true, opacity: 0.55, depthWrite: false, sizeAttenuation: true }));
+  const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ map: softDot(), color: '#dfe6e6', size: 1.1, transparent: true, opacity: 0.5, depthWrite: false, sizeAttenuation: true }));
   spray.frustumCulled = false;
   scene.add(spray);
   let pNext = 0;
@@ -592,10 +663,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       // slow breath, and the foam line where its shoulders meet the sea
       sink += (sinkT - sink) * Math.min(1, dt * 0.45);
       leanA += (leanT - leanA) * Math.min(1, dt * 0.55);
-      root.position.set(cx, sink * S + 3 + Math.sin(t * 0.55) * 1.3, cz);
+      root.position.set(cx, sink * S + 17 + Math.sin(t * 0.55) * 1.3, cz);
       root.rotation.set(0, yaw, 0);
       lean.rotation.x = leanA;
-      if (phase !== 'emerge') { const b = bumps[0]; b.x = cx; b.z = cz; b.r = 52 + leanA * 20; b.w = 7; b.a = 0.7 + Math.sin(t * 0.55) * 0.35; }
+      if (phase !== 'emerge') { const b = bumps[0]; b.x = cx; b.z = cz; b.r = 50 + leanA * 20; b.w = 7; b.a = 0.7 + Math.sin(t * 0.55) * 0.35; }
       // water keeps pouring off for a while after it surfaces
       sheet = Math.max(0, sheet - dt);
       if (sheet > 0) for (let i = 0; i < 16; i++) { const a = Math.random() * 6.283; emit(cx + Math.cos(a) * (18 + Math.random() * 34), 20 + Math.random() * 55, cz + Math.sin(a) * (10 + Math.random() * 20), 0, -2, 0); }
