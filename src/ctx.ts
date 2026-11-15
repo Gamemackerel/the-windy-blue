@@ -17,6 +17,13 @@ export interface Ctx {
   /** the item the player is holding out, and a way to take it from them */
   held: () => string | null;
   takeHeld: () => void;
+  /** fade to black, run fn, fade back */
+  fade: (fn: () => void, hold?: number) => void;
+  /** rotate the camera about the vertical axis (used when the floor turns under the player) */
+  turnView: (delta: number) => void;
+  /** show a page of handwriting full-screen */
+  read: (text: string) => void;
+  wind: { dir: number; speed: number };
   /** one-shot sound by name at a world position (filled in by the audio system) */
   sfx: (name: string, pos?: THREE.Vector3, gain?: number) => void;
 }

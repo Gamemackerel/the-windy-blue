@@ -81,6 +81,9 @@ export class Environment {
     uFogDensity: { value: 0.00075 },
   };
 
+  /** underwater / enclosed override, driven by the laboratory */
+  readonly under = { amount: 0, fog: new THREE.Color('#010409'), density: 0.05, ambient: new THREE.Color('#203040'), intensity: 0.3 };
+
   readonly sun = new THREE.DirectionalLight(0xffffff, 1);
   readonly hemi = new THREE.HemisphereLight(0xffffff, 0x101820, 1);
   readonly sky: THREE.Mesh;
@@ -224,5 +227,16 @@ export class Environment {
     this.fog.color.copy(u.uHorizon.value);
     this.fog.density = u.uFogDensity.value;
     this.sky.position.copy(camPos);
+
+    const un = this.under;
+    if (un.amount > 0.001) {
+      const k = un.amount;
+      this.sun.color.multiplyScalar(1 - k);
+      this.hemi.color.lerp(un.ambient, k);
+      this.hemi.groundColor.lerp(un.ambient, k).multiplyScalar(1 - 0.5 * k);
+      this.hemi.intensity += (un.intensity - this.hemi.intensity) * k;
+      this.fog.color.lerp(un.fog, k);
+      this.fog.density += (un.density - this.fog.density) * k;
+    }
   }
 }

@@ -40,6 +40,8 @@ export interface Ladder {
   /** where the climber steps off at the top / bottom */
   topExit: THREE.Vector3;
   bottomExit: THREE.Vector3;
+  /** leave the top onto this ladder's own top rung height instead of y1 - 0.9 */
+  through?: boolean;
 }
 
 export interface Mooring {
@@ -197,12 +199,14 @@ export class World {
   }
 
   nearestLadder(pos: THREE.Vector3): { ladder: Ladder; atTop: boolean } | null {
+    let best: { ladder: Ladder; atTop: boolean } | null = null, bd = Infinity;
     for (const l of this.ladders) {
       const d = Math.hypot(pos.x - l.x, pos.z - l.z);
-      if (d < 1.3 && pos.y > l.y0 - 1 && pos.y < l.y0 + 1.2) return { ladder: l, atTop: false };
-      if (pos.distanceTo(l.topExit) < 1.4) return { ladder: l, atTop: true };
+      if (d < 1.3 && pos.y > l.y0 - 1 && pos.y < l.y0 + 1.2 && d < bd) { bd = d; best = { ladder: l, atTop: false }; }
+      const dt = pos.distanceTo(l.topExit);
+      if (dt < 1.4 && dt < bd) { bd = dt; best = { ladder: l, atTop: true }; }
     }
-    return null;
+    return best;
   }
 
   private tweens: { t: number; dur: number; fn: (k: number) => void; done?: () => void }[] = [];

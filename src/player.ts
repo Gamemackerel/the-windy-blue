@@ -54,6 +54,9 @@ export class Player {
   }
   handWorld(out: THREE.Vector3) { return this.figure.rightHandSlot.getWorldPosition(out); }
 
+  /** after a teleport: no carried-over falling or climbing */
+  resetMotion() { this.velY = 0; if (this.mode === 'climb') this.mode = 'foot'; }
+
   place(x: number, y: number, z: number, yaw = 0) {
     this.pos.set(x, y, z); this.yaw = yaw; this.velY = 0;
   }
@@ -190,7 +193,7 @@ export class Player {
   private updateClimb(dt: number, input: Input, free: boolean) {
     const l = this.ladder!;
     const dir = free ? input.axis('KeyS', 'KeyW') : 0;
-    const sp = (input.down('ShiftLeft') ? 2.5 : 1.5) * dir;
+    const sp = (input.down('ShiftLeft') ? 1.5 : 0.9) * dir;
     this.climbY += sp * dt;
     this.climbPhase += Math.abs(sp) * dt / 0.6;
     if (this.climbY > l.y1 - 0.9) { this.mode = 'foot'; this.pos.copy(l.topExit); this.velY = 0; return; }

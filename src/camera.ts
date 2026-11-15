@@ -11,6 +11,8 @@ export class OrbitRig {
   /** distance the current situation wants (the wheel still adjusts it) */
   wantDist = 13;
   height = 1.7;
+  /** true below the surface, where the sea must not push the camera up */
+  submerged = false;
   private lastHeading: number | null = null;
   private target = new THREE.Vector3();
   private ready = false;
@@ -50,7 +52,7 @@ export class OrbitRig {
       if (world.blocked(x, y, z)) { d = Math.max(0.6, k - this.dist / 8 - 0.15); break; }
     }
     cam.position.set(tx + dx * d, ty + dy * d, tz + dz * d);
-    const floor = Math.max(waveHeight(cam.position.x, cam.position.z, t) + 0.45, world.terrainHeight(cam.position.x, cam.position.z) + 0.4);
+    const floor = this.submerged ? -1e9 : Math.max(waveHeight(cam.position.x, cam.position.z, t) + 0.45, world.terrainHeight(cam.position.x, cam.position.z) + 0.4);
     if (cam.position.y < floor) cam.position.y = floor;
     cam.lookAt(tx, ty, tz);
   }
