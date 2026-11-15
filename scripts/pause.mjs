@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+await page.goto('http://localhost:5173/?new&t=0.4');
+await page.waitForTimeout(5000);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(500);
+await page.screenshot({ path: 'shots/pause.png' });
+await page.click('[data-q="0"]');
+await page.click('#resume');
+await page.waitForTimeout(800);
+console.log('quality', await page.evaluate(() => localStorage.getItem('ww-quality')), 'errors', errors.join('\n') || 'none');
+await page.evaluate(() => localStorage.removeItem('ww-quality'));
+await browser.close();

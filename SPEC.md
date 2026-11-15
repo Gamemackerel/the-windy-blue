@@ -23,7 +23,7 @@ This spec describes a **demo**: a compact, complete slice of the game, about 60â
 - **Perspective:** third person, orbit camera. On foot it sits close over the shoulder; on the boat it pulls back and lower to the water; in places of scale it widens further (windmill exterior, atoll, tower).
 - **Session length:** 60â€“90 minutes for a first playthrough. No fail state other than losing the boat (see 6.4).
 - **Structure:** open. After the boat is built, every location can be visited in any order. Progress is gated by items, not by walls.
-- **Saving:** automatic and invisible (IndexedDB), on every state change and on mooring.
+- **Saving:** automatic and invisible (browser local storage), every few seconds and on mooring.
 
 ### 2.1 Controls
 
@@ -42,7 +42,7 @@ Keyboard and mouse only for now. Input goes through an action map so gamepad can
 
 ### 2.2 Interface rules
 
-- No text anywhere in the game world or UI, with two exceptions: the laboratory journals (4.4.1) and a minimal pause menu (resume, settings, quality).
+- No text anywhere in the game world or UI, with two exceptions: the laboratory journals (4.4.1) and a minimal pause menu (Esc), which lists the controls and holds quality, sound and new-game settings. A faint "ESC" appears for a few seconds on a first run so the menu can be found.
 - **Satchel:** the character opens a bag; items are shown as physical objects in a shallow ring. No names, no descriptions.
 - **Guidance:** the character's head and eyes turn toward things of interest. Interactable objects get no outline or icon; the character's hand lifts slightly when in reach.
 - **Wind:** read from the masthead pennant, sail telltales, streaks on the water and the sound in the rigging.
@@ -78,8 +78,8 @@ A relatively large basalt island (roughly 300 m across, the biggest landmass in 
 **Boat puzzle.** An unfinished hull sits in a gated dry dock. Three things are needed, discoverable in any order:
 
 1. **Mast.** A hand-cranked yard crane must be rebalanced (move counterweights to match a marking on the mast) and swung over the hull to step the mast.
-2. **Sail.** The sail is in a locked loft. The lock is a mechanical dial set whose correct positions are shown by shadows cast in the yard at a specific time of day, which teaches the day/night cycle.
-3. **Launch.** The dock floods through three sluice valves that must be opened in an order implied by the pipework. Done wrong, the dock drains again. When full, the sea gate swings open.
+2. **Sail.** The sail is in a locked loft whose lock is a glass eye above the door, on the shaded side of the building. A mirror on a post in the yard can be turned in steps; when it throws sunlight onto the eye, the door opens. It only works while the sun is up, which teaches the day/night cycle.
+3. **Launch.** The dock floods through three sluice valves that must be opened in order. Each wheel has one, two or three pale marks above it, and they are not mounted in that order. A wrong wheel spins them all shut again. When the dock is full, the sea gate drops open.
 
 The character rigs the boat in a short, unbroken animation and the game opens up.
 
@@ -150,7 +150,7 @@ There are very few people. They are still and quiet. They look at the player, sh
 |---|---|---|---|
 | The Fisher | Skiff near the jungle rig | Fruit | Brass key (opens the strongbox) |
 | The Smoker | Barge between windmill and lab | Cigarettes | Valve wheel (opens the lab hatch) |
-| The Watcher | Starting island porch | Orchid | Picture-chart showing the atoll passes |
+| The Watcher | House on the terrace above the yard | Orchid | Picture-chart showing the atoll passes |
 
 The **chart** is a hand-drawn map with no words: the ring of the reef and the gaps a boat can sail through. It is a convenience, not a requirement.
 
@@ -237,10 +237,10 @@ Animation quality is a headline feature, not polish.
 
 ### 9.1 Stack
 
-- TypeScript, Vite, **Three.js with the WebGPU renderer**, with a WebGL2 fallback at reduced quality.
-- Rapier (WASM) for the character controller, collisions and ragdolls.
+- TypeScript, Vite, **Three.js on WebGL2**. WebGPU was the original intent; WebGL2 was chosen as the more dependable base and can be revisited.
+- A small purpose-built collision system (boxes, ramps, cylinders, height fields) for walking and for the boat, and a Verlet ragdoll on the same joints the animation uses. No physics library.
 - Web Audio with HRTF spatialisation.
-- Each location is a streamed chunk. The sea, sky and distant silhouettes are always loaded.
+- The whole world is generated at load and stays loaded; fixed parts are merged per material and neighbourhood to keep draw calls low.
 
 ### 9.2 Ocean
 
@@ -312,3 +312,17 @@ This shapes the look. Fidelity comes from light, water, atmosphere, material res
 - **Journals:** the only text in the game, readable once the lab is powered (4.4.1).
 - **Ending:** none. The demo continues for as long as the player wants.
 - **Input:** keyboard and mouse. Gamepad later; no touch.
+
+## 14. Build status
+
+Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.
+
+Known gaps against the spec, in rough order of how much they matter:
+
+- **Character fidelity.** People are built from capsules and turned profiles. Proportions, gait, climbing, sitting, smoking, trading and ragdolls all work, but the figures read as stylised mannequins rather than detailed characters. No fingers on people, no cloth simulation.
+- **Mooring and boarding are instant.** There is no stepping-aboard or tying-off animation; the boat glides to its berth and the sailor is placed on the dock.
+- **The satchel** shows the carried items in an arc but the character does not physically open a bag.
+- **Water.** No refraction, screen-space reflections or volumetric light shafts. The sea is opaque with analytic sky reflection, foam, shallows and surf.
+- **Post-processing.** Tone mapping only: no temporal anti-aliasing, bloom, film grain or time-of-day grade.
+- **Sound** is fully synthesised and has not been mixed by ear on real speakers.
+- **Performance tiers** exist (Low / Medium / High, with automatic step-down on a first run) but have only been measured on one machine.

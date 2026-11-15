@@ -25,6 +25,23 @@
         background-image: repeating-linear-gradient(transparent 0 37.75px, rgba(60, 70, 90, 0.16) 37.75px 38.75px);
       }
       #dot { position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #e8e2d2; opacity: 0; pointer-events: none; transition: opacity 0.15s; box-shadow: 0 0 2px #000; }
+      #pause {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+        background: rgba(3, 5, 7, 0.78); color: #cfc9ba; font: 14px/1.9 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.04em;
+      }
+      #pause .box { width: min(560px, 86vw); }
+      #pause h1 { font-weight: 300; font-size: 13px; letter-spacing: 0.5em; text-transform: uppercase; color: #8f897a; margin: 0 0 28px; }
+      #pause table { border-collapse: collapse; width: 100%; margin-bottom: 26px; }
+      #pause td { padding: 2px 0; border-bottom: 1px solid rgba(207, 201, 186, 0.08); }
+      #pause td:first-child { color: #8f897a; width: 46%; }
+      #pause kbd { font: inherit; color: #e6e0d0; }
+      #pause button {
+        font: inherit; color: #cfc9ba; background: none; border: 1px solid rgba(207, 201, 186, 0.25); padding: 6px 16px; margin: 0 8px 8px 0; cursor: pointer; letter-spacing: 0.08em;
+      }
+      #pause button:hover, #pause button.on { border-color: #cfc9ba; color: #fff; }
+      #pause .row { margin-bottom: 14px; }
+      #pause .label { color: #8f897a; display: inline-block; width: 90px; }
+      #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
     </style>
   </head>
   <body>
@@ -32,6 +49,24 @@
     <div id="debug"></div>
     <div id="page"><div></div></div>
     <div id="dot"></div>
+    <div id="hint">ESC</div>
+    <div id="pause"><div class="box">
+      <h1>Paused</h1>
+      <table>
+        <tr><td>Walk / steer the tiller</td><td><kbd>W A S D</kbd></td></tr>
+        <tr><td>Look</td><td><kbd>Mouse</kbd> (click to capture)</td></tr>
+        <tr><td>Run, climb faster</td><td><kbd>Shift</kbd></td></tr>
+        <tr><td>Use, take, climb, board, moor</td><td><kbd>E</kbd></td></tr>
+        <tr><td>Sheet in / ease out (sailing)</td><td><kbd>W</kbd> / <kbd>S</kbd></td></tr>
+        <tr><td>Satchel: choose what to hold</td><td><kbd>Tab</kbd>, then <kbd>A</kbd> <kbd>D</kbd> and <kbd>E</kbd></td></tr>
+        <tr><td>Offer what you hold</td><td><kbd>E</kbd> facing someone</td></tr>
+        <tr><td>Aim / fire (revolver in hand)</td><td><kbd>Right mouse</kbd> / <kbd>Left mouse</kbd></td></tr>
+        <tr><td>Zoom</td><td><kbd>Mouse wheel</kbd></td></tr>
+      </table>
+      <div class="row"><span class="label">Quality</span><button data-q="0">Low</button><button data-q="1">Medium</button><button data-q="2">High</button></div>
+      <div class="row"><span class="label">Sound</span><button data-s="1">On</button><button data-s="0">Off</button></div>
+      <div class="row"><button id="resume">Resume</button><button id="newgame">New game</button></div>
+    </div></div>
     <div id="fade"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

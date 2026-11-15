@@ -20,6 +20,8 @@ export class Audio {
   private gustT = 0;
   private _p = new THREE.Vector3();
   private lastBump = 0;
+  /** master switch from the pause menu */
+  enabled = true;
 
   constructor(private camera: THREE.Camera) {
     const start = () => { this.init(); removeEventListener('pointerdown', start); removeEventListener('keydown', start); };
@@ -149,7 +151,7 @@ export class Audio {
     set('flies', m.rot >= 0 ? 0.05 / (1 + (m.rot / 190) ** 2) * (0.7 + 0.3 * Math.sin(this.gustT * 9)) : 0, 0.3);
     // near the tower the world goes quiet
     const hush = THREE.MathUtils.clamp((m.towerDist - 45) / 170, 0.12, 1);
-    this.master.gain.setTargetAtTime(0.9 * hush, now, 1.5);
+    this.master.gain.setTargetAtTime(this.enabled ? 0.9 * hush : 0, now, this.enabled ? 1.5 : 0.1);
     this.tone.frequency.setTargetAtTime(m.submerged ? 900 : 18000, now, 0.5);
 
     // footsteps and rungs

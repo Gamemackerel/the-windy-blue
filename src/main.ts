@@ -203,6 +203,41 @@ function fire() {
   giant.shoot(_o, aimDir);
 }
 
+// ---- pause menu and quality ----
+const pauseEl = document.getElementById('pause')!;
+const hintEl = document.getElementById('hint')!;
+let paused = false;
+let quality = Number(localStorage.getItem('ww-quality') ?? 2);
+function applyQuality(q: number, remember = true) {
+  quality = q;
+  renderer.setPixelRatio([0.7, 1, Math.min(devicePixelRatio, 2)][q] * (q < 2 ? Math.min(devicePixelRatio, 1) : 1));
+  renderer.shadowMap.enabled = q > 0;
+  env.sun.castShadow = q > 0;
+  resize();
+  if (remember) localStorage.setItem('ww-quality', String(q));
+  pauseEl.querySelectorAll<HTMLElement>('[data-q]').forEach((b) => b.classList.toggle('on', Number(b.dataset.q) === q));
+}
+function setSound(on: boolean) {
+  audio.enabled = on;
+  localStorage.setItem('ww-sound', on ? '1' : '0');
+  pauseEl.querySelectorAll<HTMLElement>('[data-s]').forEach((b) => b.classList.toggle('on', (b.dataset.s === '1') === on));
+}
+function setPaused(p: boolean) {
+  paused = p;
+  pauseEl.style.display = p ? 'flex' : 'none';
+  if (p) document.exitPointerLock?.();
+  state.flush(true);
+}
+pauseEl.querySelectorAll<HTMLElement>('[data-q]').forEach((b) => b.addEventListener('click', () => applyQuality(Number(b.dataset.q))));
+pauseEl.querySelectorAll<HTMLElement>('[data-s]').forEach((b) => b.addEventListener('click', () => setSound(b.dataset.s === '1')));
+document.getElementById('resume')!.addEventListener('click', () => setPaused(false));
+document.getElementById('newgame')!.addEventListener('click', () => { GameState.wipe(); location.search = ''; });
+applyQuality(quality, false);
+setSound(localStorage.getItem('ww-sound') !== '0');
+if (!state.loaded && !fixedCam) { setTimeout(() => { hintEl.style.opacity = '0.55'; }, 5000); setTimeout(() => { hintEl.style.opacity = '0'; }, 14000); }
+// on a first run, step the quality down if the machine is struggling
+let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 0;
+
 let last = performance.now();
 let fps = 60;
 let saveTimer = 0;
@@ -222,6 +257,16 @@ function frame() {
   if (input.hit('Backquote')) {
     debug = !debug;
     debugEl.style.display = debug ? 'block' : 'none';
+  }
+  if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive()) setPaused(!paused);
+  if (paused) { input.endFrame(); renderer.render(scene, camera); requestAnimationFrame(frame); return; }
+  if (probe >= 0 && !document.hidden) {
+    probe += dt; probeFrames++;
+    if (probe > 6) {
+      const avg = probeFrames / probe;
+      if (avg < 34 && quality > 0) { applyQuality(quality - 1); probe = 0; probeFrames = 0; }
+      else { localStorage.setItem('ww-quality', String(quality)); probe = -1; }
+    }
   }
 
   wind.update(dt);
