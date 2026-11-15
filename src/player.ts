@@ -6,6 +6,7 @@ import { Boat } from './boat';
 import { Input } from './input';
 import { Wind } from './wind';
 import { GameState } from './state';
+import { makeItem, ItemId } from './items';
 
 const RADIUS = 0.3;
 const WALK = 2.1, RUN = 4.8;
@@ -37,6 +38,21 @@ export class Player {
   constructor(scene: THREE.Scene, private world: World, private boat: Boat, private state: GameState) {
     scene.add(this.figure.group);
   }
+
+  /** hold an item in the right hand (null puts it away) */
+  setHeld(id: ItemId | null) {
+    const slot = this.figure.rightHandSlot;
+    slot.clear();
+    this.held = id;
+    if (!id) return;
+    const obj = makeItem(id);
+    obj.scale.multiplyScalar(id === 'chart' ? 1.1 : id === 'sail' ? 1.2 : 1);
+    // the hand's +Y runs along the forearm toward the fingers
+    obj.rotation.set(-Math.PI / 2, 0, 0);
+    obj.position.set(0, 0.07, 0.03);
+    slot.add(obj);
+  }
+  handWorld(out: THREE.Vector3) { return this.figure.rightHandSlot.getWorldPosition(out); }
 
   place(x: number, y: number, z: number, yaw = 0) {
     this.pos.set(x, y, z); this.yaw = yaw; this.velY = 0;
@@ -135,7 +151,12 @@ export class Player {
     this.reach = Math.max(0, this.reach - dt * 2.2);
     const want = this.target ? 0.28 : 0;
     const amt = Math.max(want, Math.sin(Math.min(1, this.reach) * Math.PI) * 1.0);
-    if (amt > 0.01 && this.target) {
+    if (this.held) {
+      // carry the held thing in front of the body; hold it out when offering
+      const out = Math.sin(Math.min(1, this.reach) * Math.PI);
+      _t.set(-0.16, p[J.chest].y - 0.24 + out * 0.1, 0.3 + out * 0.2);
+      solveIK(p[J.shR], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW_OUT, p[J.elR], p[J.haR]);
+    } else if (amt > 0.01 && this.target) {
       f.group.worldToLocal(_t.copy(this.target.pos));
       _w.copy(p[J.haR]).lerp(_t, amt);
       solveIK(p[J.shR], _w, LIMB.UARM, LIMB.FARM, POLE_ELBOW_OUT, p[J.elR], p[J.haR]);

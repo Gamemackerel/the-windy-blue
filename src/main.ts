@@ -10,6 +10,8 @@ import { GameState } from './state';
 import { Player } from './player';
 import { Ctx } from './ctx';
 import { buildIsland } from './island';
+import { buildRigs, PLACES } from './rigs';
+import { Satchel, ItemId } from './items';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -42,10 +44,21 @@ boat.mode = 'cradle';
 const input = new Input(canvas);
 const rig = new OrbitRig(camera);
 
-const ctx: Ctx = { scene, world, env, boat, state, sfx: () => {} };
+const _hand = new THREE.Vector3();
+let player: Player;
+const ctx: Ctx = {
+  scene, world, env, boat, state,
+  playerHand: () => player.handWorld(_hand),
+  playerPos: () => player.pos,
+  held: () => player.held,
+  takeHeld: () => { if (player.held) { state.take(player.held); player.setHeld(null); } },
+  sfx: () => {},
+};
 const island = buildIsland(ctx);
+const npcs = buildRigs(ctx);
 
-const player = new Player(scene, world, boat, state);
+player = new Player(scene, world, boat, state);
+const satchel = new Satchel(ctx, (id) => player.setHeld(id), () => player.held);
 
 // ---- where everyone starts ----
 {
@@ -70,6 +83,8 @@ const player = new Player(scene, world, boat, state);
     boat.state.psi = num('psi', 1.6);
     player.mode = 'sail';
   }
+  if (params.has('items')) for (const id of params.get('items')!.split(',')) state.give(id);
+  if (params.has('hold')) player.setHeld(params.get('hold') as ItemId);
   if (params.has('at')) {
     const [x, z] = params.get('at')!.split(',').map(Number);
     player.mode = 'foot';
@@ -111,6 +126,9 @@ function frame() {
 
   wind.update(dt);
   const t = env.elapsed + dt; // matches the value the shaders will see this frame
+  const prevTime = env.time;
+  satchel.update(dt, t, input);
+  if (satchel.open) player.busy = Math.max(player.busy, 0.15);
   world.update(dt, t);
 
   const sailing = player.mode === 'sail';
@@ -139,6 +157,8 @@ function frame() {
   env.update(dt, camera.position, focus);
   ocean.update(focus, camera.position);
   renderer.render(scene, camera);
+  satchel.render(renderer, camera.aspect);
+  if (env.time < prevTime) { state.data.day++; state.touch(); } // midnight passed
 
   // quiet autosave
   state.data.time = env.time;
@@ -164,4 +184,4 @@ let rigMode = '';
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { env, boat, wind, rig, renderer, scene, camera, player, world, state, input };
+(window as any).__game = { env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, PLACES };

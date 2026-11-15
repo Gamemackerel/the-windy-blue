@@ -35,7 +35,7 @@ function uAtHeight(s: number, y: number) {
   return Math.pow(Math.max(0, 1 - (sh - y) / (sh + kd)), 1 / 2.3);
 }
 
-function buildHull() {
+export function buildHull() {
   const NS = 30, NU = 21;
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
   const p = new THREE.Vector3();
