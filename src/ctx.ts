@@ -28,6 +28,11 @@ export interface Ctx {
   /** show a page of handwriting full-screen */
   read: (text: string) => void;
   wind: { dir: number; speed: number };
+  setHeld: (id: string | null) => void;
+  /** put the eye to a fixed instrument (or take it away); done is called when the player steps back */
+  scope: (on: boolean, at?: THREE.Vector3, done?: () => void) => void;
+  /** where the eye is looking while at an instrument, else null */
+  scopeView: () => { yaw: number; pitch: number } | null;
   /** one-shot sound by name at a world position (filled in by the audio system) */
   sfx: (name: string, pos?: THREE.Vector3, gain?: number) => void;
 }

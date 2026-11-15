@@ -6,6 +6,7 @@ import { Builder } from './build';
 import { MAT, patch } from './materials';
 import { fbm, ridge, smooth, rng } from './noise';
 import { calmZones } from './waves';
+import { makeItem, addPickup } from './items';
 
 export const ISLAND = { x: -700, z: -600 };
 const IX = ISLAND.x, IZ = ISLAND.z;
@@ -32,6 +33,9 @@ function localHeight(lx: number, lz: number) {
   // flat yard cut into the slope
   const ym = smooth(46, 30, Math.hypot(lx - 70, lz - 10));
   h += (DECK - h) * ym;
+  // a levelled crown on the summit, where the telescope stands
+  const sm = smooth(11, 4.5, Math.hypot(lx + 44, lz + 6));
+  h += (40.6 - h) * sm;
   // terrace for the house
   const pm = smooth(15, 8, Math.hypot(lx - 28, lz + 50));
   h += (9.5 - h) * pm;
@@ -679,7 +683,7 @@ export function buildIsland(ctx: Ctx) {
     b.bar(HX, HY + H - 0.06, HZ - 0.2, HX, HY + 2.35, HZ - 0.2, 0.008, MAT.dark, 4);
     b.mesh(new THREE.ConeGeometry(0.2, 0.16, 16, 1, true), shade, HX, HY + 2.3, HZ - 0.2, false);
     b.mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffd9a0', emissiveIntensity: 9 }), HX, HY + 2.22, HZ - 0.2, false);
-    const lampIn = new THREE.PointLight('#ffb070', 26, 9, 1.5);
+    const lampIn = new THREE.PointLight('#ffb070', 15, 9, 1.5);
     lampIn.position.set(IX + HX, HY + 2.15, IZ + HZ - 0.2);
     scene.add(lampIn);
     const stoveGlow = new THREE.PointLight('#ff6a2a', 5, 4, 1.8);
@@ -687,7 +691,7 @@ export function buildIsland(ctx: Ctx) {
     scene.add(stoveGlow);
     world.updaters.push((_, t) => {
       const fl = 0.92 + Math.sin(t * 7.3) * 0.04 + Math.sin(t * 17.1) * 0.03;
-      lampIn.intensity = 26 * fl; stoveGlow.intensity = 5 * (0.8 + Math.sin(t * 11) * 0.2); coal.emissiveIntensity = 2.5 * fl;
+      lampIn.intensity = 15 * fl; stoveGlow.intensity = 5 * (0.8 + Math.sin(t * 11) * 0.2); coal.emissiveIntensity = 2.5 * fl;
     });
   }
   b.box(HX + 5.2, HY + 0.1, HZ + 1.5, 4.6, 0.2, 6, MAT.paleWood);           // porch
@@ -711,6 +715,75 @@ export function buildIsland(ctx: Ctx) {
     winMat.emissiveIntensity = 0.8 + night * 2.2;
     houseLight.intensity = night * 18;
   });
+
+  // ---------- the summit: a telescope someone took the eyepiece from ----------
+  {
+    const SX = -44, SZ = -6, SY = 40.6;
+    b.cyl(SX, SZ, 3.4, SY - 1.2, SY + 0.25, MAT.concrete, true, 3.4, 28);
+    // what is left of a ring wall
+    for (let i = 0; i < 14; i++) {
+      if (i === 3 || i === 4 || i === 9) continue;                    // gaps: the way in, and where it has fallen
+      const a = (i / 14) * Math.PI * 2, hh = 0.5 + ((i * 7) % 5) * 0.22;
+      b.box(SX + Math.sin(a) * 3.1, SY + 0.25 + hh / 2, SZ + Math.cos(a) * 3.1, 1.3, hh, 0.4, MAT.concrete, a);
+    }
+    b.cyl(SX, SZ, 0.34, SY + 0.25, SY + 1.15, MAT.concrete, true, 0.28, 14);
+    world.addCyl(IX + SX, IZ + SZ, 0.7, SY, SY + 2);
+    const mount = new THREE.Group();
+    mount.position.set(IX + SX, SY + 1.3, IZ + SZ);
+    scene.add(mount);
+    const fork = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.18), MAT.dark);
+    fork.position.y = -0.12;
+    mount.add(fork);
+    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.14), MAT.dark); arm.position.set(s * 0.23, 0.05, 0); mount.add(arm); }
+    const tube = new THREE.Group();
+    tube.position.y = 0.16;
+    mount.add(tube);
+    {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 2.3, 20, 1, true), MAT.brass);
+      body.rotation.x = Math.PI / 2; body.position.z = -0.45;                 // looks along -Z
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 20, 1, true), MAT.dark);
+      hood.rotation.x = Math.PI / 2; hood.position.z = -1.72;
+      const draw = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 14, 1, true), MAT.brass);
+      draw.rotation.x = Math.PI / 2; draw.position.z = 0.86;
+      const glassM = new THREE.MeshStandardMaterial({ color: '#0b1014', roughness: 0.05, metalness: 0.6 });
+      const front = new THREE.Mesh(new THREE.CircleGeometry(0.145, 20), glassM);
+      front.rotation.y = Math.PI; front.position.z = -1.55;
+      for (const z of [-1.2, -0.3, 0.55]) { const band = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.014, 6, 22), MAT.dark); band.position.z = z; band.scale.setScalar(z > 0 ? 0.86 : 1); tube.add(band); }
+      const finder = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.55, 8), MAT.dark);
+      finder.rotation.x = Math.PI / 2; finder.position.set(0.12, 0.17, 0.1);
+      tube.add(body, hood, draw, front, finder);
+      tube.traverse((m) => { m.castShadow = true; });
+    }
+    // the eyepiece: missing until the lens is brought up
+    const eyepiece = makeItem('lens');
+    eyepiece.scale.setScalar(1.15); eyepiece.rotation.x = Math.PI / 2; eyepiece.position.z = 1.07;
+    eyepiece.visible = !!state.flag('scope');
+    tube.add(eyepiece);
+    addPickup(ctx, 'lens', 'lens', P(HX + 1.2, HY + 0.83, HZ - 1.55), { scale: 1.2 });   // it has been on the table in the house all along
+    let yawT = 2.2, pitchT = 0.3, using = false;
+    tube.rotation.order = 'YXZ';
+    world.interactables.push({
+      pos: P(SX, SY + 1.45, SZ), radius: 2.3,
+      enabled: () => !using,
+      use: () => {
+        if (!state.flag('scope')) {
+          if (state.take('lens')) { state.set('scope'); eyepiece.visible = true; ctx.sfx('unlock', mount.position); if (ctx.held() === 'lens') ctx.setHeld(null); }
+          else { ctx.sfx('clank', mount.position); world.tween(0.5, (k) => { tube.rotation.z = Math.sin(k * Math.PI * 3) * 0.03 * (1 - k); }); }
+          return;
+        }
+        using = true;
+        ctx.scope(true, mount.position, () => { using = false; });
+      },
+    });
+    world.updaters.push((dt) => {
+      // while someone is at the eyepiece the tube follows their eye; otherwise it sags toward the horizon
+      const v = ctx.scopeView();
+      if (using && v) { yawT = v.yaw; pitchT = -v.pitch; }
+      mount.visible = !using;                                   // the eye is inside the instrument
+      mount.rotation.y += Math.atan2(Math.sin(yawT - mount.rotation.y), Math.cos(yawT - mount.rotation.y)) * Math.min(1, dt * 8);
+      tube.rotation.x += (pitchT - tube.rotation.x) * Math.min(1, dt * 8);
+    });
+  }
 
   /** under a roof with walls round it: the house, the storehouse or the sail loft */
   const indoors = (p: THREE.Vector3) => {

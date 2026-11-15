@@ -336,6 +336,9 @@ export function scatterJunk(ctx: Ctx) {
     (x, z) => Math.hypot(x - IX - 64, z - IZ - 4) < 2 || (Math.abs(x - IX - 50) < 6 && Math.abs(z - IZ - 10.5) < 5) || (Math.abs(x - IX - 64) < 7.5 && Math.abs(z - IZ + 15) < 5.5) || Math.hypot(x - IX - 74, z - IZ - 20) < 3 || (x > IX + 108 && Math.abs(z - IZ - 10) < 4));
   // ---- the porch of the house
   for (const [k, x, z] of [['bottle', 6.6, 2.6], ['bottle', 6.3, 3.0], ['kettle', 3.9, 0.2], ['bookopen', 4.4, 3.4], ['radio', 3.7, 2.6]] as const) put(k, IX + 26 + x, IZ - 51 + z, { hint: 9.9 });
+  // ---- inside the house: a lived-in table, and the stove still warm
+  for (const [k, x, z, y] of [['kettle', -2.2, 1.75, 0.87], ['bookopen', 1.25, -1.7, 0.77], ['can', 1.95, -1.9, 0.77], ['lampdesk', 2.0, -1.55, 0.77], ['bookstack', 0.9, 2.12, 1.57], ['bottle', 0.2, 2.12, 1.57], ['clock', -0.3, 2.12, 1.57], ['radio', 1.3, 2.1, 1.57], ['suitcase', -2.2, 0.4, 0.07], ['bottle', -1.5, -2.2, 0.07]] as const)
+    put(k, IX + 26 + x, IZ - 51 + z, { y: 9.5 + y });
   // ---- washed up round the island: stone and rubbish at the tide line
   {
     const r = rng(41);

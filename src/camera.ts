@@ -11,6 +11,8 @@ export class ViewRig {
   pitch = 0;
   /** narrowed view while aiming */
   aim = false;
+  /** eye to a telescope: a very narrow view that moves slowly */
+  scope = false;
   private aimK = 0;
   private lastHeading: number | null = null;
   private eye = new THREE.Vector3();
@@ -24,7 +26,7 @@ export class ViewRig {
 
   /** eye: where the head is. heading: the boat's heading while sailing, else null. speed: walking speed, for head bob. */
   update(dt: number, input: Input, eye: THREE.Vector3, heading: number | null, speed: number) {
-    const sens = this.aim ? 0.0016 : 0.0026;
+    const sens = this.scope ? 0.00022 : this.aim ? 0.0016 : 0.0026;
     this.yaw -= input.lookX * sens;
     this.pitch = THREE.MathUtils.clamp(this.pitch + input.lookY * sens, -1.45, 1.45);
 
@@ -34,7 +36,7 @@ export class ViewRig {
     } else this.lastHeading = null;
 
     this.aimK += ((this.aim ? 1 : 0) - this.aimK) * Math.min(1, dt * 9);
-    const fov = 62 - 24 * this.aimK;
+    const fov = this.scope ? 4.2 : 62 - 24 * this.aimK;
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
 
     // the head follows the body closely but not rigidly, which takes the edge off steps and swell
@@ -43,6 +45,7 @@ export class ViewRig {
     this.eye.y += (eye.y - this.eye.y) * Math.min(1, dt * 14);
 
     // a little bob with each step
+    if (this.scope) this.bobAmt = 0;
     this.bobAmt += ((speed > 0.2 ? Math.min(1, speed / 2.2) : 0) - this.bobAmt) * Math.min(1, dt * 6);
     this.bobT += dt * (5.2 + speed * 1.5);
     const bobY = Math.sin(this.bobT * 2) * 0.022 * this.bobAmt, bobX = Math.sin(this.bobT) * 0.012 * this.bobAmt;

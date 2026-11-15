@@ -80,6 +80,8 @@ const fadeEl = document.getElementById('fade')!;
 const pageEl = document.getElementById('page')!;
 const dotEl = document.getElementById('dot')!;
 let reading = false;
+let scopeDone: (() => void) | null = null, scopeAt: THREE.Vector3 | null = null;
+const scopeEl = document.getElementById('scope')!;
 const ctx: Ctx = {
   scene, world, env, boat, state, wind, input,
   hold: (s) => { player.busy = Math.max(player.busy, s); },
@@ -94,6 +96,16 @@ const ctx: Ctx = {
     world.after(0.4, () => { fn(); player.resetMotion(); rig.snap(); world.after(Math.max(0.05, hold - 0.3), () => { fadeEl.style.opacity = '0'; }); });
   },
   turnView: (d) => { rig.yaw += d; player.yaw += d; },
+  setHeld: (id) => player.setHeld(id as ItemId | null),
+  scope: (on, at, done) => {
+    scopeDone?.();
+    scopeDone = on ? done ?? null : null;
+    scopeAt = on && at ? at.clone() : null;
+    rig.scope = on;
+    scopeEl.style.opacity = on ? '1' : '0';
+    if (on) { rig.pitch = Math.min(rig.pitch, 0.05); player.busy = 0.4; }
+  },
+  scopeView: () => (rig.scope ? { yaw: rig.yaw, pitch: rig.pitch } : null),
   read: (text) => { (pageEl.firstElementChild as HTMLElement).textContent = text; pageEl.style.display = 'flex'; reading = true; player.busy = 0.3; audio.play('page'); },
   sfx: (name, pos, gain) => audio.play(name, pos, gain),
 };
@@ -277,7 +289,7 @@ function frame() {
     debug = !debug;
     debugEl.style.display = debug ? 'block' : 'none';
   }
-  if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive()) setPaused(!paused);
+  if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
   if (paused) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   if (probe >= 0 && !document.hidden) {
     probe += dt; probeFrames++;
@@ -298,6 +310,11 @@ function frame() {
   } else if (!tower.padActive()) satchel.update(dt, t, input);
   if (satchel.open) player.busy = Math.max(player.busy, 0.15);
 
+  // at the telescope: nothing but looking, until E or any step away
+  if (rig.scope) {
+    if (player.busy <= 0 && (input.hit('KeyE') || input.hit('Escape') || input.axis('KeyS', 'KeyW') !== 0 || input.axis('KeyA', 'KeyD') !== 0)) { ctx.scope(false); player.busy = 0.3; input.endFrame(); }
+    else player.busy = Math.max(player.busy, 0.05);
+  }
   // aiming and firing
   const canAim = player.held === 'revolver' && player.busy <= 0 && player.mode !== 'climb';
   const aiming = canAim && input.mouse(2);
@@ -346,7 +363,10 @@ function frame() {
   // the view
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
-  rig.update(dt, input, player.eye(eyePos), sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
+  player.eye(eyePos);
+  if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.2, scopeAt.z);
+  rig.update(dt, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
+  viewModel.visible = !rig.scope;
   // what is held is seen in the lower right of the view; it comes up to the eye when aiming and goes out when offered
   if (viewHeld !== player.held) {
     viewModel.clear();

@@ -5,7 +5,7 @@ import { Ctx } from './ctx';
 import { MAT } from './materials';
 import { Input } from './input';
 
-export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart';
+export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart' | 'lens';
 
 const m = (geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => {
   const o = new THREE.Mesh(geo, mat);
@@ -98,6 +98,14 @@ export function makeItem(id: ItemId): THREE.Group {
         g.add(p);
       }
       g.add(m(new THREE.SphereGeometry(0.018, 8, 6), std('#c23a8a', 0.4, 0, { emissive: '#c23a8a', emissiveIntensity: 0.5 }), 0, 0.08, 0.02));
+      break;
+    }
+    case 'lens': {
+      const barrel = m(new THREE.CylinderGeometry(0.045, 0.05, 0.11, 16, 1, true), MAT.brass);
+      const ring = m(new THREE.TorusGeometry(0.05, 0.009, 6, 18), MAT.brass, 0, 0.055, 0);
+      ring.rotation.x = Math.PI / 2;
+      const glass = m(new THREE.CylinderGeometry(0.042, 0.042, 0.008, 16), std('#9fc3cf', 0.03, 0.2), 0, 0.05, 0);
+      g.add(barrel, ring, glass, m(new THREE.CylinderGeometry(0.052, 0.052, 0.012, 16), MAT.dark, 0, -0.05, 0));
       break;
     }
     case 'chart': {

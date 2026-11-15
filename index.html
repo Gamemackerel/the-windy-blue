@@ -42,12 +42,15 @@
       #pause .row { margin-bottom: 14px; }
       #pause .label { color: #8f897a; display: inline-block; width: 90px; }
       #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
+      #scope { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+        background: radial-gradient(circle at 50% 50%, transparent 0, transparent 38vh, rgba(0,0,0,0.55) 40vh, #000 43vh); }
     </style>
   </head>
   <body>
     <canvas id="c"></canvas>
     <div id="debug"></div>
     <div id="page"><div></div></div>
+    <div id="scope"></div>
     <div id="dot"></div>
     <div id="hint">ESC</div>
     <div id="pause"><div class="box">
