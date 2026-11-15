@@ -358,6 +358,14 @@ export function scatterJunk(ctx: Ctx) {
       i++;
     }
   }
+  // a gathering of them near the jetty, where anyone landing will walk past
+  {
+    const r = rng(52);
+    for (const [k, da, dr, sc, tip] of [['stonehead', 0.17, 2, 2.4, 0.5], ['column', 0.2, -5, 1.8, 1.5], ['column', 0.215, -1, 1.8, 0.1], ['torso', 0.24, 4, 2.0, -0.7], ['capital', 0.19, 6, 1.6, 0.3], ['bust', 0.27, -3, 1.9, 0], ['stonehand', 0.3, 1, 2.6, 0.2], ['mannequin', 0.26, 6, 1, 0]] as const) {
+      const a = 1.55 + da, d = ATOLL.r + dr, x = ATOLL.x + Math.sin(a) * d, z = ATOLL.z + Math.cos(a) * d;
+      put(k, x, z, { y: atollHeight(x, z), sink: 0.12 * sc, tip, scale: sc, r });
+    }
+  }
   // ---- the houseboat: what the dead man lived among
   {
     const cx = PLACES.houseboat.x, cz = PLACES.houseboat.z, F = 0.76;
