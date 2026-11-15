@@ -6,6 +6,10 @@ export interface Mix {
   sailing: boolean; boatSpeed: number; drive: number; wind: number; luff: number;
   height: number; indoors: boolean; submerged: boolean; walking: number; climbing: number;
   night: number; towerDist: number; turbine: number; bump: number; rot: number;
+  /** walking on steel rather than earth, wood or concrete */
+  metal: boolean;
+  /** 0 at the water's edge, 1 deep inland */
+  inland: number;
 }
 
 type Recipe = (a: Audio, out: AudioNode, t: number) => void;
@@ -15,6 +19,7 @@ export class Audio {
   private master!: GainNode;
   private tone!: BiquadFilterNode;
   private noiseBuf!: AudioBuffer;
+  private shots!: DynamicsCompressorNode;
   private layers: Record<string, { gain: GainNode; filter: BiquadFilterNode }> = {};
   private stepT = 0;
   private gustT = 0;
@@ -40,9 +45,12 @@ export class Audio {
     this.tone = c.createBiquadFilter();
     this.tone.type = 'lowpass';
     this.tone.frequency.value = 18000;
-    const comp = c.createDynamicsCompressor();
-    comp.threshold.value = -14; comp.ratio.value = 5;
-    this.tone.connect(this.master).connect(comp).connect(c.destination);
+    // Only the one-shot sounds pass through the limiter. The steady beds (sea, wind) go
+    // straight out, so a footstep can never make the sea duck and pump.
+    this.shots = c.createDynamicsCompressor();
+    this.shots.threshold.value = -10; this.shots.ratio.value = 3; this.shots.attack.value = 0.003; this.shots.release.value = 0.25;
+    this.shots.connect(this.tone);
+    this.tone.connect(this.master).connect(c.destination);
 
     const len = c.sampleRate * 4;
     this.noiseBuf = c.createBuffer(1, len, c.sampleRate);
@@ -126,7 +134,7 @@ export class Audio {
     g.gain.value = level;
     const p = c.createStereoPanner();
     p.pan.value = pan;
-    g.connect(p).connect(this.tone);
+    g.connect(p).connect(this.shots);
     r(this, g, c.currentTime + 0.01);
   }
 
@@ -143,7 +151,9 @@ export class Audio {
     L.wind.filter.frequency.setTargetAtTime(380 + 260 * gust + m.height * 4, now, 1);
     set('windHigh', 0.012 * w * gust * (m.sailing ? 1.6 : 0.5 + Math.max(0, m.height) / 40) * shelter, 0.8);
     const near = Math.exp(-Math.max(0, m.height) / 30);
-    set('sea', 0.2 * near * shelter * (0.8 + 0.2 * Math.sin(this.gustT * 0.5)), 1);
+    // the sea falls away, and loses its hiss, as you go inland
+    set('sea', 0.2 * near * shelter * (1 - 0.85 * m.inland) * (0.8 + 0.2 * Math.sin(this.gustT * 0.5)), 1);
+    L.sea.filter.frequency.setTargetAtTime(420 - 250 * m.inland, now, 1);
     set('hull', m.sailing ? Math.min(0.09, Math.abs(m.boatSpeed) * 0.012) : 0, 0.3);
     set('luff', m.sailing ? 0.07 * m.luff * (0.5 + 0.5 * Math.sin(this.gustT * 23)) : 0, 0.05);
     set('deep', m.submerged ? 0.5 : 0, 1.2);
@@ -158,7 +168,7 @@ export class Audio {
     const pace = m.walking > 0.1 ? m.walking : m.climbing;
     if (pace > 0.1) {
       this.stepT -= dt * (m.walking > 0.1 ? 0.9 + m.walking * 0.42 : 2.4 * m.climbing);
-      if (this.stepT <= 0) { this.stepT = 1; this.play(m.walking > 0.1 ? (m.indoors || m.height > 20 ? 'stepMetal' : 'step') : 'rung', undefined, 0.5 + Math.random() * 0.2); }
+      if (this.stepT <= 0) { this.stepT = 1; this.play(m.walking > 0.1 ? (m.metal ? 'stepMetal' : 'step') : 'rung', undefined, 0.32 + Math.random() * 0.12); }
     } else this.stepT = 0.3;
     if (m.bump > 1 && this.lastBump <= 1) this.play('scrape', undefined, Math.min(1.5, m.bump * 0.3));
     this.lastBump = m.bump;
@@ -199,6 +209,7 @@ const RECIPES: Record<string, Recipe> = {
   scrape: (a, o, t) => { a.noise(o, t, 0.7, 'bandpass', 420, 260, 3, 0.4, 0.05); a.sine(o, t, 0.4, 70, 45, 0.3); },
   shot: (a, o, t) => { a.noise(o, t, 0.09, 'highpass', 900, 400, 0.5, 1.0, 0.001); a.sine(o, t, 0.35, 150, 40, 0.9, 'sine', 0.001); a.noise(o, t + 0.05, 1.8, 'lowpass', 1800, 250, 0.4, 0.35, 0.02); a.noise(o, t + 0.5, 2.6, 'lowpass', 700, 160, 0.4, 0.12, 0.3); },
   dry: (a, o, t) => { a.noise(o, t, 0.04, 'bandpass', 3200, 2000, 3, 0.25); a.sine(o, t, 0.08, 900, 700, 0.04, 'triangle'); },
+  hm: (a, o, t) => { const f = 105 + Math.random() * 30; a.sine(o, t, 0.32, f, f * 0.86, 0.16, 'sawtooth', 0.05, 7); a.noise(o, t, 0.3, 'bandpass', 420, 300, 2, 0.06, 0.05); },
   grunt: (a, o, t) => { a.sine(o, t, 0.35, 150, 95, 0.25, 'sawtooth', 0.02, 9); a.noise(o, t, 0.3, 'bandpass', 600, 400, 2, 0.2, 0.02); a.noise(o, t + 0.5, 0.25, 'lowpass', 500, 150, 0.7, 0.25); },
   bodyfall: (a, o, t) => { a.sine(o, t, 0.12, 140, 90, 0.2, 'sawtooth', 0.01); a.noise(o, t + 0.45, 0.3, 'lowpass', 600, 120, 0.7, 0.45); a.sine(o, t + 0.45, 0.4, 80, 35, 0.45); },
   wreck: (a, o, t) => { a.noise(o, t, 0.5, 'bandpass', 900, 250, 1, 0.9, 0.005); for (let i = 0; i < 7; i++) a.noise(o, t + 0.05 + Math.random() * 0.6, 0.12, 'bandpass', 1500 + Math.random() * 1500, 600, 3, 0.4); a.noise(o, t + 0.2, 3.5, 'lowpass', 1200, 200, 0.4, 0.7, 0.2); a.sine(o, t, 1.2, 70, 28, 0.8); },

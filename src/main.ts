@@ -345,7 +345,7 @@ function frame() {
 
   // the view
   player.focus(focus);
-  const indoors = windmill.inside(player.pos) || lab.inside();
+  const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
   rig.update(dt, input, player.eye(eyePos), sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
   // what is held is seen in the lower right of the view; it comes up to the eye when aiming and goes out when offered
   if (viewHeld !== player.held) {
@@ -399,6 +399,8 @@ function frame() {
     height: player.pos.y, indoors, submerged, walking: player.mode === 'foot' ? player.speed : 0, climbing: player.mode === 'climb' ? player.speed : 0,
     night: 1 - env.daylight, towerDist: Math.hypot(player.pos.x - TOWER.x, player.pos.z - TOWER.z),
     turbine: windmill.powered() ? Math.hypot(player.pos.x - WINDMILL.x, player.pos.z - WINDMILL.z) : -1,
+    inland: sailing ? 0 : THREE.MathUtils.clamp((150 - Math.hypot(player.pos.x - ISLAND.x, player.pos.z - ISLAND.z)) / 105, 0, 1),
+    metal: windmill.inside(player.pos) || lab.inside() || (player.pos.y > 2.5 && Math.hypot(player.pos.x - ISLAND.x, player.pos.z - ISLAND.z) > 260),
     bump: boat.bump, rot: state.flag('giantPhase') === 2 ? Math.hypot(player.pos.x - ATOLL.x, player.pos.z - ATOLL.z) : -1,
   });
 

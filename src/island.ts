@@ -639,15 +639,62 @@ export function buildIsland(ctx: Ctx) {
 
   // ---------- the house on the terrace ----------
   const HX = 26, HZ = -51, HY = 9.5;
-  b.box(HX, HY + 1.5, HZ, 6, 3, 5, MAT.concrete);
-  b.box(HX, HY + 3.1, HZ, 6.8, 0.25, 5.8, MAT.corrugated, 0, false);
-  b.trim(HX, HY, HZ, 6, 3, 5, MAT.dark, 0.16);
+  // a one-room home: walls you can walk between, a bed, a table, a stove, and a lamp that is never put out
+  {
+    const T = 0.25, H = 3, wy = HY + H / 2;
+    b.box(HX - 3 + T / 2, wy, HZ, T, H, 5, MAT.concrete);                                   // west
+    b.box(HX, wy, HZ - 2.5 + T / 2, 6, H, T, MAT.concrete);                                 // south
+    b.box(HX, wy, HZ + 2.5 - T / 2, 6, H, T, MAT.concrete);                                 // north
+    b.box(HX + 3 - T / 2, wy, HZ - 1.0, T, H, 3.0, MAT.concrete);                           // east, south of the door
+    b.box(HX + 3 - T / 2, wy, HZ + 2.0, T, H, 1.0, MAT.concrete);                           // east, north of the door
+    b.box(HX + 3 - T / 2, HY + 2.1 + (H - 2.1) / 2, HZ + 1.0, T, H - 2.1, 1.0, MAT.concrete, 0, false);
+    b.box(HX, HY + 0.035, HZ, 5.5, 0.07, 4.5, MAT.wood, 0, false);                          // floor boards
+    b.box(HX, HY + H - 0.06, HZ, 5.5, 0.06, 4.5, MAT.paleWood, 0, false);                   // ceiling
+    b.box(HX + 2.55, HY + 1.05, HZ + 0.42, 0.9, 2.0, 0.05, MAT.wood, 0, false);             // the door, standing open inward
+    // bed
+    b.box(HX - 2.15, HY + 0.25, HZ - 1.25, 1.0, 0.36, 2.05, MAT.wood);
+    b.box(HX - 2.15, HY + 0.5, HZ - 1.25, 0.94, 0.16, 1.98, MAT.bone, 0, false);
+    b.box(HX - 2.15, HY + 0.6, HZ - 0.85, 0.98, 0.07, 1.25, MAT.red, 0, false);             // blanket
+    b.box(HX - 2.15, HY + 0.62, HZ - 2.0, 0.6, 0.1, 0.34, MAT.bone, 0, false);              // pillow
+    b.box(HX - 2.62, HY + 0.65, HZ - 2.2, 0.06, 0.9, 0.12, MAT.wood, 0, false); b.box(HX - 1.68, HY + 0.65, HZ - 2.2, 0.06, 0.9, 0.12, MAT.wood, 0, false);
+    b.box(HX - 2.15, HY + 1.0, HZ - 2.2, 1.0, 0.1, 0.1, MAT.wood, 0, false);
+    // table and chair under the window
+    b.box(HX + 1.6, HY + 0.74, HZ - 1.75, 1.2, 0.05, 0.75, MAT.wood, 0, false);
+    for (const [x, z] of [[1.08, -2.05], [2.12, -2.05], [1.08, -1.45], [2.12, -1.45]] as const) b.box(HX + x, HY + 0.37, HZ + z, 0.06, 0.72, 0.06, MAT.wood, 0, false);
+    world.addBox(IX + HX + 1.6, HY + 0.4, IZ + HZ - 1.75, 0.6, 0.4, 0.38);
+    b.box(HX + 1.5, HY + 0.44, HZ - 0.95, 0.42, 0.04, 0.42, MAT.wood, 0, false); b.box(HX + 1.5, HY + 0.72, HZ - 0.76, 0.42, 0.5, 0.04, MAT.wood, 0, false);
+    for (const [x, z] of [[1.32, -1.13], [1.68, -1.13], [1.32, -0.77], [1.68, -0.77]] as const) b.box(HX + x, HY + 0.22, HZ + z, 0.04, 0.44, 0.04, MAT.wood, 0, false);
+    // stove in the corner, its pipe going up through the roof
+    b.cyl(HX - 2.2, HZ + 1.75, 0.34, HY, HY + 0.85, MAT.dark, true, 0.34, 14);
+    b.cyl(HX - 2.2, HZ + 1.75, 0.08, HY + 0.85, HY + 3.9, MAT.dark, false, 0.08, 8);
+    const coal = new THREE.MeshStandardMaterial({ color: '#1a0a04', emissive: '#ff5a1a', emissiveIntensity: 2.5 });
+    b.box(HX - 1.86, HY + 0.4, HZ + 1.75, 0.02, 0.18, 0.26, coal, 0, false);
+    // shelf, rug, coat on a peg
+    b.box(HX + 0.4, HY + 1.55, HZ + 2.12, 2.2, 0.04, 0.26, MAT.wood, 0, false);
+    b.box(HX - 0.3, HY + 0.075, HZ + 0.2, 2.0, 0.012, 1.3, MAT.red, 0.15, false);
+    b.box(HX + 2.72, HY + 1.75, HZ - 2.1, 0.06, 0.06, 0.06, MAT.dark, 0, false);
+    b.box(HX + 2.66, HY + 1.2, HZ - 2.1, 0.1, 1.1, 0.42, MAT.wood, 0, false);
+    // the lamp
+    const shade = new THREE.MeshStandardMaterial({ color: '#3a2a18', emissive: '#ffb46a', emissiveIntensity: 3, side: THREE.DoubleSide });
+    b.bar(HX, HY + H - 0.06, HZ - 0.2, HX, HY + 2.35, HZ - 0.2, 0.008, MAT.dark, 4);
+    b.mesh(new THREE.ConeGeometry(0.2, 0.16, 16, 1, true), shade, HX, HY + 2.3, HZ - 0.2, false);
+    b.mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffd9a0', emissiveIntensity: 9 }), HX, HY + 2.22, HZ - 0.2, false);
+    const lampIn = new THREE.PointLight('#ffb070', 26, 9, 1.5);
+    lampIn.position.set(IX + HX, HY + 2.15, IZ + HZ - 0.2);
+    scene.add(lampIn);
+    const stoveGlow = new THREE.PointLight('#ff6a2a', 5, 4, 1.8);
+    stoveGlow.position.set(IX + HX - 1.7, HY + 0.45, IZ + HZ + 1.75);
+    scene.add(stoveGlow);
+    world.updaters.push((_, t) => {
+      const fl = 0.92 + Math.sin(t * 7.3) * 0.04 + Math.sin(t * 17.1) * 0.03;
+      lampIn.intensity = 26 * fl; stoveGlow.intensity = 5 * (0.8 + Math.sin(t * 11) * 0.2); coal.emissiveIntensity = 2.5 * fl;
+    });
+  }
   b.box(HX + 5.2, HY + 0.1, HZ + 1.5, 4.6, 0.2, 6, MAT.paleWood);           // porch
   b.box(HX + 5.2, HY + 2.9, HZ + 1.5, 4.8, 0.12, 6.2, MAT.corrugated, 0, false);  // porch roof
   for (const [x, z] of [[7.3, -1.3], [7.3, 4.3]] as const) b.bar(HX + x, HY + 0.2, HZ + z, HX + x, HY + 2.9, HZ + z, 0.05, MAT.wood);
-  b.box(HX + 3.01, HY + 1.1, HZ + 1.0, 0.06, 2.0, 0.9, MAT.dark, 0, false);  // door
-  const winMat = new THREE.MeshStandardMaterial({ color: '#191510', emissive: '#ff9c4a', emissiveIntensity: 0 });
-  b.box(HX + 3.01, HY + 1.7, HZ - 1.2, 0.06, 0.7, 0.9, winMat, 0, false);
+  const winMat = new THREE.MeshStandardMaterial({ color: '#191510', emissive: '#ff9c4a', emissiveIntensity: 0.8 });
+  b.box(HX + 2.875, HY + 1.6, HZ - 1.75, 0.27, 0.7, 0.9, winMat, 0, false);
   // chair
   b.box(HX + 7.2, HY + 0.42, HZ + 3.8, 0.5, 0.06, 0.5, MAT.wood, 0, false);
   b.box(HX + 6.95, HY + 0.75, HZ + 3.8, 0.06, 0.7, 0.5, MAT.wood, 0, false);
@@ -661,9 +708,16 @@ export function buildIsland(ctx: Ctx) {
     const night = 1 - ctx.env.daylight;
     lampMat.emissiveIntensity = night * 4;
     lamp.intensity = night * 60;
-    winMat.emissiveIntensity = night * 2.5;
+    winMat.emissiveIntensity = 0.8 + night * 2.2;
     houseLight.intensity = night * 18;
   });
 
-  return { mooring, start: P(74, DECK, 20) };
+  /** under a roof with walls round it: the house, the storehouse or the sail loft */
+  const indoors = (p: THREE.Vector3) => {
+    const lx = p.x - IX, lz = p.z - IZ;
+    return (Math.abs(lx - HX) < 2.9 && Math.abs(lz - HZ) < 2.4 && p.y > HY - 0.5 && p.y < HY + 3)
+      || (Math.abs(lx - 50) < 4.3 && Math.abs(lz - 10.5) < 3.3 && p.y < 5.5)
+      || (Math.abs(lx - 64) < 5.8 && Math.abs(lz + 15) < 3.8 && p.y < 6.5);
+  };
+  return { mooring, start: P(74, DECK, 20), indoors };
 }

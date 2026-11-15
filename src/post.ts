@@ -72,6 +72,7 @@ export class Post {
           occ += step(0.03, diff) * smoothstep(1.0, 0.0, diff / (radius * 2.0));
         }
         float ao = 1.0 - occ / 12.0;
+        if (!(ao >= 0.0)) ao = 1.0;                  // a degenerate pixel must not poison the blur
         gl_FragColor = vec4(vec3(mix(1.0, ao, smoothstep(260.0, 120.0, dist))), 1.0);
       }`);
 
@@ -137,7 +138,8 @@ export class Post {
         if (!(c.r + c.g + c.b >= 0.0)) c = vec3(0.0);
         float depth = texture2D(tDepth, vUv).x;
         if (depth < 0.99999) {
-          c *= mix(1.0, texture2D(tAO, vUv).r, uAO);
+          float aoV = texture2D(tAO, vUv).r;
+          c *= mix(1.0, aoV >= 0.0 ? aoV : 1.0, uAO);
           // ink lines: where the surface turns a corner, and where one thing stands in front of another
           {
             vec3 p0 = viewPos(vUv);
@@ -155,6 +157,7 @@ export class Post {
               vec3 n1 = normalize(cross(pr - p0, pu - p0)), n2 = normalize(cross(pl - p0, pd - p0));
               float crease = smoothstep(0.55, 0.95, 1.0 - dot(n1, n2));
               float ink = max(outline, crease * 0.8) * reach * uLines;
+              if (!(ink >= 0.0)) ink = 0.0;
               c *= 1.0 - ink * 0.82;
             }
           }

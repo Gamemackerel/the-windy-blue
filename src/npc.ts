@@ -8,15 +8,16 @@ import { waveHeight } from './waves';
 import { World } from './world';
 
 const _t = new THREE.Vector3(), _u = new THREE.Vector3(), _w = new THREE.Vector3();
-const POLE_KNEE = new THREE.Vector3(0, 0.4, 1), POLE_ELBOW = new THREE.Vector3(0, -1, -0.5);
+const POLE_KNEE = new THREE.Vector3(0, 0.4, 1), POLE_L = new THREE.Vector3(0.55, -1, -0.35), POLE_R = new THREE.Vector3(-0.55, -1, -0.35);
+const _fq = new THREE.Quaternion(), _hq = new THREE.Quaternion(), _tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, 0.25, 0));
 const { UARM, FARM, THIGH, SHIN, SH_W, HIP_W } = LIMB;
 
 type Pose = THREE.Vector3[];
 const newPose = (): Pose => Array.from({ length: J.COUNT }, () => new THREE.Vector3());
 
 function limbs(p: Pose, handL: THREE.Vector3, handR: THREE.Vector3, footL: THREE.Vector3, footR: THREE.Vector3) {
-  solveIK(p[J.shL], handL, UARM, FARM, POLE_ELBOW, p[J.elL], p[J.haL]);
-  solveIK(p[J.shR], handR, UARM, FARM, POLE_ELBOW, p[J.elR], p[J.haR]);
+  solveIK(p[J.shL], handL, UARM, FARM, POLE_L, p[J.elL], p[J.haL]);
+  solveIK(p[J.shR], handR, UARM, FARM, POLE_R, p[J.elR], p[J.haR]);
   solveIK(p[J.hipL], footL, THIGH, SHIN, POLE_KNEE, p[J.knL], p[J.ftL]);
   solveIK(p[J.hipR], footR, THIGH, SHIN, POLE_KNEE, p[J.knR], p[J.ftR]);
 }
@@ -60,9 +61,11 @@ export class Npc {
   private knock = new THREE.Vector3();
   private ragdoll: Ragdoll | null = null;
   private ember: THREE.MeshStandardMaterial | null = null;
+  private cig: THREE.Group | null = null;
   private puffs: THREE.Sprite[] = [];
   private puffI = 0;
   private wasAtMouth = false;
+  private drag = 0;
   readonly chest = new THREE.Vector3();
 
   constructor(private ctx: Ctx, readonly spec: NpcSpec, private playerHand: () => THREE.Vector3, private playerPos: () => THREE.Vector3) {
@@ -71,18 +74,23 @@ export class Npc {
     ctx.scene.add(this.figure.group);
     this.figure.group.position.copy(this.pos);
     this.figure.group.rotation.y = spec.yaw;
-    if (spec.pose === 'sit') this.figure.skirtAmount = 0.6;
+    if (spec.pose === 'sit') this.figure.skirtAmount = 0.4;
 
     if (spec.smokes) {
+      // held between the first two fingers, lit end away from the face
       const cig = new THREE.Group();
-      const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.075, 6), new THREE.MeshStandardMaterial({ color: '#e8e2d2', roughness: 0.9 }));
-      paper.rotation.x = Math.PI / 2;
-      paper.position.z = 0.04;
+      const paper = new THREE.Mesh(new THREE.CylinderGeometry(0.0042, 0.0042, 0.05, 6), new THREE.MeshStandardMaterial({ color: '#e8e2d2', roughness: 0.9 }));
+      paper.rotation.x = Math.PI / 2; paper.position.z = 0.047;
+      const filter = new THREE.Mesh(new THREE.CylinderGeometry(0.0044, 0.0044, 0.022, 6), new THREE.MeshStandardMaterial({ color: '#b08a4a', roughness: 0.9 }));
+      filter.rotation.x = Math.PI / 2; filter.position.z = 0.011;
+      const ash = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.0042, 0.008, 6), new THREE.MeshStandardMaterial({ color: '#8a8a86', roughness: 1 }));
+      ash.rotation.x = Math.PI / 2; ash.position.z = 0.076;
       this.ember = new THREE.MeshStandardMaterial({ color: '#2a1206', emissive: '#ff5a1a', emissiveIntensity: 1 });
-      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.007, 6, 4), this.ember);
-      tip.position.z = 0.08;
-      cig.add(paper, tip);
-      cig.position.set(0, -0.03, 0.03);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.0046, 6, 4), this.ember);
+      tip.position.z = 0.081;
+      cig.add(paper, filter, ash, tip);
+      cig.position.set(0.006, 0.098, 0.006);
+      this.cig = cig;
       this.figure.rightHandSlot.add(cig);
       const tex = puffTexture();
       for (let i = 0; i < 10; i++) {
@@ -114,7 +122,7 @@ export class Npc {
   onUse() {}
   offer(item: string | null, take: () => void): void {
     if (this.condition !== 0) return;
-    if (!item) { this.lookAway = 0; return; }
+    if (!item) { this.lookAway = 0; this.consider = 0.6; this.ctx.sfx('hm', this.chest, 0.7); return; }
     this.consider = 1.3;
     this.pending = () => {
       if (item === this.spec.wants && !this.traded()) {
@@ -210,8 +218,10 @@ export class Npc {
       const c = this.smokeT % 9.5;
       const k = c < 1.1 ? c / 1.1 : c < 2.6 ? 1 : c < 3.6 ? 1 - (c - 2.6) : 0;
       const e = k * k * (3 - 2 * k);
-      _t.set(p[J.head].x - 0.015, p[J.head].y - 0.07, p[J.head].z + 0.13);
+      // the wrist stops below the chin so the fingertips, and the cigarette in them, reach the lips
+      _t.set(p[J.head].x - 0.03, p[J.head].y - 0.155, p[J.head].z + 0.075);
       hR.lerp(_t, e);
+      this.drag = e;
       atMouth = c > 1.1 && c < 2.6;
       if (this.ember) this.ember.emissiveIntensity = atMouth ? 5 + Math.sin(c * 6) * 2 : 0.8 + Math.sin(t * 3) * 0.3;
       if (this.wasAtMouth && !atMouth) this.exhale();
@@ -272,7 +282,7 @@ export class Npc {
     this.computePose(dt);
     const rate = Math.min(1, dt * (this.condition === 1 ? 5 : 9));
     for (let i = 0; i < J.COUNT; i++) f.joints[i].lerp(this.target[i], rate);
-    f.skirtAmount += ((this.condition === 1 ? 0.45 : this.spec.pose === 'sit' ? 0.6 : 1) - f.skirtAmount) * rate;
+    f.skirtAmount += ((this.condition === 1 ? 0.45 : this.spec.pose === 'sit' ? 0.4 : 1) - f.skirtAmount) * rate;
 
     // eyes follow the player when they are near
     let wantYaw = 0, wantPitch = this.condition === 1 ? 0.5 : 0.03;
@@ -288,6 +298,14 @@ export class Npc {
     f.headYaw += (wantYaw - f.headYaw) * Math.min(1, dt * 2.2);
     f.headPitch += (wantPitch - f.headPitch) * Math.min(1, dt * 2.2);
     f.refresh(0);
+    if (this.cig) {
+      // keep the cigarette pointing out from the face whatever the wrist is doing
+      f.group.getWorldQuaternion(_fq).multiply(_tilt);
+      f.rightHandSlot.getWorldQuaternion(_hq).invert();
+      this.cig.quaternion.copy(_hq).multiply(_fq);
+    }
+    // the head dips a little to meet the hand
+    f.headPitch += this.drag * 0.12;
     f.group.localToWorld(this.chest.copy(f.joints[J.chest]));
   }
 }
