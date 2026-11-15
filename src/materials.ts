@@ -31,6 +31,21 @@ float seam(float x, float period, float width) {
 }
 `;
 
+/** turns the height a material wrote into wwBump into surface relief, fading with distance */
+export const BUMP_GLSL = /* glsl */ `
+        {
+          float wwFade = clamp(1.0 - length(vViewPosition) / 70.0, 0.0, 1.0);
+          if (wwFade > 0.0) {
+            vec3 dpdx = dFdx(vViewPosition), dpdy = dFdy(vViewPosition);
+            float dhx = dFdx(wwBump), dhy = dFdy(wwBump);
+            vec3 r1 = cross(dpdy, normal), r2 = cross(normal, dpdx);
+            float det = dot(dpdx, r1);
+            vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+            vec3 wwN = abs(det) * normal - grad * wwFade;
+            if (dot(wwN, wwN) > 1e-20) normal = normalize(wwN);
+          }
+        }`;
+
 /**
  * Patch a standard material. `colour` is GLSL that may modify `col` (vec3,
  * linear albedo), `rough` (float) and `bump` (float, surface height in
@@ -56,20 +71,7 @@ export function patch<T extends THREE.MeshStandardMaterial>(mat: T, colour: stri
           ${colour}
           diffuseColor.rgb = col; roughnessFactor = clamp(rough, 0.04, 1.0); wwBump = bump;
         }`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        {
-          // relief from the height the material computed, fading out with distance
-          float wwFade = clamp(1.0 - length(vViewPosition) / 70.0, 0.0, 1.0);
-          if (wwFade > 0.0) {
-            vec3 dpdx = dFdx(vViewPosition), dpdy = dFdy(vViewPosition);
-            float dhx = dFdx(wwBump), dhy = dFdy(wwBump);
-            vec3 r1 = cross(dpdy, normal), r2 = cross(normal, dpdx);
-            float det = dot(dpdx, r1);
-            vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
-            vec3 wwN = abs(det) * normal - grad * wwFade;
-            if (dot(wwN, wwN) > 1e-20) normal = normalize(wwN);
-          }
-        }`);
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${BUMP_GLSL}`);
   };
   mat.customProgramCacheKey = () => key + (local ? '-local' : '');
   return mat;

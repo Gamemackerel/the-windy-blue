@@ -309,7 +309,7 @@ export function buildRigs(ctx: Ctx) {
     world.moorings.push({ name: 'raft', x: cx - 4.4, z: cz, psi: 0, dock: new THREE.Vector3(cx - 1.4, 0.36, cz - 0.2) });
     npc({
       key: 'fisher', pose: 'sit', seat: 0.5, yaw: Math.PI / 2,
-      look: { coat: '#3d4a52', trousers: '#2a2622', skin: '#8f6f58', hood: false, hat: true },
+      look: { coat: '#3d4a52', trousers: '#2a2622', skin: '#8f6f58', hood: false, hat: true, beard: '#8a8780' },
       pos: new THREE.Vector3(cx + 1.5, 0.36, cz + 0.2),
       wants: 'fruit', gives: 'key', giveSpot: new THREE.Vector3(cx + 0.3, 0.75, cz - 1.5),
     });
@@ -363,7 +363,7 @@ export function buildRigs(ctx: Ctx) {
     b.box(-0.3, DY + 0.42, -1.6, 0.48, 0.05, 0.48, MAT.wood, 0.3, false);
     b.box(-0.37, DY + 0.75, -1.83, 0.48, 0.7, 0.05, MAT.wood, 0.3, false);
     world.addCyl(cx - 0.3, cz - 1.6, 0.42, DY, DY + 1.3);
-    const dead = new Figure({ coat: '#4a4f48', trousers: '#2a2824', skin: '#8d8b80', hood: false });
+    const dead = new Figure({ coat: '#4a4f48', trousers: '#2a2824', skin: '#8d8b80', hood: false, hair: '#2a2622' });
     dead.group.position.set(cx - 0.3, DY + 0.03, cz - 1.6);
     dead.group.rotation.y = 0.3;
     dead.skirtAmount = 0.5;
@@ -455,7 +455,7 @@ export function buildRigs(ctx: Ctx) {
     world.moorings.push({ name: 'barge', x: cx + 5.0, z: cz + 0.1, psi: 0, dock: new THREE.Vector3(cx + 2.3, DY + 0.04, cz + 0.1) });
     npc({
       key: 'smoker', pose: 'stand', yaw: Math.PI / 2 - 0.5, smokes: true,
-      look: { coat: '#4b3f3a', trousers: '#1f2226', skin: '#9a7a66', hood: false, hat: false },
+      look: { coat: '#4b3f3a', trousers: '#1f2226', skin: '#9a7a66', hood: false, hat: false, hair: '#1c1815' },
       pos: new THREE.Vector3(cx + 1.4, DY + 0.04, cz + 2.6),
       wants: 'cigarettes', gives: 'wheel', giveSpot: new THREE.Vector3(cx + 1.8, DY + 0.82, cz + 5.2),
     });
@@ -464,7 +464,7 @@ export function buildRigs(ctx: Ctx) {
   // ============================================================ the watcher
   npc({
     key: 'watcher', pose: 'sit', seat: 0.42, yaw: Math.PI / 2, smokes: true,
-    look: { coat: '#5a5148', trousers: '#2b2a2c', skin: '#a08672', hood: false, hat: false },
+    look: { coat: '#5a5148', trousers: '#2b2a2c', skin: '#a08672', hood: false, hat: false, hair: '#b9b4a8' },
     pos: new THREE.Vector3(ISLAND.x + 33.2, 9.5 + 0.2, ISLAND.z - 47.2),
     wants: 'orchid', gives: 'chart', giveSpot: new THREE.Vector3(ISLAND.x + 33.9, 9.5 + 0.26, ISLAND.z - 46.0),
   });

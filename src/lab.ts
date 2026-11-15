@@ -166,7 +166,7 @@ export function buildLab(ctx: Ctx) {
     for (let i = 0; i < 9; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 8), new THREE.MeshStandardMaterial({ color: '#c9c4b4', roughness: 0.6 })); v.position.set(Math.sin(i * 0.5) * 0.06, -0.6 + i * 0.15, 0); g.add(v); }
   }));
   // the centrepiece: something with the giant's proportions, the size of a child
-  const child = new Figure({ coat: '#8f9a8c', trousers: '#8f9a8c', skin: '#9aa597', hood: false, scale: 0.62 });
+  const child = new Figure({ coat: '#8f9a8c', trousers: '#8f9a8c', skin: '#9aa597', hood: false, scale: 0.62, bare: true });
   floaters.push(tank(16.5, 0, 1.3, 3.2, (g) => {
     const p = child.joints;
     p[J.hips].set(0, 0.3, 0); p[J.chest].set(0, 0.74, 0.14); p[J.head].set(0, 0.92, 0.3);

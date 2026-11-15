@@ -7,7 +7,8 @@ import { createSailState, stepSailing, SailState, SailInput } from './sailing';
 import { waveHeight } from './waves';
 import { Wind } from './wind';
 import { World, Mooring } from './world';
-import { MAT } from './materials';
+import { MAT, patch } from './materials';
+import { bodyMaterial } from './figure';
 
 const LEN = 5.2;
 const BEAM = 1.9;
@@ -21,7 +22,7 @@ const halfBeam = (s: number) => (BEAM / 2) * Math.pow(Math.sin(Math.PI * (0.2 + 
 const sheer = (s: number) => 0.52 + 0.3 * s * s + 0.05 * (1 - s) * (1 - s);
 const keel = (s: number) => DRAFT * (0.3 + 0.7 * Math.sin(Math.PI * Math.min(1, s * 0.85 + 0.15)));
 const stationZ = (s: number) => -LEN / 2 + s * LEN;
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 /** hull surface point: s along the length (0 stern, 1 bow), u across (-1 starboard, 1 port) */
 function hullPoint(s: number, u: number, out: THREE.Vector3) {
   const au = Math.abs(u);
@@ -109,6 +110,7 @@ export class Boat {
   /** speed lost in the last grounding, for sound and feel */
   bump = 0;
   private mastParts: THREE.Object3D[] = [];
+  private sheetLine!: THREE.Mesh;
   private boomPivot = new THREE.Group();
   private rudderPivot = new THREE.Group();
   private pennant: THREE.Mesh;
@@ -124,14 +126,48 @@ export class Boat {
     this.state = createSailState(x, z, psi);
     this.group.rotation.order = 'YXZ';
 
-    const wood = MAT.wood, paleWood = MAT.paleWood, metal = MAT.dark;
+    const wood = MAT.woodL, paleWood = MAT.paleWoodL, metal = MAT.dark;
 
     const hull = new THREE.Mesh(
       buildHull(),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, side: THREE.DoubleSide }),
+      hullMaterial(),
     );
     hull.castShadow = hull.receiveShadow = true;
     this.group.add(hull);
+
+    // ribs inside the hull, a keelson, and the knees at the thwarts
+    for (let i = 1; i < 12; i++) {
+      const st = 0.06 + i * 0.075;
+      const pts: THREE.Vector3[] = [];
+      for (let k = 0; k <= 12; k++) { const p = hullPoint(st, -0.97 + (1.94 * k) / 12, new THREE.Vector3()); p.x *= 0.965; p.y += 0.012; pts.push(p); }
+      const rib = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.016, 5), paleWood);
+      rib.scale.set(1, 1, 1);
+      this.group.add(rib);
+    }
+    {
+      const pts: THREE.Vector3[] = [];
+      for (let k = 0; k <= 10; k++) { const p = hullPoint(0.03 + 0.9 * (k / 10), 0.0001, new THREE.Vector3()); p.x = 0; p.y += 0.03; pts.push(p); }
+      this.group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.03, 5), wood));
+    }
+    // oarlocks, a coil of rope and a bailer
+    for (const side of [1, -1]) {
+      const p = hullPoint(0.42, side, new THREE.Vector3());
+      const lock = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 5, 12, Math.PI), metal);
+      lock.position.set(p.x, p.y + 0.035, p.z);
+      lock.rotation.y = Math.PI / 2;
+      this.group.add(lock);
+    }
+    for (let k = 0; k < 4; k++) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.15 - k * 0.012, 0.014, 6, 20), MAT.rope);
+      coil.rotation.x = Math.PI / 2; coil.position.set(0.3, -0.08 + k * 0.024, 1.25);
+      this.group.add(coil);
+    }
+    const bailer = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.16, 12, 1, true), new THREE.MeshStandardMaterial({ color: '#5a2a1e', roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide }));
+    bailer.position.set(-0.32, -0.02, 0.5); bailer.rotation.z = 0.2;
+    this.group.add(bailer);
+    // the mainsheet, from the boom down to a block on the floor
+    this.sheetLine = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 1, 5), MAT.rope);
+    this.group.add(this.sheetLine);
 
     const floor = new THREE.Mesh(buildDeck(() => -0.1, 0.02, 0.9), paleWood);
     floor.receiveShadow = true;
@@ -169,7 +205,7 @@ export class Boat {
     mast.position.set(0, MAST_H / 2 - 0.1, MAST_Z);
     mast.castShadow = true;
     this.group.add(mast);
-    this.mastParts.push(mast, this.boomPivot);
+    this.mastParts.push(mast, this.boomPivot, this.sheetLine);
 
     this.boomPivot.position.set(0, BOOM_Y, MAST_Z);
     this.group.add(this.boomPivot);
@@ -195,8 +231,9 @@ export class Boat {
     sg.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
     this.sail = new THREE.Mesh(
       sg,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }),
+      sailMaterial(),
     );
+    sg.setAttribute('tuv', new THREE.BufferAttribute(new Float32Array(uv.count * 2).map((_, i) => (i % 2 === 0 ? uv.getX(i >> 1) * 2.8 : uv.getY(i >> 1) * 5)), 2));
     this.sail.castShadow = true;
     this.sail.frustumCulled = false;
     this.boomPivot.add(this.sail);
@@ -372,6 +409,12 @@ export class Boat {
     this.group.rotation.set(-this.pitch - down * 0.5, s.psi, this.roll - s.heel + down * 0.9);
     this.boomPivot.rotation.y = -s.boom;
     this.rudderPivot.rotation.y = -s.rudder * 0.5;
+    // mainsheet from the boom to its block
+    _v.set(Math.sin(s.boom) * 1.7, BOOM_Y - 0.03, MAST_Z - Math.cos(s.boom) * 1.7);
+    _w.set(0, -0.06, -1.05);
+    this.sheetLine.position.copy(_v).lerp(_w, 0.5);
+    this.sheetLine.scale.y = _v.distanceTo(_w);
+    this.sheetLine.quaternion.setFromUnitVectors(_up, _w.sub(_v).normalize());
   }
 
   private updateSail(t: number, dt: number) {
@@ -401,4 +444,42 @@ export class Boat {
     pos.needsUpdate = true;
     g.computeVertexNormals();
   }
+}
+
+/** clinker planking: overlapping strakes, worn paint, grime at the waterline */
+function hullMaterial() {
+  return patch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), /* glsl */ `
+    float girth = wp.y * 1.0 + abs(wp.x) * 0.55;
+    float st = fract(girth / 0.1);
+    float lap = smoothstep(0.0, 0.08, st) * (1.0 - smoothstep(0.92, 1.0, st));
+    float board = hash21(vec2(floor(girth / 0.1), 3.0));
+    float grain = fbm(vec2(wp.z * 1.5, girth * 40.0));
+    float flake = smoothstep(0.56, 0.7, fbm(vec2(wp.z * 2.2 + board * 9.0, girth * 9.0)));
+    vec3 bare = vec3(0.23, 0.18, 0.13) * (0.6 + 0.7 * grain);
+    col *= (0.8 + 0.3 * board) * (0.85 + 0.3 * grain);
+    col = mix(col, bare, flake * 0.75);
+    col *= mix(0.45, 1.0, lap);
+    float weed = smoothstep(0.16, 0.0, abs(wp.y - 0.02)) * (0.5 + 0.5 * fbm(vec2(wp.z * 6.0, 1.0)));
+    col = mix(col, vec3(0.07, 0.085, 0.05), weed * 0.6);
+    rough = mix(rough, 0.95, flake) - weed * 0.3;
+    bump = st * 0.014 + grain * 0.002 - flake * 0.002;`, 'hull', true);
+}
+
+/** canvas: woven, seamed, stained, and glowing a little when the sun is behind it */
+function sailMaterial() {
+  const m = bodyMaterial('cloth', THREE.DoubleSide);
+  m.roughness = 0.95;
+  const base = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    base.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `
+      // light coming through the cloth from the far side
+      #if NUM_DIR_LIGHTS > 0
+        float through = max(dot(-normal, directionalLights[0].direction), 0.0);
+        outgoingLight += diffuseColor.rgb * directionalLights[0].color * through * 0.22;
+      #endif
+      #include <opaque_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'sail';
+  return m;
 }
