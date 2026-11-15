@@ -20,7 +20,7 @@ This spec describes a **demo**: a compact, complete slice of the game, about 60â
 
 ## 2. Player experience
 
-- **Perspective:** first person. The player's body is never seen; a held item is shown in the lower right of the view. On the boat the view sits at the helm and turns with the hull.
+- **Perspective:** first person. The player's arms are seen when they are doing something; a held item is shown in the right hand. On the boat the view sits at the helm and turns with the hull.
 - **Session length:** 60â€“90 minutes for a first playthrough. No fail state other than losing the boat (see 6.4).
 - **Structure:** open. After the boat is built, every location can be visited in any order. Progress is gated by items, not by walls.
 - **Saving:** automatic and invisible (browser local storage), every few seconds and on mooring.
@@ -146,6 +146,18 @@ In the demo the door **cannot be opened**. The pad accepts input and answers eve
 - **Storehouse** (starting island, west side of the yard). A windowless concrete block with a strip of roof missing, shelving, a bench, and the densest pile of debris in the game.
 - **Floating home** (tied to the east side of the jungle rig). A one-room cabin on a pontoon with a bunk, table and stove, a ladder up to the rig, and its own berth.
 - **Debris.** About 215 defunct objects, generated in code, most of them indoors: kettles, cans, bottles, circuit boards, monitors, computer cases, keyboards, an open refrigerator, books (closed, stacked, open, loose pages), stone statuary (busts, heads, torsos, hands, column drums and capitals), a car engine, gears, pistons, springs, pipes, valve wheels, mannequins, floor and desk lamps, tyres, radios, chairs, suitcases, clocks, typewriters and telephones. Statuary also lies half-sunk along the island's tide line and the atoll reef. None of it can be picked up.
+
+### 4.8 The house, the summit and the player's hands
+
+- **The house** on the terrace is a single room you can walk into: bed, table and chair, a stove, a shelf, and a lamp that is always lit.
+- **The summit** of the starting island carries a ruined ring wall and a brass telescope with its eyepiece missing. The lens is on the table in the house. Once fitted, using the telescope puts the eye to it: a very narrow, slow-moving view for studying distant places. E or any step steps back.
+- **Arms.** The player's arms are visible. A hand (left or right at random) reaches out to whatever is used; both hands hold the tiller and mainsheet when sailing and take the rails when climbing.
+- **Carrying.** The crane weights are lifted in both hands, carried, and set down on the pan (or on the ground if E is pressed elsewhere). Hands full means walking pace only, and no climbing or boarding.
+- **Marker.** A small ring appears on whatever E would act on: the nearest usable thing in front, a ladder, the boat when it can be boarded, or the berth when the boat can be moored. It promises a response, not a result: a locked door rattles, a person with nothing to trade only grunts.
+
+### 4.9 Reporting what looks wrong
+
+Pressing **R** takes a picture of the current view and asks for a note. Sending it writes a folder into `reports/` with the picture, the note (`note.md`), and the complete game state. Opening the game with `?report=<folder name>` restores that exact position, view, time and progress, without touching the real save. This only works while the game is run with `npm run dev`.
 
 ## 5. People and trading
 

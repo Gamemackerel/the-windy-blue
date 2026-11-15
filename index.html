@@ -44,12 +44,30 @@
       #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
       #scope { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s;
         background: radial-gradient(circle at 50% 50%, transparent 0, transparent 38vh, rgba(0,0,0,0.55) 40vh, #000 43vh); }
+      #mark { position: fixed; left: -7px; top: -7px; width: 12px; height: 12px; border: 1.5px solid rgba(236, 230, 214, 0.95); border-radius: 50%;
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.8), inset 0 0 2px rgba(0, 0, 0, 0.6); opacity: 0; pointer-events: none; transition: opacity 0.2s; will-change: transform; }
+      #report { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(3, 5, 7, 0.82);
+        color: #cfc9ba; font: 14px/1.6 ui-sans-serif, system-ui, sans-serif; }
+      #report .box { width: min(620px, 90vw); }
+      #report img { width: 100%; display: block; border: 1px solid rgba(207, 201, 186, 0.25); margin-bottom: 12px; }
+      #report textarea { width: 100%; box-sizing: border-box; height: 110px; background: rgba(0, 0, 0, 0.5); color: #e6e0d0; border: 1px solid rgba(207, 201, 186, 0.3);
+        padding: 10px; font: inherit; resize: vertical; outline: none; }
+      #report .row { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+      #report button { font: inherit; color: #cfc9ba; background: none; border: 1px solid rgba(207, 201, 186, 0.3); padding: 6px 16px; cursor: pointer; }
+      #report button:hover { border-color: #cfc9ba; color: #fff; }
+      #report .meta { color: #8f897a; font-size: 12px; margin-left: auto; }
     </style>
   </head>
   <body>
     <canvas id="c"></canvas>
     <div id="debug"></div>
     <div id="page"><div></div></div>
+    <div id="mark"></div>
+    <div id="report"><div class="box">
+      <img id="reportShot" alt="">
+      <textarea id="reportText" placeholder="What looks wrong here?"></textarea>
+      <div class="row"><button id="reportSend">Send (Ctrl/Cmd + Enter)</button><button id="reportCancel">Cancel (Esc)</button><span class="meta" id="reportMeta"></span></div>
+    </div></div>
     <div id="scope"></div>
     <div id="dot"></div>
     <div id="hint">ESC</div>
@@ -63,6 +81,7 @@
         <tr><td>Sheet in / ease out (sailing)</td><td><kbd>W</kbd> / <kbd>S</kbd></td></tr>
         <tr><td>Satchel: choose what to hold</td><td><kbd>Tab</kbd>, then <kbd>A</kbd> <kbd>D</kbd> and <kbd>E</kbd></td></tr>
         <tr><td>Offer what you hold</td><td><kbd>E</kbd> facing someone</td></tr>
+        <tr><td>Report something that looks wrong</td><td><kbd>R</kbd></td></tr>
         <tr><td>Aim / fire (revolver in hand)</td><td><kbd>Right mouse</kbd> / <kbd>Left mouse</kbd></td></tr>
       </table>
       <div class="row"><span class="label">Quality</span><button data-q="0">Low</button><button data-q="1">Medium</button><button data-q="2">High</button></div>

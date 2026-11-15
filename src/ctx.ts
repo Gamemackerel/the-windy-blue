@@ -29,6 +29,13 @@ export interface Ctx {
   read: (text: string) => void;
   wind: { dir: number; speed: number };
   setHeld: (id: string | null) => void;
+  /** the player's eyes */
+  view: THREE.Camera;
+  /**
+   * Pick something up in both hands (or pass null to let go). While carried it is held in front of the
+   * player; drop is called if they put it down where there is nothing to put it on.
+   */
+  setCarry: (c: { obj: THREE.Object3D; size: number; drop: () => void } | null) => void;
   /** put the eye to a fixed instrument (or take it away); done is called when the player steps back */
   scope: (on: boolean, at?: THREE.Vector3, done?: () => void) => void;
   /** where the eye is looking while at an instrument, else null */

@@ -23,6 +23,7 @@ import { Audio } from './audio';
 import { mergeStatic } from './build';
 import { Post } from './post';
 import { scatterJunk } from './junk';
+import { Arms } from './arms';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -57,7 +58,19 @@ const post = new Post(renderer);
 // ---- state ----
 const state = new GameState();
 if (params.has('new')) GameState.wipe();
-state.load(!params.has('nosave') && !params.has('new'));
+// ?report=<id> puts the game back exactly where a filed report was taken (nothing is saved while looking at one)
+const reportId = params.get('report');
+let reportInfo: any = null;
+if (reportId) {
+  try {
+    const r = await (await fetch(`/reports/${reportId}/report.json`)).json();
+    state.data = { ...state.data, ...r.save };
+    state.loaded = true;
+    reportInfo = r.info;
+  } catch { console.warn('could not load report', reportId); }
+}
+const noSave = params.has('nosave') || !!reportId;
+if (!reportId) state.load(!params.has('nosave') && !params.has('new'));
 if (params.has('boat')) for (const f of ['mast', 'sailTaken', 'sailRigged', 'loft', 'flooded']) state.set(f);
 if (params.has('flags')) for (const f of params.get('flags')!.split(',')) { const [k, v] = f.split(':'); state.set(k, v ? Number(v) : 1); }
 if (params.has('day')) state.data.day = num('day', 0);
@@ -80,6 +93,10 @@ const fadeEl = document.getElementById('fade')!;
 const pageEl = document.getElementById('page')!;
 const dotEl = document.getElementById('dot')!;
 let reading = false;
+let carry: { obj: THREE.Object3D; size: number; drop: () => void } | null = null;
+const arms = new Arms(camera);
+const markEl = document.getElementById('mark')!;
+const _mk = new THREE.Vector3(), _g0 = new THREE.Vector3(), _g1 = new THREE.Vector3(), _held = new THREE.Vector3();
 let scopeDone: (() => void) | null = null, scopeAt: THREE.Vector3 | null = null;
 const scopeEl = document.getElementById('scope')!;
 const ctx: Ctx = {
@@ -97,6 +114,13 @@ const ctx: Ctx = {
   },
   turnView: (d) => { rig.yaw += d; player.yaw += d; },
   setHeld: (id) => player.setHeld(id as ItemId | null),
+  view: camera,
+  setCarry: (c) => {
+    carry = c;
+    arms.carry = c ? { obj: c.obj, size: c.size } : null;
+    player.encumbered = !!c;
+    player.dropHook = c ? () => { c.drop(); return true; } : null;
+  },
   scope: (on, at, done) => {
     scopeDone?.();
     scopeDone = on ? done ?? null : null;
@@ -178,6 +202,7 @@ function wreckBoat() {
   }
   rig.yaw = num('yaw', player.mode === 'sail' ? boat.state.psi + Math.PI : player.yaw + Math.PI);
   rig.pitch = num('pitch', 0.04);
+  if (reportInfo) { rig.yaw = reportInfo.yaw; rig.pitch = reportInfo.pitch; if (reportInfo.held) player.setHeld(reportInfo.held); }
 }
 
 const debugEl = document.getElementById('debug')!;
@@ -223,6 +248,59 @@ function fire() {
   if (best) { best.n.hit(best.joint, aimDir); return; }
   giant.shoot(_o, aimDir);
 }
+
+// ---- reports: R takes a picture and asks what is wrong; the note is written into ./reports ----
+const reportEl = document.getElementById('report')!, reportText = document.getElementById('reportText') as HTMLTextAreaElement;
+const reportMeta = document.getElementById('reportMeta')!;
+let reporting = false, reportShot = '';
+function whereAmI() {
+  const p = player.pos, near = (x: number, z: number, r: number) => Math.hypot(p.x - x, p.z - z) < r;
+  if (lab.inside()) return 'laboratory';
+  if (near(ISLAND.x, ISLAND.z, 260)) return island.indoors(p) ? 'starting island, indoors' : 'starting island';
+  if (near(ATOLL.x, ATOLL.z, 320)) return 'atoll';
+  if (near(WINDMILL.x, WINDMILL.z, 40)) return 'windmill';
+  if (near(LAB.x, LAB.z, 30)) return 'laboratory pontoon';
+  if (near(TOWER.x, TOWER.z, 120)) return 'black tower';
+  for (const [k, v] of Object.entries(PLACES)) if (near(v.x, v.z, 45)) return k;
+  return 'open sea';
+}
+function openReport() {
+  reportShot = canvas.toDataURL('image/jpeg', 0.92);
+  reporting = true;
+  input.suspended = true;
+  document.exitPointerLock?.();
+  (document.getElementById('reportShot') as HTMLImageElement).src = reportShot;
+  reportMeta.textContent = `${whereAmI()}  ·  ${player.pos.x.toFixed(0)}, ${player.pos.y.toFixed(0)}, ${player.pos.z.toFixed(0)}`;
+  reportEl.style.display = 'flex';
+  reportText.value = '';
+  setTimeout(() => reportText.focus(), 30);
+}
+function closeReport() { reporting = false; input.suspended = false; reportEl.style.display = 'none'; reportText.blur(); }
+async function sendReport() {
+  const p = player.pos, h = Math.floor(env.time * 24), mi = Math.floor((env.time * 24 - h) * 60);
+  state.data.time = env.time;
+  const info = {
+    where: whereAmI(), pos: [p.x, p.y, p.z].map((v) => +v.toFixed(2)), yaw: +rig.yaw.toFixed(4), pitch: +rig.pitch.toFixed(4),
+    clock: `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`, day: state.data.day, mode: player.mode, held: player.held, quality: ['low', 'medium', 'high'][quality],
+    fps: Math.round(fps), giant: giant.phase, view: [innerWidth, innerHeight, devicePixelRatio], boat: { mode: boat.mode, x: +boat.state.x.toFixed(1), z: +boat.state.z.toFixed(1), psi: +boat.state.psi.toFixed(3) },
+  };
+  reportMeta.textContent = 'sending…';
+  try {
+    const r = await fetch('/__report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: reportText.value.trim(), shot: reportShot, info, save: state.data }) });
+    if (!r.ok) throw new Error(String(r.status));
+    reportMeta.textContent = `saved as reports/${(await r.json()).id}`;
+    setTimeout(closeReport, 900);
+  } catch {
+    reportMeta.textContent = 'could not save: reports only work while the game is run with "npm run dev"';
+  }
+}
+document.getElementById('reportSend')!.addEventListener('click', sendReport);
+document.getElementById('reportCancel')!.addEventListener('click', closeReport);
+reportText.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeReport();
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReport();
+  e.stopPropagation();
+});
 
 // ---- pause menu and quality ----
 const pauseEl = document.getElementById('pause')!;
@@ -290,7 +368,7 @@ function frame() {
     debugEl.style.display = debug ? 'block' : 'none';
   }
   if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
-  if (paused) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
+  if (paused || reporting) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   if (probe >= 0 && !document.hidden) {
     probe += dt; probeFrames++;
     if (probe > 6) {
@@ -367,6 +445,43 @@ function frame() {
   if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.2, scopeAt.z);
   rig.update(dt, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
   viewModel.visible = !rig.scope;
+  // what is being carried rides in front of the chest
+  if (carry) {
+    camera.getWorldDirection(_mk).setY(0).normalize();
+    carry.obj.position.set(camera.position.x + _mk.x * 0.66, camera.position.y - 0.6, camera.position.z + _mk.z * 0.66);
+    carry.obj.rotation.set(0, rig.yaw, 0);
+  }
+  // hands: out to whatever was just used, on the tiller and sheet, on the rungs
+  if (player.used) { arms.reach(player.used.pos, !!player.held); player.used = null; }
+  let grips: [THREE.Vector3, THREE.Vector3] | null = null;
+  const cl = player.climbing();
+  if (sailing) grips = [boat.tillerGrip(_g0), boat.sheetPoint(_g1)];
+  else if (cl) {
+    const sx = Math.cos(cl.l.face) * 0.24, sz = -Math.sin(cl.l.face) * 0.24, top = cl.l.y1 + 0.95;
+    _g0.set(cl.l.x + sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6) * 0.6), cl.l.z + sz);
+    _g1.set(cl.l.x - sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6 + 0.5) * 0.6 - 0.3), cl.l.z - sz);
+    grips = [_g0, _g1];
+  }
+  arms.group.visible = !rig.scope;
+  arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, player.held && !carry ? _held.copy(viewModel.position) : null, grips);
+  // a small ring on whatever E would act on
+  {
+    let show = false;
+    if (player.busy <= 0 && !rig.scope && !satchel.open && !reading) {
+      if (player.mode === 'foot' && player.target) { _mk.copy(player.target.pos); show = true; }
+      else if (player.fallback(_mk)) show = true;
+      else if (sailing && Math.abs(boat.state.u) <= 4.5) {
+        let bd = 16;
+        for (const m of world.moorings) { const d = Math.hypot(m.x - boat.state.x, m.z - boat.state.z); if (d < bd) { bd = d; _mk.copy(m.dock).y += 0.9; show = true; } }
+      }
+    }
+    if (show) {
+      _mk.project(camera);
+      if (_mk.z > 1 || Math.abs(_mk.x) > 1.05 || Math.abs(_mk.y) > 1.05) show = false;
+      else markEl.style.transform = `translate(${((_mk.x * 0.5 + 0.5) * innerWidth).toFixed(1)}px, ${((-_mk.y * 0.5 + 0.5) * innerHeight).toFixed(1)}px)`;
+    }
+    markEl.style.opacity = show ? '0.9' : '0';
+  }
   // what is held is seen in the lower right of the view; it comes up to the eye when aiming and goes out when offered
   if (viewHeld !== player.held) {
     viewModel.clear();
@@ -412,6 +527,7 @@ function frame() {
   scene.background = submerged ? env.fog.color : null;
   post.render(scene, camera, t, env.air);
   satchel.render(renderer, camera.aspect);
+  if (input.hit('KeyR') && !reading && !satchel.open) openReport();   // must follow the render: the picture is read straight off the canvas
   if (prevTime < 0.25 && env.time >= 0.25) { state.data.day++; state.touch(); } // a dawn has passed
 
   audio.update(dt, {
@@ -428,7 +544,7 @@ function frame() {
   state.data.time = env.time;
   state.data.boat.x = boat.state.x; state.data.boat.z = boat.state.z; state.data.boat.psi = boat.state.psi;
   saveTimer += dt;
-  if (saveTimer > 3) { saveTimer = 0; if (!params.has('nosave')) state.flush(); }
+  if (saveTimer > 3) { saveTimer = 0; if (!noSave) state.flush(); }
 
   if (debug) {
     const s = boat.state;

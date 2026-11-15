@@ -8,9 +8,12 @@ export class Input {
   lookY = 0;
   wheel = 0;
   locked = false;
+  /** true while typing into a form: the game ignores the keyboard */
+  suspended = false;
 
   constructor(canvas: HTMLCanvasElement) {
     addEventListener('keydown', (e) => {
+      if (this.suspended) return;
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
       if (e.code === 'Tab') e.preventDefault();

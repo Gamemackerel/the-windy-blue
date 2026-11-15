@@ -78,10 +78,10 @@ export function bodyMaterial(kind: 'cloth' | 'skin' | 'leather', side: THREE.Sid
 // ------------------------------------------------------------------- tubes
 // A limb or trunk is one continuous skin swept along a smooth curve through
 // its joints, so elbows, knees and the waist bend without seams.
-interface ProfKey { t: number; rx: number; rz: number; c: THREE.Color }
+export interface ProfKey { t: number; rx: number; rz: number; c: THREE.Color }
 const _p0 = new THREE.Vector3(), _p1 = new THREE.Vector3(), _tan = new THREE.Vector3(), _sx = new THREE.Vector3(), _sz = new THREE.Vector3();
 
-class Tube {
+export class Tube {
   readonly mesh: THREE.Mesh;
   private rx: Float32Array; private rz: Float32Array;
   constructor(parent: THREE.Object3D, mat: THREE.Material, prof: ProfKey[], private N: number, private M = 12, length = 0.6) {
@@ -199,6 +199,28 @@ const part = (g: THREE.BufferGeometry, mat: THREE.Material, c: THREE.Color, x = 
   m.castShadow = true;
   return m;
 };
+
+/** palm, four fingers and a thumb. Local +Y runs out along the forearm; s is +1 for a left hand. */
+export function fillHand(hand: THREE.Group, s: number, skinMat: THREE.Material, skin: THREE.Color) {
+    const palm = part(new THREE.SphereGeometry(0.04, 12, 10), skinMat, skin, 0, 0.04, 0);
+    palm.scale.set(0.95, 1.2, 0.42);
+    hand.add(palm);
+    for (let f = 0; f < 4; f++) {
+      const fg = new THREE.Group();
+      fg.position.set((f - 1.5) * 0.019, 0.082, 0.002);
+      fg.rotation.set(0.5, 0, (f - 1.5) * -0.07);
+      const len = 0.036 - Math.abs(f - 1.4) * 0.005;
+      fg.add(part(new THREE.CapsuleGeometry(0.0088, len, 3, 8), skinMat, skin, 0, len / 2, 0));
+      const tip = part(new THREE.CapsuleGeometry(0.008, len * 0.8, 3, 8), skinMat, skin, 0, len * 0.4, 0);
+      const kn = new THREE.Group(); kn.position.y = len + 0.008; kn.rotation.x = 0.7; kn.add(tip);
+      fg.add(kn);
+      hand.add(fg);
+    }
+    const th = new THREE.Group();
+    th.position.set(s * 0.036, 0.03, 0.01); th.rotation.set(0.5, 0, s * -0.9);
+    th.add(part(new THREE.CapsuleGeometry(0.0105, 0.035, 3, 8), skinMat, skin, 0, 0.02, 0));
+    hand.add(th);
+}
 
 export class Figure {
   readonly group = new THREE.Group();
@@ -327,27 +349,7 @@ export class Figure {
     g.add(h);
 
     // hands: palm, four fingers, thumb. Local +Y runs out along the forearm.
-    for (const [hand, s] of [[this.handL, 1], [this.handR, -1]] as const) {
-      const palm = part(new THREE.SphereGeometry(0.04, 12, 10), skinMat, skin, 0, 0.04, 0);
-      palm.scale.set(0.95, 1.2, 0.42);
-      hand.add(palm);
-      for (let f = 0; f < 4; f++) {
-        const fg = new THREE.Group();
-        fg.position.set((f - 1.5) * 0.019, 0.082, 0.002);
-        fg.rotation.set(0.5, 0, (f - 1.5) * -0.07);
-        const len = 0.036 - Math.abs(f - 1.4) * 0.005;
-        fg.add(part(new THREE.CapsuleGeometry(0.0088, len, 3, 8), skinMat, skin, 0, len / 2, 0));
-        const tip = part(new THREE.CapsuleGeometry(0.008, len * 0.8, 3, 8), skinMat, skin, 0, len * 0.4, 0);
-        const kn = new THREE.Group(); kn.position.y = len + 0.008; kn.rotation.x = 0.7; kn.add(tip);
-        fg.add(kn);
-        hand.add(fg);
-      }
-      const th = new THREE.Group();
-      th.position.set(s * 0.036, 0.03, 0.01); th.rotation.set(0.5, 0, s * -0.9);
-      th.add(part(new THREE.CapsuleGeometry(0.0105, 0.035, 3, 8), skinMat, skin, 0, 0.02, 0));
-      hand.add(th);
-      g.add(hand);
-    }
+    for (const [hand, s] of [[this.handL, 1], [this.handR, -1]] as const) { fillHand(hand, s, skinMat, skin); g.add(hand); }
     this.handR.add(this.rightHandSlot);
 
     // boots (or bare feet)

@@ -36,7 +36,11 @@ const items = () => ev(() => window.__game.state.data.items.join(','));
 const I = { x: -700, z: -600 };
 
 // ---- crane: load 1 + 3 units and work the winch
-log('weights', await useAt(I.x + 93, 1.6, I.z + 13), await (await wait(900), useAt(I.x + 101, 1.6, I.z + 2.5)));
+// pick each weight up and set it on the pan
+for (const [x, z] of [[93, 13], [101, 2.5]]) {
+  log('lift', await useAt(I.x + x, 1.6, I.z + z)); await wait(300);
+  log('place', await useAt(I.x + 122.4, 1.6, I.z + 15.4)); await wait(700);
+}
 await wait(1200);
 log('winch', await useAt(I.x + 120.2, 1.6, I.z + 17.2));
 await wait(13500);

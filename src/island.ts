@@ -343,21 +343,44 @@ export function buildIsland(ctx: Ctx) {
     const w = { units, mesh, home, on: false, it: null as any };
     w.it = {
       pos: home.clone(), radius: 1.9,
-      enabled: () => !state.flag('mast') && !mesh.userData.moving,
+      enabled: () => !state.flag('mast') && !mesh.userData.moving && !carried,
       use: () => {
-        w.on = !w.on;
-        mesh.userData.moving = true;
-        const from = mesh.position.clone();
-        const to = w.on ? panWorld.clone().add(new THREE.Vector3(0, 0.6, 0)) : home.clone();
-        ctx.sfx('lift', from);
-        world.tween(0.7, (k) => {
-          mesh.position.lerpVectors(from, to, k);
-          mesh.position.y += Math.sin(k * Math.PI) * 0.8;
-        }, () => { mesh.userData.moving = false; w.it.pos.copy(mesh.position); ctx.sfx('clank', to); saveWeights(); });
+        // lift it: it comes off the pan or the ground and into both hands
+        carried = w;
+        w.on = false;
+        ctx.sfx('lift', mesh.position);
+        ctx.setCarry({ obj: mesh, size, drop: () => {
+          // set down on the ground a step ahead
+          const p = ctx.playerPos(), d = ctx.view.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+          const x = p.x + d.x * 0.9, z = p.z + d.z * 0.9;
+          settle(w, new THREE.Vector3(x, world.groundAt(x, z, p.y + 0.3) + size / 2, z), true);
+        } });
+        saveWeights();
       },
     };
     world.interactables.push(w.it);
     weights.push(w);
+  });
+  let carried: (typeof weights)[number] | null = null;
+  /** let go of the carried weight and move it to where it is going */
+  function settle(w: (typeof weights)[number], to: THREE.Vector3, ground: boolean) {
+    carried = null;
+    ctx.setCarry(null);
+    const mesh = w.mesh, from = mesh.position.clone();
+    mesh.userData.moving = true;
+    world.tween(0.32, (k) => { mesh.position.lerpVectors(from, to, k); mesh.rotation.x *= 1 - k; mesh.rotation.z *= 1 - k; }, () => {
+      mesh.userData.moving = false;
+      if (ground) w.home.copy(to);
+      w.it.pos.copy(mesh.position);
+      ctx.sfx(ground ? 'thud' : 'clank', to, 0.6);
+      saveWeights();
+    });
+  }
+  // the pan: somewhere to put what you are carrying
+  world.interactables.push({
+    pos: panWorld, radius: 2.3,
+    enabled: () => !!carried && !state.flag('mast'),
+    use: () => { const w = carried!; w.on = true; settle(w, panWorld.clone().add(new THREE.Vector3(0, 0.3, 0)), false); },
   });
   const saveWeights = () => state.set('weights', weights.reduce((s, w, i) => s | (w.on ? 1 << i : 0), 0));
 
@@ -377,7 +400,7 @@ export function buildIsland(ctx: Ctx) {
   }
   world.interactables.push({
     pos: P(CR.x + 0.4, DECK + 1.1, CR.z + 0.5), radius: 2.0,
-    enabled: () => !state.flag('mast'),
+    enabled: () => !state.flag('mast') && !carried,
     use: () => {
       if (load() === 4) { state.set('mast'); stepMast(false); }
       else { tiltVel += load() < 4 ? 0.5 : -0.5; ctx.sfx('groan', crane.position); }
@@ -463,6 +486,11 @@ export function buildIsland(ctx: Ctx) {
     pos: P(MR.x, MR.y - 0.6, MR.z), radius: 1.8,
     enabled: () => !state.flag('loft'),
     use: () => { mStep = (mStep + 1) % STEPS; state.set('mirror', mStep); ctx.sfx('ratchet', mirror.position); },
+  });
+  world.interactables.push({
+    pos: P(LF.x, DECK + 1.2, LF.z + LF.d / 2 + 0.1), radius: 1.5,
+    enabled: () => !state.flag('loft'),
+    use: () => { ctx.sfx('clank', door.position); world.tween(0.45, (k) => { door.position.x = IX + LF.x + Math.sin(k * Math.PI * 4) * 0.015 * (1 - k); }); },
   });
   const openLoft = (instant: boolean) => {
     world.remove(doorCol);

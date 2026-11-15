@@ -25,6 +25,12 @@ export class Player {
   held: string | null = null;
   target: Interactable | null = null;
   speed = 0;
+  /** the thing most recently used; the main loop clears it once the hand has been sent out */
+  used: Interactable | null = null;
+  /** set while carrying something: called when E is pressed with nothing in reach */
+  dropHook: (() => boolean) | null = null;
+  /** hands full: slower, and no climbing or boarding */
+  encumbered = false;
   /** world direction the revolver is being aimed along, or null */
   aimDir: THREE.Vector3 | null = null;
   private gait: GaitState = newGait();
@@ -61,6 +67,17 @@ export class Player {
     return out.copy(this.pos);
   }
 
+  /** while on a ladder: where it is and how high the feet are */
+  climbing() { return this.mode === 'climb' && this.ladder ? { l: this.ladder, y: this.climbY } : null; }
+  /** what E would do right now if nothing usable is in reach: a ladder, or the boat */
+  fallback(out: THREE.Vector3): boolean {
+    if (this.mode !== 'foot' || this.encumbered) return false;
+    const lad = this.world.nearestLadder(this.pos);
+    if (lad) { out.set(lad.ladder.x, lad.atTop ? lad.ladder.y1 + 0.5 : Math.min(lad.ladder.y1, this.pos.y + 1.3), lad.ladder.z); return true; }
+    const b = this.boat;
+    if (b.mode === 'moored' && b.mooring && b.hasMast && b.hasSail && (this.pos.distanceTo(b.mooring.dock) <= 3.2 || this.pos.distanceTo(b.position) <= 4.5)) { b.local(0, 0.7, -0.6, out); return true; }
+    return false;
+  }
   /** where the eyes are */
   eye(out: THREE.Vector3) {
     if (this.mode === 'sail') { this.boat.seat(out, this.sideSmooth); out.y += 0.82; return out; }
@@ -91,7 +108,7 @@ export class Player {
     let speed = 0;
     if (ml > 0.01) {
       mx /= ml; mz /= ml;
-      speed = input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
+      speed = this.encumbered ? WALK * 0.8 : input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
       const step = speed * dt;
       const tryMove = (dx: number, dz: number) => {
         _v.set(this.pos.x + dx, this.pos.y, this.pos.z + dz);
@@ -129,9 +146,10 @@ export class Player {
     this.target = free ? w.nearestInteractable(this.pos, this.yaw) : null;
     if (free && input.hit('KeyE')) {
       const lad = w.nearestLadder(this.pos);
-      if (this.target) { this.target.use(); this.busy = 0.45; this.reach = 1; }
-      else if (lad) this.startClimb(lad.ladder, lad.atTop);
-      else this.tryBoard();
+      if (this.target) { this.used = this.target; this.target.use(); this.busy = 0.45; this.reach = 1; }
+      else if (this.dropHook?.()) this.busy = 0.35;
+      else if (lad && !this.encumbered) this.startClimb(lad.ladder, lad.atTop);
+      else if (!this.encumbered) this.tryBoard();
     }
 
     // animate
