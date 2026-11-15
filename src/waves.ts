@@ -73,7 +73,22 @@ export function waveHeight(x: number, z: number, t: number): number {
     pz = z - _d.z;
   }
   displace(px, pz, t, _d);
-  return _d.y + extraHeight(x, z, t);
+  return _d.y * calmAt(x, z) + extraHeight(x, z, t);
+}
+
+// Sheltered water: swell is damped inside these circles (islands, reefs, rigs).
+export interface CalmZone { x: number; z: number; r0: number; r1: number }
+export const MAX_CALM = 12;
+export const calmZones: CalmZone[] = [];
+const CALM_MIN = 0.1;
+export function calmAt(x: number, z: number) {
+  let c = 1;
+  for (const k of calmZones) {
+    const d = Math.hypot(x - k.x, z - k.z);
+    const t = Math.max(0, Math.min(1, (d - k.r0) / (k.r1 - k.r0)));
+    c *= CALM_MIN + (1 - CALM_MIN) * t * t * (3 - 2 * t);
+  }
+  return c;
 }
 
 // Hook for local disturbances (wakes, the giant). Returns added height.
@@ -117,14 +132,25 @@ export function waveGLSL(): string {
   n.xz -= vec2(${f(w.dx)}, ${f(w.dz)}) * (${f(w.k * w.a)} * cos(th)) * clamp((${f(w.L)} / px - 2.0) / 4.0, 0.0, 1.0);`;
   }
   return /* glsl */ `
+uniform vec4 uCalm[${MAX_CALM}];
+float calmAt(vec2 p) {
+  float c = 1.0;
+  for (int i = 0; i < ${MAX_CALM}; i++) {
+    float t = smoothstep(uCalm[i].z, uCalm[i].w, distance(p, uCalm[i].xy));
+    c *= ${f(CALM_MIN)} + ${f(1 - CALM_MIN)} * t;
+  }
+  return c;
+}
 vec3 waveDisp(vec2 p, float t, float cell) {
   vec3 d = vec3(0.0); float th; float at;${disp}
-  return d;
+  return d * calmAt(p);
 }
 // returns xyz = unnormalised normal, sets fold (crest pinch) and h (height).
 // px is the size of a pixel on the water in metres; waves finer than that fade out.
 vec3 waveNormal(vec2 p, float t, float px, out float fold, out float h) {
   vec3 n = vec3(0.0, 1.0, 0.0); float th; float c; float s; float at; fold = 0.0; h = 0.0;${nrm}
+  float calm = calmAt(p);
+  n.xz *= calm; fold *= calm; h *= calm;
   n.y = 1.0 - fold;
   return n;
 }

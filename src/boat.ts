@@ -6,6 +6,8 @@ import * as THREE from 'three';
 import { createSailState, stepSailing, SailState, SailInput } from './sailing';
 import { waveHeight } from './waves';
 import { Wind } from './wind';
+import { World, Mooring } from './world';
+import { MAT } from './materials';
 
 const LEN = 5.2;
 const BEAM = 1.9;
@@ -19,6 +21,7 @@ const halfBeam = (s: number) => (BEAM / 2) * Math.pow(Math.sin(Math.PI * (0.2 + 
 const sheer = (s: number) => 0.52 + 0.3 * s * s + 0.05 * (1 - s) * (1 - s);
 const keel = (s: number) => DRAFT * (0.3 + 0.7 * Math.sin(Math.PI * Math.min(1, s * 0.85 + 0.15)));
 const stationZ = (s: number) => -LEN / 2 + s * LEN;
+const _v = new THREE.Vector3();
 /** hull surface point: s along the length (0 stern, 1 bow), u across (-1 starboard, 1 port) */
 function hullPoint(s: number, u: number, out: THREE.Vector3) {
   const au = Math.abs(u);
@@ -93,6 +96,17 @@ export class Boat {
   readonly state: SailState;
   readonly position = this.group.position;
 
+  /** cradle: fixed on blocks; moored: tied up and bobbing; sailing: under way */
+  mode: 'cradle' | 'moored' | 'sailing' = 'sailing';
+  cradle = { x: 0, y: 0, z: 0, psi: 0 };
+  mooring: Mooring | null = null;
+  hasMast = true;
+  hasSail = true;
+  /** 0 = sail lowered, 1 = fully hoisted */
+  sailUp = 1;
+  /** speed lost in the last grounding, for sound and feel */
+  bump = 0;
+  private mastParts: THREE.Object3D[] = [];
   private boomPivot = new THREE.Group();
   private rudderPivot = new THREE.Group();
   private pennant: THREE.Mesh;
@@ -108,9 +122,7 @@ export class Boat {
     this.state = createSailState(x, z, psi);
     this.group.rotation.order = 'YXZ';
 
-    const wood = new THREE.MeshStandardMaterial({ color: '#6b5a48', roughness: 0.85 });
-    const paleWood = new THREE.MeshStandardMaterial({ color: '#8f8571', roughness: 0.9 });
-    const metal = new THREE.MeshStandardMaterial({ color: '#3a3836', roughness: 0.5, metalness: 0.7 });
+    const wood = MAT.wood, paleWood = MAT.paleWood, metal = MAT.dark;
 
     const hull = new THREE.Mesh(
       buildHull(),
@@ -155,6 +167,7 @@ export class Boat {
     mast.position.set(0, MAST_H / 2 - 0.1, MAST_Z);
     mast.castShadow = true;
     this.group.add(mast);
+    this.mastParts.push(mast, this.boomPivot);
 
     this.boomPivot.position.set(0, BOOM_Y, MAST_Z);
     this.group.add(this.boomPivot);
@@ -203,6 +216,7 @@ export class Boat {
     this.pennant = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ color: '#8a3b28', roughness: 0.9, side: THREE.DoubleSide }));
     this.pennant.position.set(0, MAST_H - 0.2, MAST_Z);
     this.group.add(this.pennant);
+    this.mastParts.push(this.pennant);
 
     // forestay and shrouds
     const wire = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
@@ -211,6 +225,7 @@ export class Boat {
       m.position.copy(a).lerp(b, 0.5);
       m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
       this.group.add(m);
+      this.mastParts.push(m);
     };
     wire(0, MAST_H - 0.6, MAST_Z, 0, sheer(1), LEN / 2 - 0.02);
     const sx = halfBeam(0.6);
@@ -219,16 +234,43 @@ export class Boat {
 
     scene.add(this.group);
     this.sync(0, 1);
-    this.y = this.group.position.y;
   }
 
-  update(dt: number, t: number, input: SailInput, wind: Wind) {
-    stepSailing(this.state, input, wind.x, wind.z, dt);
+  update(dt: number, t: number, input: SailInput, wind: Wind, world?: World) {
+    for (const m of this.mastParts) m.visible = this.hasMast;
+    this.sail.visible = this.hasMast && this.hasSail;
+    const s = this.state;
+
+    if (this.mode === 'cradle') {
+      const c = this.cradle;
+      s.x = c.x; s.z = c.z; s.psi = c.psi; s.u = s.v = s.r = 0; s.boom = 0; s.heel = 0;
+      this.group.position.set(c.x, c.y, c.z);
+      this.group.rotation.set(0, c.psi, 0.05);
+      this.boomPivot.rotation.y = 0;
+      this.sailUp = 0;
+      this.updateSail(t, dt);
+      return;
+    }
+    if (this.mode === 'moored' && this.mooring) {
+      const m = this.mooring;
+      const a = Math.min(1, dt * 1.5);
+      s.x += (m.x - s.x) * a; s.z += (m.z - s.z) * a;
+      let dpsi = m.psi - s.psi; dpsi = Math.atan2(Math.sin(dpsi), Math.cos(dpsi));
+      s.psi += dpsi * a;
+      s.u = s.v = s.r = 0;
+      s.heel *= 1 - a; s.boom *= 1 - a; s.rudder *= 1 - a; s.alpha = 0;
+      this.sailUp = Math.max(0, this.sailUp - dt * 0.8);
+    } else {
+      const px = s.x, pz = s.z;
+      this.sailUp = Math.min(1, this.sailUp + dt * 0.7);
+      const power = this.hasMast && this.hasSail ? this.sailUp : 0;
+      stepSailing(s, input, wind.x * power, wind.z * power, dt);
+      if (world) this.collide(world, px, pz);
+    }
     this.sync(t, dt);
     this.updateSail(t, dt);
 
     // pennant streams with the apparent wind
-    const s = this.state;
     const sn = Math.sin(s.psi), cs = Math.cos(s.psi);
     const vx = s.u * sn + s.v * cs, vz = s.u * cs - s.v * sn;
     const ax = wind.x - vx, az = wind.z - vz;
@@ -241,6 +283,42 @@ export class Boat {
       pp.setZ(i, Math.sin(x * 9 - t * 14) * 0.07 * x);
     }
     pp.needsUpdate = true;
+  }
+
+  /** keep the hull out of land and structures; grounding scrapes rather than sinks */
+  private collide(world: World, px: number, pz: number) {
+    const s = this.state;
+    this.bump = 0;
+    const sn = Math.sin(s.psi), cs = Math.cos(s.psi);
+    let hit = false;
+    for (const off of [2.2, 0, -2.0]) {
+      const x = s.x + sn * off, z = s.z + cs * off;
+      if (world.terrainHeight(x, z) > -0.5) { hit = true; break; }
+      _v.set(x, -0.3, z);
+      world.resolve(_v, 1.0, 1.0);
+      if (Math.abs(_v.x - x) + Math.abs(_v.z - z) > 1e-4) { hit = true; break; }
+    }
+    if (hit) {
+      this.bump = Math.abs(s.u);
+      s.x = px; s.z = pz;
+      s.u *= -0.25; s.v = 0;
+    }
+  }
+
+  /** world position of a point given in the boat's local frame */
+  local(x: number, y: number, z: number, out: THREE.Vector3) {
+    return this.group.localToWorld(out.set(x, y, z));
+  }
+  /** where the helm sits: on the windward side, aft */
+  seat(out: THREE.Vector3, side: number) { return this.local(-0.42 * side, 0.36, -1.5, out); }
+  tillerGrip(out: THREE.Vector3) {
+    const a = -this.state.rudder * 0.5;
+    return this.local(Math.sin(a) * 1.05, 0.66, -LEN / 2 - 0.03 + Math.cos(a) * 1.05, out);
+  }
+  /** a point on the mainsheet between the boom and the helm's hand */
+  sheetPoint(out: THREE.Vector3) {
+    const b = this.state.boom;
+    return this.local(Math.sin(b) * 1.5, BOOM_Y - 0.1, MAST_Z - Math.cos(b) * 1.5, out);
   }
 
   /** place the hull on the wave surface */
@@ -292,7 +370,7 @@ export class Boat {
       x += Math.sin(u * 11 - t * 17 + v * 5) * 0.09 * luff * u * (1 - v * 0.5);
       // gentle life when full
       x += Math.sin(u * 5 - t * 3.1 + v * 3) * 0.012 * this.sailFill;
-      pos.setXYZ(i, x, 0.06 + v * H, -along);
+      pos.setXYZ(i, x * this.sailUp, 0.06 + v * H * (0.06 + 0.94 * this.sailUp), -along);
     }
     pos.needsUpdate = true;
     g.computeVertexNormals();

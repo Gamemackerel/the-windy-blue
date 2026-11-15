@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Environment, SKY_GLSL, NOISE_GLSL } from './env';
-import { waveGLSL } from './waves';
+import { waveGLSL, calmZones, MAX_CALM } from './waves';
 
 const SEG = 320;      // grid resolution
 const RADIUS = 4200;  // half-extent of the sea mesh (m)
@@ -17,6 +17,7 @@ export class Ocean {
       ...env.uniforms,
       uCenter: { value: new THREE.Vector2() },
       uCamPos: { value: new THREE.Vector3() },
+      uCalm: { value: Array.from({ length: MAX_CALM }, () => new THREE.Vector4(0, 0, -2, -1)) },
     };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -127,5 +128,10 @@ export class Ocean {
   update(focus: THREE.Vector3, camPos: THREE.Vector3) {
     (this.uniforms.uCenter.value as THREE.Vector2).set(focus.x, focus.z);
     (this.uniforms.uCamPos.value as THREE.Vector3).copy(camPos);
+    const calm = this.uniforms.uCalm.value as THREE.Vector4[];
+    for (let i = 0; i < MAX_CALM; i++) {
+      const k = calmZones[i];
+      if (k) calm[i].set(k.x, k.z, k.r0, k.r1); else calm[i].set(0, 0, -2, -1);
+    }
   }
 }
