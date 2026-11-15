@@ -360,7 +360,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     bodyCols.length = 0;
     if (ph > 0) {
       const dx = Math.sin(DEATH_BEARING), dz = Math.cos(DEATH_BEARING);
-      if (ph < 3) for (const d of [30, 75, 120, 165]) bodyCols.push(world.addCyl(cx + dx * d, cz + dz * d, d > 150 ? 30 : 42, -5, 30));
+      if (ph < 3) for (const d of [-62, -18, 30, 75, 120, 165]) bodyCols.push(world.addCyl(cx + dx * d, cz + dz * d, d > 150 ? 30 : 44, -5, 30));
       else {
         bodyCols.push(world.addCyl(cx + dx * 172, cz + dz * 172, 27, -5, 30));
         // the feet of the ribs, either side of the spine: the nave between them stays open

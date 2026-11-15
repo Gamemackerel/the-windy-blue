@@ -323,6 +323,6 @@ Known gaps against the spec, in rough order of how much they matter:
 - **Mooring and boarding are instant.** There is no stepping-aboard or tying-off animation; the boat glides to its berth and the sailor is placed on the dock.
 - **The satchel** shows the carried items in an arc but the character does not physically open a bag.
 - **Water.** No refraction, screen-space reflections or volumetric light shafts. The sea is opaque with analytic sky reflection, foam, shallows and surf.
-- **Post-processing.** Tone mapping only: no temporal anti-aliasing, bloom, film grain or time-of-day grade.
+- **Post-processing.** Bloom, vignette, film grain and filmic tone mapping are in (4x multisampling for edges). No temporal anti-aliasing or time-of-day colour grade.
 - **Sound** is fully synthesised and has not been mixed by ear on real speakers.
 - **Performance tiers** exist (Low / Medium / High, with automatic step-down on a first run) but have only been measured on one machine.

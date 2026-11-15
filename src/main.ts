@@ -20,6 +20,7 @@ import { bumpHeight } from './waves';
 import { J } from './figure';
 import { Audio } from './audio';
 import { mergeStatic } from './build';
+import { Post } from './post';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -47,6 +48,7 @@ const scene = new THREE.Scene();
   pmrem.dispose();
 }
 const camera = new THREE.PerspectiveCamera(52, 1, 0.15, 20000);
+const post = new Post(renderer);
 
 // ---- state ----
 const state = new GameState();
@@ -168,6 +170,7 @@ const fixedCam = params.has('cam') ? params.get('cam')!.split(',').map(Number) :
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
+  post.setSize(w, h, renderer.getPixelRatio());
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -212,6 +215,7 @@ function applyQuality(q: number, remember = true) {
   quality = q;
   renderer.setPixelRatio([0.7, 1, Math.min(devicePixelRatio, 2)][q] * (q < 2 ? Math.min(devicePixelRatio, 1) : 1));
   renderer.shadowMap.enabled = q > 0;
+  post.enabled = q > 0;
   env.sun.castShadow = q > 0;
   resize();
   if (remember) localStorage.setItem('ww-quality', String(q));
@@ -259,7 +263,7 @@ function frame() {
     debugEl.style.display = debug ? 'block' : 'none';
   }
   if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive()) setPaused(!paused);
-  if (paused) { input.endFrame(); renderer.render(scene, camera); requestAnimationFrame(frame); return; }
+  if (paused) { input.endFrame(); post.render(scene, camera, env.elapsed); requestAnimationFrame(frame); return; }
   if (probe >= 0 && !document.hidden) {
     probe += dt; probeFrames++;
     if (probe > 6) {
@@ -344,7 +348,7 @@ function frame() {
   ocean.mesh.visible = !submerged;
   env.sky.visible = !submerged;
   scene.background = submerged ? env.fog.color : null;
-  renderer.render(scene, camera);
+  post.render(scene, camera, t);
   satchel.render(renderer, camera.aspect);
   if (prevTime < 0.25 && env.time >= 0.25) { state.data.day++; state.touch(); } // a dawn has passed
 
