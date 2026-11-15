@@ -7,7 +7,7 @@ const C = (hex: string) => new THREE.Color(hex);
 
 // Art-directed palette (sRGB hex, converted to linear by three).
 const PAL = {
-  day: { zenith: C('#4f6679'), horizon: C('#c4c2b8'), sun: C('#fff0da'), cloudLit: C('#e9e4d8'), cloudDark: C('#6e7780'), deep: C('#0b1a26'), scatter: C('#2a4a5e') },
+  day: { zenith: C('#3a5672'), horizon: C('#b4bbbb'), sun: C('#fff1dc'), cloudLit: C('#f1ece0'), cloudDark: C('#55626e'), deep: C('#0b1a26'), scatter: C('#2a4a5e') },
   dawn: { zenith: C('#333d52'), horizon: C('#d39a72'), sun: C('#ff9d5c'), cloudLit: C('#f0b48a'), cloudDark: C('#4a4654'), deep: C('#0c1a26'), scatter: C('#3a4a5c') },
   dusk: { zenith: C('#2b2c40'), horizon: C('#c0623c'), sun: C('#ff7a3c'), cloudLit: C('#e8875a'), cloudDark: C('#3d3442'), deep: C('#0b1620'), scatter: C('#4a3c48') },
   night: { zenith: C('#060a13'), horizon: C('#161f2d'), sun: C('#9db4d6'), cloudLit: C('#1b2634'), cloudDark: C('#06090e'), deep: C('#050b12'), scatter: C('#0f2434') },
@@ -49,7 +49,14 @@ float fbm(vec2 p) {
 }
 `;
 
+export interface AtmosphereState {
+  fog: THREE.Color; sun: THREE.Color; sunDir: THREE.Vector3; density: number; height: number;
+  glow: number; rays: number; daylight: number; enclosed: number;
+}
+
 export class Environment {
+  /** what the image pipeline needs to draw the air */
+  readonly air: AtmosphereState = { fog: new THREE.Color(), sun: new THREE.Color(), sunDir: new THREE.Vector3(), density: 0.0007, height: 170, glow: 1, rays: 0, daylight: 1, enclosed: 0 };
   /** 0..1, 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset */
   time = 0.36;
   timeScale = 1;
@@ -74,11 +81,11 @@ export class Environment {
     uStars: { value: 0 },
     uCloudLit: { value: new THREE.Color() },
     uCloudDark: { value: new THREE.Color() },
-    uCloudCover: { value: 0.5 },
+    uCloudCover: { value: 0.44 },
     uDeep: { value: new THREE.Color() },
     uScatter: { value: new THREE.Color() },
     uAmbient: { value: new THREE.Color() },
-    uFogDensity: { value: 0.00075 },
+    uFogDensity: { value: 0.0007 },
   };
 
   /** underwater / enclosed override, driven by the laboratory */
@@ -161,13 +168,12 @@ export class Environment {
     scene.add(this.sky);
 
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(4096, 4096);
     const sc = this.sun.shadow.camera;
-    sc.left = -9; sc.right = 9; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 80;
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.03;
+    sc.left = -9; sc.right = 9; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 260;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.06;
     scene.add(this.sun, this.sun.target, this.hemi);
-    scene.fog = this.fog;
     this.update(0, new THREE.Vector3(), new THREE.Vector3());
   }
 
@@ -208,8 +214,8 @@ export class Environment {
     const useSun = sy > -0.04;
     this.lightDir.copy(useSun ? this.sunDir : this.moonDir);
     if (this.lightDir.y < 0.06) { this.lightDir.y = 0.06; this.lightDir.normalize(); }
-    const sunI = THREE.MathUtils.smoothstep(sy, -0.04, 0.25) * 2.6 + tw * 0.5;
-    const moonI = 0.2 + 0.5 * moonUp;
+    const sunI = THREE.MathUtils.smoothstep(sy, -0.04, 0.25) * 5.2 + tw * 0.9;
+    const moonI = 0.25 + 0.9 * moonUp;
     const lc = u.uLightCol.value;
     if (useSun) lc.copy(u.uSunCol.value).multiplyScalar(Math.max(sunI, 0.02));
     else lc.set(0.55, 0.68, 0.9).multiplyScalar(moonI);
@@ -219,17 +225,33 @@ export class Environment {
     this.sun.color.copy(lc);
     this.sun.intensity = 1;
     this.sun.target.position.copy(focus);
-    this.sun.position.copy(focus).addScaledVector(this.lightDir, 40);
+    this.sun.position.copy(focus).addScaledVector(this.lightDir, 130);
     this.hemi.color.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.6);
     this.hemi.groundColor.copy(u.uDeep.value).lerp(u.uHorizon.value, 0.25);
-    this.hemi.intensity = 1.6 + night * 5.0;
+    this.hemi.intensity = 0.8 + night * 3.2;
 
     this.fog.color.copy(u.uHorizon.value);
     this.fog.density = u.uFogDensity.value;
     this.sky.position.copy(camPos);
 
+    // air
+    const a = this.air;
+    a.fog.copy(u.uHorizon.value).multiplyScalar(0.92);
+    a.sunDir.copy(this.lightDir);
+    a.sun.copy(useSun ? u.uSunCol.value : lc).multiplyScalar(useSun ? 1 : 2.5);
+    a.glow = useSun ? u.uSunGlow.value : 0.5 * moonUp;
+    a.rays = useSun ? (0.28 + tw * 0.5) * u.uSunGlow.value : 0.1 * moonUp;
+    a.density = u.uFogDensity.value * (1 + tw * 0.5 + night * 0.2);
+    a.height = 170;
+    a.daylight = day;
+    a.enclosed = this.under.amount;
+
     const un = this.under;
     if (un.amount > 0.001) {
+      a.fog.lerp(un.fog, un.amount);
+      a.density += (un.density - a.density) * un.amount;
+      a.height += (1e6 - a.height) * un.amount;
+      a.glow *= 1 - un.amount; a.rays *= 1 - un.amount;
       const k = un.amount;
       this.sun.color.multiplyScalar(1 - k);
       this.hemi.color.lerp(un.ambient, k);

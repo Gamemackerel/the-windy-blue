@@ -68,7 +68,8 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       vec3 sand = mix(vec3(0.42, 0.4, 0.34), vec3(0.62, 0.6, 0.53), fbm(wp.xz * 0.6)) * (0.85 + 0.3 * f);
       vec3 coral = mix(vec3(0.03, 0.03, 0.032), vec3(0.13, 0.12, 0.11), n) * (0.7 + 0.6 * f);
       col = mix(coral, sand, smoothstep(0.9, 2.0, wp.y + n * 1.2) * smoothstep(0.5, 0.2, 1.0 - wn.y));
-      float wet = smoothstep(0.7, -0.1, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(0.95, 0.3, wet);`, 'reef');
+      float wet = smoothstep(0.7, -0.1, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(0.95, 0.3, wet);
+      bump = tri3(wp, wn, 2.5) * 0.05 + tri3(wp, wn, 13.0) * 0.01;`, 'reef');
     const mesh = new THREE.Mesh(g, mat);
     mesh.receiveShadow = true;
     scene.add(mesh);

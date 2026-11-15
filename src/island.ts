@@ -85,15 +85,17 @@ export function buildIsland(ctx: Ctx) {
       vec3 straw = mix(vec3(0.2, 0.17, 0.095), vec3(0.4, 0.35, 0.21), n2);
       straw = mix(straw, vec3(0.13, 0.115, 0.08), smoothstep(0.45, 0.75, n3) * 0.7);
       straw *= 0.8 + 0.4 * fine;
-      vec3 shingle = mix(vec3(0.07, 0.068, 0.066), vec3(0.2, 0.19, 0.175), fbm(wp.xz * 3.0)) * (0.7 + 0.6 * fine);
+      vec3 shingle = mix(vec3(0.07, 0.068, 0.066), vec3(0.2, 0.19, 0.175), fbm(wp.xz * 3.0)) * (0.7 + 0.6 * mix(0.5, fine, smoothstep(40.0, 8.0, vd)));
       float grassy = smoothstep(0.22, 0.07, slope) * smoothstep(3.0, 5.5, wp.y + n * 2.5);
       col = mix(rock, straw, grassy);
       col = mix(col, shingle, smoothstep(3.0, 1.3, wp.y + n) * smoothstep(0.4, 0.12, slope));
       float wet = smoothstep(0.9, -0.1, wp.y);
       col *= mix(1.0, 0.4, wet);
-      rough = mix(0.96, 0.35, wet);`, 'terrain');
+      rough = mix(0.96, 0.35, wet);
+      bump = tri3(wp, wn, 2.2) * 0.09 + tri3(wp, wn, 11.0) * 0.012 * smoothstep(22.0, 5.0, vd) - joints * smoothstep(0.25, 0.6, slope) * 0.05;`, 'terrain');
     const mesh = new THREE.Mesh(g, mat);
     mesh.receiveShadow = true;
+    mesh.castShadow = true;
     scene.add(mesh);
 
     // dry grass: each tuft is a spray of thin blades, lit like the ground it grows from
@@ -135,7 +137,7 @@ export function buildIsland(ctx: Ctx) {
 
     // loose boulders along the shore and slopes
     const rockMat = patch(new THREE.MeshStandardMaterial({ color: '#2a2826', roughness: 0.9, flatShading: true }), /* glsl */ `
-      col *= 0.6 + 0.9 * tri(wp, wn, 0.9); float wet = smoothstep(0.7, -0.2, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(rough, 0.3, wet);`, 'boulder');
+      col *= 0.6 + 0.9 * tri(wp, wn, 0.9); float wet = smoothstep(0.7, -0.2, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(rough, 0.3, wet); bump = tri3(wp, wn, 3.0) * 0.06 + tri3(wp, wn, 14.0) * 0.01;`, 'boulder');
     const rg = new THREE.IcosahedronGeometry(1, 1);
     const rp = rg.attributes.position;
     for (let i = 0; i < rp.count; i++) {

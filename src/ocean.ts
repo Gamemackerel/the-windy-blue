@@ -4,7 +4,8 @@ import { waveGLSL, calmZones, MAX_CALM, bumps, MAX_BUMPS } from './waves';
 
 const SEG = 320;      // grid resolution
 const RADIUS = 4200;  // half-extent of the sea mesh (m)
-const LINEAR = 0.014; // share of the warp that is linear (sets the finest cell size)
+const LINEAR = 0.014;
+export const WAKE_N = 18; // share of the warp that is linear (sets the finest cell size)
 
 export class Ocean {
   readonly mesh: THREE.Mesh;
@@ -22,6 +23,7 @@ export class Ocean {
       uBumpA: { value: new Float32Array(MAX_BUMPS) },
       uShoal: { value: new THREE.Vector4(0, 0, 1, 0) }, // x, z, lagoon radius, blue-hole radius
       uShoalCol: { value: new THREE.Color('#6f8f96') },
+      uWake: { value: Array.from({ length: WAKE_N }, () => new THREE.Vector4(0, 0, 1, 0)) },
       uShore0: { value: null }, uShore1: { value: null },
       uShoreRect0: { value: new THREE.Vector4(0, 0, 1, 0) }, uShoreRect1: { value: new THREE.Vector4(0, 0, 1, 0) },
     };
@@ -76,6 +78,8 @@ export class Ocean {
         varying vec2 vRest;
         ${SKY_GLSL}
         ${NOISE_GLSL}
+        float fbm3(vec2 p) { return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.25 + vnoise(p * 4.1 + 3.7) * 0.25; }
+        uniform vec4 uWake[${WAKE_N}];
         ${waveGLSL()}
         void main() {
           vec3 toCam = uCamPos - vWorld;
@@ -86,12 +90,15 @@ export class Ocean {
           float fold; float h;
           vec3 n = waveNormal(vRest, uTime, px, fold, h);
           n.xz += rippleSlope(vRest, uTime, px);
-          // drifting fine chop
-          vec2 q = vRest * 1.3 + uTime * vec2(0.21, 0.13);
-          float e = 0.3;
-          float n0 = vnoise(q);
-          vec2 grad = vec2(vnoise(q + vec2(e, 0.0)) - n0, vnoise(q + vec2(0.0, e)) - n0) / e;
-          n.xz -= grad * 0.05 * clamp((0.8 / px - 2.0) / 4.0, 0.0, 1.0);
+          // wind chop at two scales from drifting noise, so the surface never settles into stripes
+          vec2 q1 = vRest * 0.42 + uTime * vec2(0.11, 0.07);
+          vec2 q2 = vRest * 1.9 + uTime * vec2(-0.23, 0.17);
+          float e1 = 0.35, e2 = 0.12;
+          float a0 = fbm3(q1), b0 = fbm3(q2);
+          vec2 g1 = vec2(fbm3(q1 + vec2(e1, 0.0)) - a0, fbm3(q1 + vec2(0.0, e1)) - a0) / e1;
+          vec2 g2 = vec2(fbm3(q2 + vec2(e2, 0.0)) - b0, fbm3(q2 + vec2(0.0, e2)) - b0) / e2;
+          n.xz -= g1 * 0.16 * clamp((2.4 / px - 2.0) / 4.0, 0.0, 1.0);
+          n.xz -= g2 * 0.07 * clamp((0.5 / px - 2.0) / 4.0, 0.0, 1.0);
           vec3 N = normalize(n);
 
           float ndv = max(dot(N, V), 0.0);
@@ -132,6 +139,14 @@ export class Ocean {
 
           vec3 col = mix(body, refl, F);
 
+          // the boat's wake: churned foam that spreads and fades behind it
+          float wake = 0.0;
+          for (int i = 0; i < ${WAKE_N}; i++) {
+            float wd = distance(vWorld.xz, uWake[i].xy);
+            wake = max(wake, smoothstep(uWake[i].z, uWake[i].z * 0.35, wd) * uWake[i].w);
+          }
+          wake *= smoothstep(0.42, 0.72, fbm(vRest * 2.6 - uTime * vec2(0.05, 0.02)) + wake * 0.3) * 0.8;
+
           float lap = sin(uTime * 0.8 + fbm(vRest * 0.25) * 7.0) * 0.25 + 0.3;
           float wash = smoothstep(lap + 0.75, lap, depth) * smoothstep(0.15, 0.55, fbm(vRest * 2.2 + uTime * vec2(0.07, 0.04)) + smoothstep(0.5, 0.0, depth) * 0.4);
           wash = max(wash, smoothstep(0.22, 0.02, depth));
@@ -143,12 +158,7 @@ export class Ocean {
           float foam = smoothstep(0.40, 0.56, fold + (fn - 0.5) * 0.3) * nearF;
           foam *= smoothstep(0.25, 0.6, ft + foam * 0.35);
           vec3 foamCol = vec3(0.86, 0.87, 0.84) * (uAmbient * 1.4 + uLightCol * 0.45 * (0.4 + sun));
-          col = mix(col, foamCol, clamp(max(foam, wash * 0.9), 0.0, 1.0) * 0.9);
-
-          // distance haze into the sky colour at the horizon
-          vec3 fd = normalize(vec3(-V.x, 0.015, -V.z));
-          float fogF = 1.0 - exp(-pow(dist * uFogDensity, 1.35));
-          col = mix(col, skyBase(fd), fogF);
+          col = mix(col, foamCol, clamp(max(max(foam, wash * 0.9), wake), 0.0, 1.0) * 0.9);
 
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
@@ -161,6 +171,8 @@ export class Ocean {
     scene.add(this.mesh);
   }
 
+  /** foam points left behind the boat: x, z, radius, strength */
+  get wake() { return this.uniforms.uWake.value as THREE.Vector4[]; }
   private shores = 0;
   /** bake the sea bed around a piece of land so the water can show shallows and surf */
   addShore(cx: number, cz: number, size: number, height: (x: number, z: number) => number) {

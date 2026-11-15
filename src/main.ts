@@ -29,7 +29,8 @@ const canvas = document.getElementById('c') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.AgXToneMapping;
-renderer.toneMappingExposure = num('exp', 1.15);
+const baseExposure = num('exp', 1.0);
+renderer.toneMappingExposure = baseExposure;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -215,7 +216,12 @@ function applyQuality(q: number, remember = true) {
   quality = q;
   renderer.setPixelRatio([0.7, 1, Math.min(devicePixelRatio, 2)][q] * (q < 2 ? Math.min(devicePixelRatio, 1) : 1));
   renderer.shadowMap.enabled = q > 0;
-  post.enabled = q > 0;
+  post.setQuality(q);
+  if (params.has('noao')) post.ao = false;
+  if (params.has('norays')) post.rays = false;
+  if (params.has('nobloom')) post.bloom = false;
+  env.sun.shadow.mapSize.setScalar(q >= 2 ? 4096 : 2048);
+  if (env.sun.shadow.map) { env.sun.shadow.map.dispose(); (env.sun.shadow as any).map = null; }
   env.sun.castShadow = q > 0;
   resize();
   if (remember) localStorage.setItem('ww-quality', String(q));
@@ -246,6 +252,7 @@ let last = performance.now();
 let fps = 60;
 let saveTimer = 0;
 let rigZone = '';
+let wakeT = 0, wakeI = 0;
 const focus = new THREE.Vector3();
 const safe = new THREE.Vector3().copy(player.pos);
 // open on black and let the world come up slowly
@@ -263,7 +270,7 @@ function frame() {
     debugEl.style.display = debug ? 'block' : 'none';
   }
   if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive()) setPaused(!paused);
-  if (paused) { input.endFrame(); post.render(scene, camera, env.elapsed); requestAnimationFrame(frame); return; }
+  if (paused) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   if (probe >= 0 && !document.hidden) {
     probe += dt; probeFrames++;
     if (probe > 6) {
@@ -312,6 +319,15 @@ function frame() {
   }
   pushX = pushZ = 0;
   boat.update(dt, t, helm, wind, world);
+  // lay down the wake
+  {
+    const wk = ocean.wake, s = boat.state, moving = boat.mode === 'sailing' ? Math.min(1, Math.abs(s.u) / 4) : 0;
+    wakeT += dt;
+    if (wakeT > 0.22) { wakeT = 0; wakeI = 1 + (wakeI % (wk.length - 1)); wk[wakeI].set(s.x - Math.sin(s.psi) * 2.5, s.z - Math.cos(s.psi) * 2.5, 0.9, moving); }
+    for (let i = 1; i < wk.length; i++) { wk[i].z += dt * 0.45; wk[i].w = Math.max(0, wk[i].w - dt * 0.26); }
+    // the bow wave travels with the hull
+    wk[0].set(s.x + Math.sin(s.psi) * 1.9, s.z + Math.cos(s.psi) * 1.9, 1.5, moving * 0.6);
+  }
   player.update(dt, t, input, rig.yaw, wind);
   // safety net: nobody walks on the sea bed
   if (player.mode === 'foot') {
@@ -338,17 +354,20 @@ function frame() {
 
   // shadows hug the action
   const sc = env.sun.shadow.camera;
-  const ext = sailing ? 9 : 16;
+  const ext = sailing ? 16 : quality >= 2 ? 46 : 30;
   if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
 
   env.update(dt, camera.position, focus);
   ocean.update(focus, camera.position);
   const submerged = env.under.amount > 0.5;
-  scene.environmentIntensity = (0.12 + 0.6 * env.daylight) * (1 - env.under.amount * 0.75);
+  scene.environmentIntensity = (0.08 + 0.34 * env.daylight) * (1 - env.under.amount * 0.75);
+  // the eye opens up at night and indoors
+  const wantExp = baseExposure * (1 + (1 - env.daylight) * 0.5 + (indoors && !submerged ? 0.35 : 0));
+  renderer.toneMappingExposure += (wantExp - renderer.toneMappingExposure) * Math.min(1, dt * 1.2);
   ocean.mesh.visible = !submerged;
   env.sky.visible = !submerged;
   scene.background = submerged ? env.fog.color : null;
-  post.render(scene, camera, t);
+  post.render(scene, camera, t, env.air);
   satchel.render(renderer, camera.aspect);
   if (prevTime < 0.25 && env.time >= 0.25) { state.data.day++; state.touch(); } // a dawn has passed
 
