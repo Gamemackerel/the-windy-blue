@@ -35,6 +35,72 @@ export class Builder {
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.sub(a).normalize());
     return m;
   }
+  /** wooden crate: a box with battens along every edge and a brace across each side */
+  crate(x: number, y0: number, z: number, s: number, mat: THREE.Material, trim: THREE.Material, yaw = 0, collide = true) {
+    const g = new THREE.Group();
+    g.position.set(this.ox + x, this.oy + y0 + s / 2, this.oz + z);
+    g.rotation.y = yaw;
+    const add = (sx: number, sy: number, sz: number, px: number, py: number, pz: number, m: THREE.Material, rz = 0, rx = 0) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m);
+      o.position.set(px, py, pz); o.rotation.set(rx, 0, rz);
+      g.add(o);
+    };
+    const t = Math.max(0.035, s * 0.075), h = s / 2, e = h - t / 2 + 0.006, L = s + 0.012;
+    add(s, s, s, 0, 0, 0, mat);
+    for (const a of [-1, 1]) for (const b of [-1, 1]) {
+      add(L, t, t, 0, a * e, b * e, trim); add(t, L, t, a * e, 0, b * e, trim); add(t, t, L, a * e, b * e, 0, trim);
+    }
+    // diagonal braces on the four sides
+    const d = (s - t * 2) * 1.38;
+    for (const a of [-1, 1]) { add(d, t * 0.8, t * 0.5, 0, 0, a * (h + 0.004), trim, a * 0.785); add(t * 0.5, t * 0.8, d, a * (h + 0.004), 0, 0, trim, 0, a * 0.785); }
+    this.flatten(g);
+    if (collide) this.world.addBox(this.ox + x, this.oy + y0 + s / 2, this.oz + z, s / 2, s / 2, s / 2, yaw);
+  }
+  /** oil drum: rolled rims top and bottom, two ribs, a recessed lid and a bung */
+  drum(x: number, z: number, y0: number, mat: THREE.Material, trim: THREE.Material, r = 0.29, h = 0.88, collide = true, tilt = 0) {
+    const g = new THREE.Group();
+    g.position.set(this.ox + x, this.oy + y0, this.oz + z);
+    if (tilt) { g.rotation.set(Math.PI / 2, 0, tilt); g.position.y += r; }
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20, 1, true), mat);
+    body.position.y = h / 2;
+    g.add(body);
+    for (const [y, rr] of [[0.012, 0.018], [h - 0.012, 0.018], [h * 0.34, 0.012], [h * 0.66, 0.012]] as const) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r + rr * 0.3, rr, 6, 22), trim);
+      ring.rotation.x = Math.PI / 2; ring.position.y = y;
+      g.add(ring);
+    }
+    for (const y of [h - 0.03, 0.0]) { const lid = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.012, r - 0.012, 0.012, 20), trim); lid.position.y = y; g.add(lid); }
+    const bung = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.025, 8), trim);
+    bung.position.set(r * 0.55, h - 0.018, 0);
+    g.add(bung);
+    this.flatten(g);
+    if (collide) this.world.addCyl(this.ox + x, this.oz + z, tilt ? h / 2 : r, this.oy + y0, this.oy + y0 + (tilt ? r * 2 : h));
+  }
+  /** edge trim for a building: corner posts, a plinth and an eaves band round a box footprint */
+  trim(x: number, y0: number, z: number, sx: number, sy: number, sz: number, mat: THREE.Material, t = 0.14) {
+    const hx = sx / 2, hz = sz / 2;
+    for (const a of [-1, 1]) for (const c of [-1, 1]) this.box(x + a * hx, y0 + sy / 2, z + c * hz, t, sy + 0.02, t, mat, 0, false);
+    for (const [y, th] of [[y0 + 0.11, 0.22], [y0 + sy - 0.09, 0.18]] as const) {
+      for (const a of [-1, 1]) {
+        this.box(x, y, z + a * hz, sx + t, th, t * 0.75, mat, 0, false);
+        this.box(x + a * hx, y, z, t * 0.75, th, sz + t, mat, 0, false);
+      }
+    }
+  }
+  /** turn a built-up group into loose fixed meshes so they can be merged with their neighbours */
+  flatten(g: THREE.Object3D) {
+    g.updateMatrixWorld(true);
+    const list: THREE.Mesh[] = [];
+    g.traverse((o) => { if ((o as THREE.Mesh).isMesh) list.push(o as THREE.Mesh); });
+    for (const m of list) {
+      const geo = m.geometry.clone();
+      geo.applyMatrix4(m.matrixWorld);
+      const out = new THREE.Mesh(geo, m.material);
+      out.castShadow = true; out.receiveShadow = true;
+      out.userData.static = true;
+      this.scene.add(out);
+    }
+  }
   /** staircase rising along local +Z from (x, y0, z) : visible steps plus one ramp collider */
   stairs(x: number, y0: number, z: number, width: number, rise: number, run: number, yaw: number, mat: THREE.Material, steps = Math.max(2, Math.round(rise / 0.19))) {
     const g = new THREE.Group();

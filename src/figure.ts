@@ -160,7 +160,7 @@ class Tube {
 
 // --------------------------------------------------------------- sculpture
 /** a head with a brow, eye sockets, nose, cheeks, lips and jaw, pushed out of a sphere */
-function headGeometry(r = 0.1) {
+export function headGeometry(r = 0.1) {
   const g = new THREE.SphereGeometry(r, 40, 30);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {

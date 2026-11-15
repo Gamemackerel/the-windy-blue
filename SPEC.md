@@ -140,6 +140,13 @@ A windowless, seamless monolith rising from the sea, slightly reflective like ob
 
 In the demo the door **cannot be opened**. The pad accepts input and answers every attempt with the same low tone. Opening the tower belongs to a later release and is not designed here.
 
+### 4.7 Edges, new buildings and debris
+
+- **Ink lines.** Every corner and silhouette within about 150 m is drawn with a dark line, so boxes, drums, buildings, people and rocks all read with a bold edge. Crates additionally have battens along every edge and a brace on each side; drums have rolled rims, ribs and a recessed lid; buildings have corner posts, a plinth and an eaves band.
+- **Storehouse** (starting island, west side of the yard). A windowless concrete block with a strip of roof missing, shelving, a bench, and the densest pile of debris in the game.
+- **Floating home** (tied to the east side of the jungle rig). A one-room cabin on a pontoon with a bunk, table and stove, a ladder up to the rig, and its own berth.
+- **Debris.** About 230 defunct objects, generated in code, most of them indoors: kettles, cans, bottles, circuit boards, monitors, computer cases, keyboards, an open refrigerator, books (closed, stacked, open, loose pages), stone statuary (busts, heads, torsos, hands, column drums and capitals), a car engine, gears, pistons, springs, pipes, valve wheels, mannequins, floor and desk lamps, tyres, radios, chairs, suitcases, clocks, typewriters and telephones. Statuary also lies half-sunk along the island's tide line and the atoll reef. None of it can be picked up.
+
 ## 5. People and trading
 
 There are very few people. They are still and quiet. They look at the player, shift their weight, cough, hum, smoke. They never speak, gesture instructions, or follow.

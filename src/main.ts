@@ -22,6 +22,7 @@ import { J } from './figure';
 import { Audio } from './audio';
 import { mergeStatic } from './build';
 import { Post } from './post';
+import { scatterJunk } from './junk';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -111,8 +112,9 @@ ocean.addShore(ATOLL.x, ATOLL.z, 580, atollHeight);
 if (params.has('wake')) world.after(1, () => giant.wake());
 const satchel = new Satchel(ctx, (id) => player.setHeld(id), () => player.held);
 boat.setPatches(state.data.boat.patches);
+const junkCount = scatterJunk(ctx);
 const merged = mergeStatic(scene);
-if (params.has('debug')) console.log(`merged ${merged.before} static parts into ${merged.after}`);
+if (params.has('debug')) console.log(`${junkCount} junk objects; merged ${merged.before} static parts into ${merged.after}`);
 
 /** the giant has broken the boat: wake on the slip beside a patched hull */
 function wreckBoat() {

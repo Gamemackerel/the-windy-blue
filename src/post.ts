@@ -23,6 +23,8 @@ export interface Atmosphere {
 
 export class Post {
   ao = true; rays = true; bloom = true;
+  /** strength of the ink lines on edges, 0 to switch them off */
+  lines = 1;
   private samples = 2;
   private sceneRT!: THREE.WebGLRenderTarget;
   private half: THREE.WebGLRenderTarget[] = [];
@@ -117,12 +119,14 @@ export class Post {
     this.mFinal = mk({
       tDiffuse: { value: null }, tDepth: { value: null }, tBloom: { value: null }, tAO: { value: null }, tRays: { value: null },
       uProjInv: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
+      uTexel: { value: new THREE.Vector2() }, uLines: { value: 1 }, uLineWidth: { value: 1.25 },
       uTime: { value: 0 }, uBloom: { value: 0.5 }, uAO: { value: 0.85 }, uRays: { value: 0 },
       uFog: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3() },
       uDensity: { value: 0.0007 }, uFogHeight: { value: 160 }, uGlow: { value: 1 }, uDay: { value: 1 }, uEnclosed: { value: 0 },
     }, /* glsl */ `
       uniform sampler2D tDiffuse; uniform sampler2D tBloom; uniform sampler2D tAO; uniform sampler2D tRays;
       uniform mat4 uCamWorld; uniform vec3 uCamPos; uniform float uTime; uniform float uBloom; uniform float uAO; uniform float uRays;
+      uniform vec2 uTexel; uniform float uLines; uniform float uLineWidth;
       uniform vec3 uFog; uniform vec3 uSunCol; uniform vec3 uSunDir; uniform float uDensity; uniform float uFogHeight; uniform float uGlow; uniform float uDay; uniform float uEnclosed;
       varying vec2 vUv;
       ${DEPTH}
@@ -133,6 +137,23 @@ export class Post {
         float depth = texture2D(tDepth, vUv).x;
         if (depth < 0.99999) {
           c *= mix(1.0, texture2D(tAO, vUv).r, uAO);
+          // ink lines: where the surface turns a corner, and where one thing stands in front of another
+          {
+            vec3 p0 = viewPos(vUv);
+            float dist = -p0.z;
+            float reach = smoothstep(150.0, 25.0, dist);
+            if (reach > 0.0) {
+              vec2 ox = vec2(uTexel.x, 0.0) * uLineWidth, oy = vec2(0.0, uTexel.y) * uLineWidth;
+              vec3 pr = viewPos(vUv + ox), pl = viewPos(vUv - ox), pu = viewPos(vUv + oy), pd = viewPos(vUv - oy);
+              // 1/z is linear across any flat surface on screen, so its second difference is zero except at a step
+              float lap = abs(1.0 / pr.z + 1.0 / pl.z - 2.0 / p0.z) + abs(1.0 / pu.z + 1.0 / pd.z - 2.0 / p0.z);
+              float outline = smoothstep(0.02, 0.06, lap * dist);
+              vec3 n1 = normalize(cross(pr - p0, pu - p0)), n2 = normalize(cross(pl - p0, pd - p0));
+              float crease = smoothstep(0.3, 0.7, 1.0 - dot(n1, n2));
+              float ink = max(outline, crease * 0.85) * reach * uLines;
+              c *= 1.0 - ink * 0.82;
+            }
+          }
           // haze: thicker low down, and lit from within toward the light
           vec3 vp = viewPos(vUv);
           vec3 wp = (uCamWorld * vec4(vp, 1.0)).xyz;
@@ -258,6 +279,9 @@ export class Post {
     f.uFog.value.copy(at.fog); f.uSunCol.value.copy(at.sun); f.uSunDir.value.copy(at.sunDir);
     f.uDensity.value = at.density; f.uFogHeight.value = at.height; f.uGlow.value = at.glow; f.uDay.value = at.daylight; f.uEnclosed.value = at.enclosed;
     f.uAO.value = 0.8;
+    f.uTexel.value.set(1 / this.w, 1 / this.h);
+    f.uLines.value = this.lines;
+    f.uLineWidth.value = Math.max(1.25, this.h / 620);
     this.pass(this.mFinal, null);
   }
 }

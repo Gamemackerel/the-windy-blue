@@ -12,6 +12,9 @@ import { Figure, J } from './figure';
 import { buildHull } from './boat';
 import { ISLAND } from './island';
 
+/** the floating home tied up to the jungle rig */
+export const HOME = { x: 150 + 14.3, z: -750 + 2 };
+
 export const PLACES = {
   greenhouse: { x: -250, z: -150 },
   jungle: { x: 150, z: -750 },
@@ -257,10 +260,48 @@ export function buildRigs(ctx: Ctx) {
       for (let j = 0; j < n; j++) clumps.push({ x: cx + x + sway * (j / n), y: DY - (j + 0.4) * 0.8, z: cz + z + sway * (j / n), r: 0.3, n: 14 });
       clumps.push({ x: cx + x, y: DY + 0.1, z: cz + z, r: 0.5, n: 30 });
     }
-    leaves(ctx, clumps, 9, 0.5);
     // the orchid, alone on the high deck
     b.bar(UX + 2.2, UY, UZ + 1.4, UX + 2.4, UY + 1.3, UZ + 1.5, 0.12, bark);
     addPickup(ctx, 'orchid', 'orchid', new THREE.Vector3(cx + UX + 2.25, UY + 1.25, cz + UZ + 1.25), { scale: 1.8, rot: 3.6, radius: 2 });
+    // a floating home, tied up alongside and half claimed by the growth
+    {
+      const hx = 14.3, hz = 2, FY = 0.55;
+      b.box(hx, FY - 0.45, hz, 8, 0.9, 7, MAT.paleWood);
+      for (const [x, z] of [[-3.4, -3], [3.4, -3], [-3.4, 3], [3.4, 3], [0, -3], [0, 3]] as const) {
+        const fl = b.mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.5, 12), MAT.rust, hx + x, FY - 0.75, hz + z);
+        fl.rotation.z = Math.PI / 2;
+      }
+      const CW = 5.4, CD = 4.2, CH = 2.3, T = 0.12, wy = FY + CH / 2, cxh = hx + 0.9;
+      b.box(cxh, wy, hz - CD / 2, CW, CH, T, MAT.wood); b.box(cxh, wy, hz + CD / 2, CW, CH, T, MAT.wood);
+      b.box(cxh + CW / 2, wy, hz, T, CH, CD, MAT.wood);
+      b.box(cxh - CW / 2, wy, hz - 1.3, T, CH, 1.6, MAT.wood); b.box(cxh - CW / 2, wy, hz + 1.3, T, CH, 1.6, MAT.wood);
+      b.box(cxh - CW / 2, FY + 2.05 + (CH - 2.05) / 2, hz, T, CH - 2.05, 1.0, MAT.wood, 0, false);
+      b.box(cxh, FY + CH + 0.07, hz, CW + 0.7, 0.12, CD + 0.7, MAT.corrugated, 0, false);
+      b.box(cxh, FY + 0.03, hz, CW - 0.2, 0.03, CD - 0.2, MAT.wood, 0, false);
+      b.trim(cxh, FY, hz, CW, CH, CD, MAT.dark, 0.13);
+      for (const z of [hz - 1.3, hz + 1.3]) b.box(cxh + CW / 2 + 0.07, FY + 1.4, z, 0.03, 0.6, 0.8, MAT.black, 0, false);  // shuttered windows
+      b.cyl(cxh + 1.8, hz - 1.2, 0.07, FY + CH, FY + CH + 0.8, MAT.dark, false, 0.07, 8);                                   // stove pipe
+      // bunk, table and a stove inside
+      b.box(cxh + 1.9, FY + 0.28, hz + 1.2, 1.4, 0.5, 1.5, MAT.paleWood);
+      b.box(cxh + 0.2, FY + 0.72, hz - 1.45, 1.5, 0.06, 0.8, MAT.wood, 0, false);
+      for (const dx of [-0.6, 0.6]) b.box(cxh + 0.2 + dx, FY + 0.36, hz - 1.45, 0.07, 0.7, 0.7, MAT.wood, 0, false);
+      world.addBox(cx + cxh + 0.2, FY + 0.4, cz + hz - 1.45, 0.75, 0.4, 0.4);
+      b.cyl(cxh + 1.8, hz - 1.2, 0.3, FY, FY + 0.8, MAT.dark, true, 0.3, 12);
+      const lampM = new THREE.MeshStandardMaterial({ color: '#2a2622', emissive: '#ffb86a', emissiveIntensity: 0 });
+      b.mesh(new THREE.SphereGeometry(0.09, 10, 8), lampM, cxh - 0.6, FY + 1.95, hz, false);
+      const lampL = new THREE.PointLight('#ffb070', 0, 12, 1.6);
+      lampL.position.set(cx + cxh - 0.6, FY + 1.9, cz + hz);
+      scene.add(lampL);
+      world.updaters.push(() => { lampM.emissiveIntensity = 0.5 + night() * 4; lampL.intensity = 4 + night() * 22; });
+      // mooring lines and a ladder up to the rig
+      b.bar(hx - 3.9, FY + 0.1, hz - 3, 9.6, DY - 0.5, -2, 0.02, MAT.rope, 4); b.bar(hx - 3.9, FY + 0.1, hz + 3, 9.6, DY - 0.5, 6, 0.02, MAT.rope, 4);
+      ladder(b, 10.15, hz, FY, DY, -Math.PI / 2, MAT.rust);
+      world.moorings.push({ name: 'home', x: cx + hx, z: cz + hz - 6.2, psi: Math.PI / 2, dock: new THREE.Vector3(cx + hx - 2.6, FY, cz + hz - 2.7) });
+      // the jungle has started on the roof
+      for (let i = 0; i < 16; i++) clumps.push({ x: cx + cxh - 2.6 + r() * 3, y: FY + CH + 0.55 + r() * 0.3, z: cz + hz - 2 + r() * 4, r: 0.35 + r() * 0.25, n: 40 });
+      for (let i = 0; i < 10; i++) { const z = hz - 2.1 + r() * 4.2, len = 0.6 + r() * 1.5; b.bar(cxh - CW / 2 - 0.1, FY + CH, z, cxh - CW / 2 - 0.15, FY + CH - len, z, 0.02, vine, 4); clumps.push({ x: cx + cxh - CW / 2 - 0.15, y: FY + CH - len * 0.6, z: cz + z, r: 0.3, n: 16 }); }
+    }
+    leaves(ctx, clumps, 9, 0.5);
     // dripping water
     const drops = new THREE.InstancedMesh(new THREE.SphereGeometry(0.02, 5, 4), new THREE.MeshBasicMaterial({ color: '#b8c8cc' }), 40);
     const dp = Array.from({ length: 40 }, () => ({ x: cx + (r() - 0.5) * 21, z: cz + (r() - 0.5) * 17, y: r() * DY, v: 3 + r() * 2 }));
@@ -291,9 +332,9 @@ export function buildRigs(ctx: Ctx) {
     lamp.position.set(cx - 1.6, 3.0, cz + 1.5);
     scene.add(lamp);
     world.updaters.push(() => { lampMat.emissiveIntensity = night() * 4; lamp.intensity = night() * 40; });
-    b.box(1.5, 0.6, 0.2, 0.6, 0.5, 0.6, MAT.wood);          // the crate they sit on
+    b.crate(1.5, 0.36, 0.2, 0.5, MAT.wood, MAT.paleWood);     // the crate they sit on
     b.box(-0.2, 0.52, -1.5, 0.9, 0.35, 0.6, MAT.paleWood);
-    b.cyl(0.4, 1.6, 0.25, 0.35, 0.75, MAT.rust, true, 0.25, 10);
+    b.drum(0.4, 1.6, 0.36, MAT.rust, MAT.dark, 0.24, 0.5);
     // their skiff, tied alongside
     const skiff = new THREE.Mesh(buildHull(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, side: THREE.DoubleSide }));
     skiff.scale.setScalar(0.72);
@@ -432,10 +473,11 @@ export function buildRigs(ctx: Ctx) {
       float ribs = 0.75 + 0.25 * sin((abs(wn.x) > abs(wn.z) ? wp.z : wp.x) * 18.0);
       col *= ribs * (0.7 + 0.5 * tri(wp, wn, 0.6)); col = mix(col, vec3(0.3, 0.13, 0.07), smoothstep(0.5, 0.78, tri(wp, wn, 1.6)) * 0.7);`, 'container');
     b.box(0.6, DY + 1.3, -4.2, 2.5, 2.6, 6, corr);
+    b.trim(0.6, DY, -4.2, 2.5, 2.6, 6, MAT.dark, 0.12);
     b.box(0.6, DY + 1.0, -1.18, 1.0, 2.0, 0.05, MAT.dark, 0, false);
     // deck clutter
-    b.cyl(-1.8, 3.6, 0.3, DY, DY + 0.9, MAT.red, true, 0.3, 12); b.cyl(-1.2, 4.3, 0.3, DY, DY + 0.9, MAT.rust, true, 0.3, 12);
-    b.box(1.8, DY + 0.35, 5.2, 1.2, 0.7, 1.2, MAT.wood);
+    b.drum(-1.8, 3.6, DY, MAT.red, MAT.dark); b.drum(-1.2, 4.3, DY, MAT.rust, MAT.dark);
+    b.crate(1.8, DY, 5.2, 0.78, MAT.wood, MAT.paleWood, 0.2);
     const coil = b.mesh(new THREE.TorusGeometry(0.4, 0.09, 6, 18), MAT.rope, -1.9, DY + 0.1, 0.2);
     coil.rotation.x = Math.PI / 2;
     for (const z of [-6.6, -2, 2, 6.6]) for (const x of [-2.75, 2.75]) b.cyl(x, z, 0.1, DY, DY + 0.4, MAT.dark, false, 0.1, 8);

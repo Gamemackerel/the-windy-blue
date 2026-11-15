@@ -398,6 +398,7 @@ export function buildIsland(ctx: Ctx) {
   b.box(LF.x, DECK + 2.5 + (LF.h - 2.5) / 2, LF.z + LF.d / 2 - 0.2, 2, LF.h - 2.5, 0.4, MAT.concrete, 0, false); // lintel
   b.box(LF.x, DECK + LF.h + 0.15, LF.z, LF.w + 0.8, 0.3, LF.d + 0.8, MAT.concrete, 0, false);                     // roof
   b.box(LF.x, DECK - 0.02, LF.z, LF.w, 0.1, LF.d, MAT.concrete, 0, false);                                         // floor
+  b.trim(LF.x, DECK, LF.z, LF.w, LF.h, LF.d, MAT.dark, 0.2);
   const door = b.box(LF.x, DECK + 1.25, LF.z + LF.d / 2 - 0.2, 2, 2.5, 0.16, MAT.rust, 0, false);
   door.userData.static = false;
   const doorCol = world.addBox(IX + LF.x, DECK + 1.25, IZ + LF.z + LF.d / 2 - 0.2, 1, 1.25, 0.2);
@@ -579,6 +580,30 @@ export function buildIsland(ctx: Ctx) {
   if (state.flag('flooded')) { opened = 3; wheels.forEach((w) => { w.userData.open = true; w.rotation.z = 9; }); flood(true); }
   layoutCrane();
 
+  // ---------- the storehouse: a windowless block where things were put and forgotten ----------
+  {
+    const X = 50, Z = 10.5, W = 9, D = 7, H = 3.6, T = 0.35, wy = DECK + H / 2;
+    b.box(X - W / 2 + T / 2, wy, Z, T, H, D, MAT.concrete);                              // west
+    b.box(X, wy, Z - D / 2 + T / 2, W, H, T, MAT.concrete);                              // south
+    b.box(X, wy, Z + D / 2 - T / 2, W, H, T, MAT.concrete);                              // north
+    b.box(X + W / 2 - T / 2, wy, Z - 2.25, T, H, 2.5, MAT.concrete);                     // east, either side of the doorway
+    b.box(X + W / 2 - T / 2, wy, Z + 2.25, T, H, 2.5, MAT.concrete);
+    b.box(X + W / 2 - T / 2, DECK + 2.3 + (H - 2.3) / 2, Z, T, H - 2.3, 2.0, MAT.concrete, 0, false);
+    b.box(X, DECK - 0.02, Z, W, 0.1, D, MAT.concrete, 0, false);
+    // the roof has lost a strip of sheeting: daylight falls in through the gap
+    b.box(X - 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated, 0, false);
+    b.box(X + 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated, 0, false);
+    for (const z of [-2.6, 0, 2.6]) b.box(X, DECK + H - 0.1, Z + z, W - 0.4, 0.14, 0.14, MAT.rust, 0, false);
+    b.trim(X, DECK, Z, W, H, D, MAT.dark, 0.2);
+    // a door hanging off one hinge
+    b.box(X + W / 2 + 0.25, DECK + 1.1, Z + 1.35, 0.07, 2.2, 1.0, MAT.rust, 0.5, false).rotation.z = 0.06;
+    // shelving down the west wall and a long bench on the north
+    for (const y of [0.5, 1.2, 1.9]) b.box(X - W / 2 + T + 0.3, DECK + y, Z, 0.55, 0.05, D - 1.2, MAT.paleWood, 0, false);
+    for (const z of [-2.7, 0, 2.7]) b.box(X - W / 2 + T + 0.3, DECK + 1.0, Z + z, 0.6, 2.0, 0.07, MAT.wood, 0, false);
+    world.addBox(IX + X - W / 2 + T + 0.3, DECK + 1, IZ + Z, 0.32, 1, D / 2 - 0.6);
+    b.box(X + 0.6, DECK + 0.42, Z + D / 2 - T - 0.4, 4.6, 0.84, 0.75, MAT.wood);
+  }
+
   // ---------- the yard: sheds, wrecks and clutter ----------
   // an open-sided boat shed
   for (const [x, z] of [[78, 30], [90, 30], [78, 38], [90, 38]] as const) b.box(x, DECK + 2.2, z, 0.4, 4.4, 0.4, MAT.concrete);
@@ -595,11 +620,12 @@ export function buildIsland(ctx: Ctx) {
   b.box(82, DECK + 0.14, 33, 0.22, 0.28, 6.4, MAT.wood, 0.5);
   // drums, crates, a rail slip
   const rr = rng(21);
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 20; i++) {
     const x = 60 + rr() * 38, z = -6 + rr() * 36;
     if (Math.hypot(x - 64, z - 4) < 4 || Math.hypot(x - 82, z - 33) < 6) continue;
-    if (rr() < 0.5) b.cyl(x, z, 0.3, DECK, DECK + 0.9, rr() < 0.5 ? MAT.rust : MAT.red, true, 0.3, 12);
-    else { const s = 0.6 + rr() * 0.6; b.box(x, DECK + s / 2, z, s, s, s, MAT.wood, rr() * 3); }
+    if (Math.abs(x - 50) < 7 && Math.abs(z - 10.5) < 6) continue; // the storehouse
+    if (rr() < 0.5) b.drum(x, z, DECK, rr() < 0.5 ? MAT.rust : MAT.red, MAT.dark, 0.29, 0.88, true, rr() < 0.2 ? rr() * 3 : 0);
+    else { const s = 0.6 + rr() * 0.6; b.crate(x, DECK, z, s, MAT.wood, MAT.paleWood, rr() * 3); }
   }
   for (const z of [8.6, 11.4]) b.box(102, DECK + 0.05, z, 12, 0.1, 0.12, MAT.steel, 0, false);
 
@@ -615,6 +641,7 @@ export function buildIsland(ctx: Ctx) {
   const HX = 26, HZ = -51, HY = 9.5;
   b.box(HX, HY + 1.5, HZ, 6, 3, 5, MAT.concrete);
   b.box(HX, HY + 3.1, HZ, 6.8, 0.25, 5.8, MAT.corrugated, 0, false);
+  b.trim(HX, HY, HZ, 6, 3, 5, MAT.dark, 0.16);
   b.box(HX + 5.2, HY + 0.1, HZ + 1.5, 4.6, 0.2, 6, MAT.paleWood);           // porch
   b.box(HX + 5.2, HY + 2.9, HZ + 1.5, 4.8, 0.12, 6.2, MAT.corrugated, 0, false);  // porch roof
   for (const [x, z] of [[7.3, -1.3], [7.3, 4.3]] as const) b.bar(HX + x, HY + 0.2, HZ + z, HX + x, HY + 2.9, HZ + z, 0.05, MAT.wood);
