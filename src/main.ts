@@ -442,7 +442,7 @@ function frame() {
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
   player.eye(eyePos);
-  if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.2, scopeAt.z);
+  if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.85, scopeAt.z); // above the ring wall, so nothing near blocks the view
   rig.update(dt, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
   viewModel.visible = !rig.scope;
   // what is being carried rides in front of the chest
