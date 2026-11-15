@@ -151,6 +151,17 @@ export const MAT = {
     float chip = smoothstep(0.55, 0.8, tri(wp, wn, 3.1)); float fine = tri3(wp, wn, 15.0);
     col *= (0.75 + 0.4 * tri(wp, wn, 1.3)) * (0.93 + 0.14 * fine); col = mix(col, vec3(0.1, 0.07, 0.06), chip * 0.6);
     rough += chip * 0.25; bump = fine * 0.001 - chip * 0.003;`, 'red'),
+  // sheet roofing: ribs, rust creeping in from the edges and the fixings
+  corrugated: patch(std('#5b3a2c', 0.75, 0.35), /* glsl */ `
+    vec2 q = faceUV(wp, wn);
+    float rib = sin(q.x * 44.0) * 0.5 + 0.5;
+    float n = tri(wp, wn, 0.9); float m = tri(wp, wn, 0.3);
+    float sheet = seam(q.y, 1.9, 0.02);
+    col = mix(col, vec3(0.36, 0.15, 0.07), smoothstep(0.4, 0.7, n) * 0.7);
+    col = mix(col, vec3(0.05, 0.04, 0.035), smoothstep(0.55, 0.8, m) * 0.7);
+    col *= (0.7 + 0.4 * rib) * (1.0 - sheet * 0.5);
+    rough = mix(0.55, 0.95, smoothstep(0.4, 0.7, n));
+    bump = rib * 0.018 - sheet * 0.01 + tri3(wp, wn, 9.0) * 0.003;`, 'corrugated'),
   // versions whose pattern is fixed to the object, for anything that moves (the boat)
   woodL: patch(std('#6b5a48', 0.86), WOOD(1.0), 'wood', true),
   paleWoodL: patch(std('#978c77', 0.9), WOOD(0.8), 'paleWood', true),

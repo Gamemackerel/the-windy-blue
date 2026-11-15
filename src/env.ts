@@ -138,19 +138,30 @@ export class Environment {
           float md = dot(d, uMoonDir);
           c += vec3(0.8, 0.86, 1.0) * smoothstep(0.99975, 0.9999, md) * 2.2 * uMoonGlow;
 
-          // cloud deck
+          // clouds: a broken low deck with lit tops and dark bases, and high streaks above it
           if (d.y > 0.0) {
+            vec2 sunXZ = normalize(uSunDir.xz + vec2(0.0001));
+            float towardSun = pow(max(dot(d, uSunDir), 0.0), 5.0);
+            // high cirrus, stretched along the wind
+            vec2 cu = d.xz / (d.y + 0.3) * vec2(0.5, 2.2) + uTime * vec2(0.0012, 0.0004);
+            float cir = smoothstep(0.52, 0.85, fbm(cu)) * smoothstep(0.05, 0.4, d.y) * 0.5;
+            c = mix(c, mix(uCloudLit, uSunCol, 0.3) * (0.75 + towardSun * 1.2), cir * 0.55);
+
             vec2 uv = d.xz / (d.y + 0.14) * 0.75 + uTime * vec2(0.0045, 0.0018);
-            float n = fbm(uv);
+            float n = fbm(uv) * 0.75 + fbm(uv * 3.1 + 5.0) * 0.25;
             float lo = 0.78 - uCloudCover * 0.55;
-            float dens = smoothstep(lo, lo + 0.3, n);
-            float n2 = fbm(uv + normalize(uSunDir.xz + vec2(0.0001)) * 0.12);
-            float lit = clamp(0.5 + (n - n2) * 3.5, 0.0, 1.0);
-            float towardSun = pow(max(dot(d, uSunDir), 0.0), 4.0);
-            vec3 cc = mix(uCloudDark, uCloudLit, lit * 0.8 + towardSun * 0.5);
-            cc += uSunCol * uSunGlow * towardSun * (1.0 - dens) * 0.6;
+            float dens = smoothstep(lo, lo + 0.26, n);
+            // how much cloud lies between this point and the sun
+            float sh1 = fbm(uv + sunXZ * 0.07) * 0.75 + fbm((uv + sunXZ * 0.07) * 3.1 + 5.0) * 0.25;
+            float sh2 = fbm(uv + sunXZ * 0.2);
+            float shade = clamp((sh1 - n) * 4.0 + (sh2 - n) * 2.0, -1.0, 1.0);
+            float lit = clamp(0.55 - shade * 0.9, 0.0, 1.0);
+            float edge = (1.0 - dens) * dens * 4.0;                       // thin edges glow
+            vec3 cc = mix(uCloudDark, uCloudLit, lit);
+            cc += uSunCol * uSunGlow * (edge * (0.25 + towardSun * 2.2) + towardSun * 0.35);
+            cc *= 0.82 + 0.3 * smoothstep(0.0, 0.5, d.y);
             dens *= smoothstep(0.0, 0.16, d.y);
-            c = mix(c, cc, dens * 0.9);
+            c = mix(c, cc, dens * 0.93);
           }
           // soft haze band at the horizon so sea and sky meet
           c = mix(c, uHorizon, exp(-max(d.y, 0.0) * 26.0) * 0.85);

@@ -343,7 +343,7 @@ export function buildRigs(ctx: Ctx) {
     b.box(CX1, DY + CH / 2, (CZ0 + CZ1) / 2, 0.12, CH, CZ1 - CZ0, wall);
     b.box(-1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall); b.box(1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall);
     b.box(0, DY + CH - 0.15, CZ1, 1.0, 0.3, 0.12, wall, 0, false);
-    b.box(0, DY + CH + 0.06, (CZ0 + CZ1) / 2, CX1 - CX0 + 0.5, 0.12, CZ1 - CZ0 + 0.5, MAT.rust, 0, false);
+    b.box(0, DY + CH + 0.06, (CZ0 + CZ1) / 2, CX1 - CX0 + 0.5, 0.12, CZ1 - CZ0 + 0.5, MAT.corrugated, 0, false);
     b.box(0, DY + 0.05, (CZ0 + CZ1) / 2, CX1 - CX0 - 0.1, 0.03, CZ1 - CZ0 - 0.1, inner, 0, false);
     b.cyl(1.2, -3.6, 0.08, DY + CH, DY + CH + 0.9, MAT.dark, false, 0.08, 8);
     const door = b.box(0.45, DY + 1.0, CZ1 + 0.42, 0.06, 2.0, 0.95, MAT.paleWood, 0.25, false); // hanging open

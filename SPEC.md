@@ -319,10 +319,10 @@ Everything in this spec is implemented and playable from start to finish. An aut
 
 Known gaps against the spec, in rough order of how much they matter:
 
-- **Character fidelity.** People are built from capsules and turned profiles. Proportions, gait, climbing, sitting, smoking, trading and ragdolls all work, but the figures read as stylised mannequins rather than detailed characters. No fingers on people, no cloth simulation.
+- **Character fidelity.** People now have continuous limbs and trunks swept along their joints, sculpted heads with faces, fingered hands, boots, hoods, hats, hair and worn details. They are still stylised rather than photoreal, and there is no cloth simulation.
 - **Mooring and boarding are instant.** There is no stepping-aboard or tying-off animation; the boat glides to its berth and the sailor is placed on the dock.
 - **The satchel** shows the carried items in an arc but the character does not physically open a bag.
-- **Water.** No refraction, screen-space reflections or volumetric light shafts. The sea is opaque with analytic sky reflection, foam, shallows and surf.
-- **Post-processing.** Bloom, vignette, film grain and filmic tone mapping are in (4x multisampling for edges). No temporal anti-aliasing or time-of-day colour grade.
+- **Water.** Opaque, with analytic sky reflection, sun glitter, foam, shallows, surf and a wake. No refraction or reflections of objects.
+- **Rendering.** In: surface relief on every material, wide sun and moon shadows, ambient occlusion, height-and-distance haze that glows toward the light, light shafts, bloom, filmic tone mapping with a grade, vignette and grain, eye adaptation at night and indoors. Not in: temporal anti-aliasing, reflections of objects in each other, global illumination.
 - **Sound** is fully synthesised and has not been mixed by ear on real speakers.
-- **Performance tiers** exist (Low / Medium / High, with automatic step-down on a first run) but have only been measured on one machine.
+- **Performance tiers** exist (Low / Medium / High, with automatic step-down on a first run). On the development machine at 1280x720, High measured roughly 40-50 frames a second and Medium about 95 with the frame cap removed; nothing else has been measured.

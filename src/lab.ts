@@ -59,7 +59,7 @@ export function buildLab(ctx: Ctx) {
   });
 
   // ---------- the rooms ----------
-  const glass = new THREE.MeshPhysicalMaterial({ color: '#9fc0c8', roughness: 0.05, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
+  const glass = new THREE.MeshPhysicalMaterial({ color: '#1c2a30', roughness: 0.04, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 0.4 });
   const rib = MAT.steel, deck = new THREE.MeshStandardMaterial({ color: '#23272a', roughness: 0.6, metalness: 0.5 });
   const H = CEIL - FLOOR, MY = FLOOR + H / 2;
   const pane = (x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
@@ -101,7 +101,7 @@ export function buildLab(ctx: Ctx) {
   const zones = [-8, 0, 8, 16.5];
   zones.forEach((x) => {
     b.box(x, FLOOR + 2.6, -4.85, 0.25, 0.12, 0.12, red, 0, false);
-    const r = new THREE.PointLight('#ff2010', 0, 11, 1.6);
+    const r = new THREE.PointLight('#ff2010', 0, 14, 1.4);
     r.position.set(cx + x, FLOOR + 2.4, cz - 4.2);
     scene.add(r); reds.push(r);
     const sm = white.clone();
@@ -248,7 +248,7 @@ export function buildLab(ctx: Ctx) {
       p.setY(i, -17 - (1 - near) * (5 + Math.max(0, z) * 0.11) + (fbm(x * 0.03 + 9, z * 0.03) - 0.5) * 9 * (1 - near));
     }
     g.computeVertexNormals();
-    const bed = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#4a4f48', roughness: 1 }));
+    const bed = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#23261f', roughness: 1 }));
     bed.position.set(cx, 0, cz);
     out.add(bed);
     // supports under the lab
@@ -264,7 +264,7 @@ export function buildLab(ctx: Ctx) {
     const r = rng(77);
     const kg = new THREE.PlaneGeometry(0.22, 1, 1, 12);
     kg.translate(0, 0.5, 0);
-    const kelpMat = new THREE.MeshStandardMaterial({ color: '#2c3518', roughness: 0.7, side: THREE.DoubleSide });
+    const kelpMat = new THREE.MeshStandardMaterial({ color: '#10160a', roughness: 0.7, side: THREE.DoubleSide });
     const sway = { value: 0 };
     kelpMat.onBeforeCompile = (sh) => {
       sh.uniforms.uSway = sway;
@@ -296,8 +296,8 @@ export function buildLab(ctx: Ctx) {
     out.userData.sway = sway;
 
     // the drowned city, down the slope to the north
-    const cityMat = new THREE.MeshStandardMaterial({ color: '#3a4244', roughness: 0.95 });
-    const winMat = new THREE.MeshStandardMaterial({ color: '#0a0d0e', roughness: 0.4 });
+    const cityMat = new THREE.MeshStandardMaterial({ color: '#161b1c', roughness: 0.95 });
+    const winMat = new THREE.MeshStandardMaterial({ color: '#040506', roughness: 0.4 });
     for (let i = 0; i < 70; i++) {
       const x = (r() - 0.5) * 420, z = 34 + r() * 250;
       const w = 9 + r() * 16, d = 9 + r() * 16, h = 16 + r() * r() * 95;
@@ -363,7 +363,7 @@ export function buildLab(ctx: Ctx) {
   // ---------- behaviour ----------
   const inside = () => pp.y < -4 && Math.hypot(pp.x - cx - 4, pp.z - cz) < 40;
   let wasInside = false;
-  const fogDark = new THREE.Color('#010306'), fogLit = new THREE.Color('#082632');
+  const fogDark = new THREE.Color('#010306'), fogLit = new THREE.Color('#2a6578');
   const ambDark = new THREE.Color('#2a1010'), ambLit = new THREE.Color('#9fb8c4');
 
   world.updaters.push((dt, t) => {
@@ -389,17 +389,17 @@ export function buildLab(ctx: Ctx) {
       const flick = lit[i] > 0.02 && lit[i] < 0.9 ? (Math.sin(t * 60 + i) > 0 ? 1 : 0.35) : 1;
       whites[i].intensity = lit[i] * 42 * flick;
       stripMats[i].emissiveIntensity = lit[i] * 5 * flick;
-      reds[i].intensity = (1 - lit[i]) * 9 * (0.85 + 0.15 * Math.sin(t * 2 + i));
+      reds[i].intensity = (1 - lit[i]) * 26 * (0.85 + 0.15 * Math.sin(t * 2 + i));
     }
     red.emissiveIntensity = 3;
     flood += (floodTarget - flood) * Math.min(1, dt * 0.6);
     const avg = (lit[0] + lit[1] + lit[2] + lit[3]) / 4;
     const day = 0.35 + 0.65 * ctx.env.daylight;
     un.fog.copy(fogDark).lerp(fogLit, flood * day);
-    un.density = 0.075 - 0.062 * flood;
+    un.density = 0.075 - 0.054 * flood;
     un.ambient.copy(ambDark).lerp(ambLit, avg);
-    un.intensity = 0.22 + avg * 0.9 + flood * 0.5;
-    (out.userData.floodMat as THREE.MeshStandardMaterial).emissiveIntensity = flood * 6;
+    un.intensity = 0.55 + avg * 0.6 + flood * 0.5;
+    (out.userData.floodMat as THREE.MeshStandardMaterial).emissiveIntensity = flood * 2.2;
     (out.userData.surf as THREE.Mesh).visible = flood > 0.05;
     const glowK = avg;
     for (const fm of fluids) { fm.emissiveIntensity = glowK * 0.55; fm.color.copy(fluidOff).lerp(fluidOn, glowK * 0.25); }

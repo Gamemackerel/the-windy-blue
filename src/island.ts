@@ -161,6 +161,38 @@ export function buildIsland(ctx: Ctx) {
     }
   }
 
+  // ---------- sea stacks off the weather shore ----------
+  {
+    const mat = patch(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 }), /* glsl */ `
+      float n = tri(wp, wn, 0.35);
+      vec2 q = abs(wn.x) > abs(wn.z) ? wp.zy : wp.xy;
+      float joints = smoothstep(0.42, 0.5, abs(fract(q.x * 0.5 + fbm(q * 0.25) * 1.2) - 0.5));
+      col = mix(vec3(0.02, 0.02, 0.022), vec3(0.085, 0.082, 0.08), n) * mix(1.0, 0.45, joints * (1.0 - abs(wn.y)));
+      col *= 0.7 + 0.6 * streaks(wp, wn, 0.7);
+      col = mix(col, vec3(0.33, 0.3, 0.2), smoothstep(0.75, 0.95, wn.y) * smoothstep(8.0, 14.0, wp.y) * 0.6);   // guano and dry grass on top
+      float wet = smoothstep(1.4, -0.2, wp.y); col *= mix(1.0, 0.4, wet); rough = mix(0.92, 0.3, wet);
+      bump = tri3(wp, wn, 1.4) * 0.12 - joints * 0.06;`, 'stack');
+    for (const [lx, lz, rad, h] of [[-205, -60, 9, 34], [-222, -22, 6, 22], [-196, 28, 12, 27], [-150, 150, 8, 30], [-178, 118, 5, 16], [40, -205, 10, 26], [72, -196, 5, 14]] as const) {
+      const g = new THREE.CylinderGeometry(rad * 0.55, rad, h + 14, 22, 14);
+      const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        const ang = Math.atan2(z, x), up = Math.max(0, y / h + 0.5);
+        // lumpy in plan, stepped in height, and broken off unevenly at the top
+        const k = 1 + (fbm(Math.cos(ang) * 1.6 + lx, Math.sin(ang) * 1.6 + y * 0.05) - 0.5) * 1.5 + (ridge(y * 0.11 + lx, ang * 0.9) - 0.5) * 0.5;
+        const lean = up * up * rad * 0.5;
+        const crown = (fbm(x * 0.25 + lz, z * 0.25) - 0.35) * h * 0.55 * up * up * up;
+        p.setXYZ(i, x * k + lean, y + crown, z * k + lean * 0.4);
+      }
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mat);
+      m.position.set(IX + lx, h / 2 - 7, IZ + lz);
+      m.castShadow = m.receiveShadow = true;
+      scene.add(m);
+      world.addCyl(IX + lx, IZ + lz, rad * 0.95, -20, h);
+    }
+  }
+
   // ---------- dock and dry dock basin ----------
   const SLAB_Y = -0.9, SLAB_H = 5; // top at DECK
   b.box(104, SLAB_Y, 10, 12, SLAB_H, 20, MAT.concrete);         // west apron
@@ -550,7 +582,7 @@ export function buildIsland(ctx: Ctx) {
   // ---------- the yard: sheds, wrecks and clutter ----------
   // an open-sided boat shed
   for (const [x, z] of [[78, 30], [90, 30], [78, 38], [90, 38]] as const) b.box(x, DECK + 2.2, z, 0.4, 4.4, 0.4, MAT.concrete);
-  b.box(84, DECK + 4.55, 34, 14, 0.3, 10, MAT.rust, 0, false);
+  b.box(84, DECK + 4.55, 34, 14, 0.3, 10, MAT.corrugated, 0, false);
   // the ribs of a hull that was never finished
   for (let i = 0; i < 9; i++) {
     const k = i / 8, w = 0.4 + Math.sin(k * Math.PI) * 0.9;
@@ -582,9 +614,9 @@ export function buildIsland(ctx: Ctx) {
   // ---------- the house on the terrace ----------
   const HX = 26, HZ = -51, HY = 9.5;
   b.box(HX, HY + 1.5, HZ, 6, 3, 5, MAT.concrete);
-  b.box(HX, HY + 3.1, HZ, 6.8, 0.25, 5.8, MAT.rust, 0, false);
+  b.box(HX, HY + 3.1, HZ, 6.8, 0.25, 5.8, MAT.corrugated, 0, false);
   b.box(HX + 5.2, HY + 0.1, HZ + 1.5, 4.6, 0.2, 6, MAT.paleWood);           // porch
-  b.box(HX + 5.2, HY + 2.9, HZ + 1.5, 4.8, 0.12, 6.2, MAT.rust, 0, false);  // porch roof
+  b.box(HX + 5.2, HY + 2.9, HZ + 1.5, 4.8, 0.12, 6.2, MAT.corrugated, 0, false);  // porch roof
   for (const [x, z] of [[7.3, -1.3], [7.3, 4.3]] as const) b.bar(HX + x, HY + 0.2, HZ + z, HX + x, HY + 2.9, HZ + z, 0.05, MAT.wood);
   b.box(HX + 3.01, HY + 1.1, HZ + 1.0, 0.06, 2.0, 0.9, MAT.dark, 0, false);  // door
   const winMat = new THREE.MeshStandardMaterial({ color: '#191510', emissive: '#ff9c4a', emissiveIntensity: 0 });

@@ -23,7 +23,7 @@ export interface Atmosphere {
 
 export class Post {
   ao = true; rays = true; bloom = true;
-  private samples = 4;
+  private samples = 2;
   private sceneRT!: THREE.WebGLRenderTarget;
   private half: THREE.WebGLRenderTarget[] = [];
   private quarter: THREE.WebGLRenderTarget[] = [];
@@ -156,7 +156,7 @@ export class Post {
         vec3 g = gl_FragColor.rgb;
         float l = dot(g, vec3(0.299, 0.587, 0.114));
         g = mix(g, g * g * (3.0 - 2.0 * g), 0.34);
-        g = mix(vec3(l), g, 0.94);
+        g = mix(vec3(l), g, 1.05);
         g += (1.0 - smoothstep(0.0, 0.45, l)) * vec3(-0.008, 0.0, 0.014) * (1.0 - uEnclosed);
         g += smoothstep(0.55, 1.0, l) * vec3(0.012, 0.004, -0.012) * uDay;
         float gr = hash(gl_FragCoord.xy * 0.7373 + fract(uTime * 7.31) * vec2(37.0, 91.0)) - 0.5;
@@ -173,9 +173,11 @@ export class Post {
   /** quality: 0 low (haze only), 1 medium (bloom, no multisampling), 2 high (everything) */
   setQuality(q: number) {
     this.ao = q >= 2; this.rays = q >= 1; this.bloom = q >= 1;
-    const samples = q >= 2 ? 4 : 0;
+    const samples = q >= 2 ? 2 : 0;
     if (samples !== this.samples) { this.samples = samples; this.build(); this.setSize(this.w, this.h, 1); }
   }
+
+  setSamples(n: number) { if (n !== this.samples) { this.samples = n; this.build(); this.setSize(this.w, this.h, 1); } }
 
   private build() {
     this.sceneRT?.dispose();

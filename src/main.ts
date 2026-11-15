@@ -211,7 +211,7 @@ function fire() {
 const pauseEl = document.getElementById('pause')!;
 const hintEl = document.getElementById('hint')!;
 let paused = false;
-let quality = Number(localStorage.getItem('ww-quality') ?? 2);
+let quality = params.has('q') ? num('q', 2) : Number(localStorage.getItem('ww-quality') ?? 2);
 function applyQuality(q: number, remember = true) {
   quality = q;
   renderer.setPixelRatio([0.7, 1, Math.min(devicePixelRatio, 2)][q] * (q < 2 ? Math.min(devicePixelRatio, 1) : 1));
@@ -220,7 +220,8 @@ function applyQuality(q: number, remember = true) {
   if (params.has('noao')) post.ao = false;
   if (params.has('norays')) post.rays = false;
   if (params.has('nobloom')) post.bloom = false;
-  env.sun.shadow.mapSize.setScalar(q >= 2 ? 4096 : 2048);
+  env.sun.shadow.mapSize.setScalar(num('shadow', q >= 2 ? 3072 : 2048));
+  if (params.has('msaa')) post.setSamples(num('msaa', 4));
   if (env.sun.shadow.map) { env.sun.shadow.map.dispose(); (env.sun.shadow as any).map = null; }
   env.sun.castShadow = q > 0;
   resize();
@@ -403,4 +404,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
