@@ -11,6 +11,7 @@ export class Builder {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(this.ox + x, this.oy + y, this.oz + z);
     m.castShadow = shadow; m.receiveShadow = true;
+    m.userData.static = true; // may be merged with its neighbours; set false on anything that will move
     this.scene.add(m);
     return m;
   }
@@ -65,4 +66,64 @@ export class Builder {
     const yaw = Math.atan2(bx - ax, bz - az);
     this.world.addBox(this.ox + (ax + bx) / 2, this.oy + y + h / 2, this.oz + (az + bz) / 2, 0.06, h / 2, len / 2, yaw);
   }
+}
+
+/**
+ * Fold the thousands of small fixed parts (rails, rungs, bars, crates) into a
+ * few meshes per material and neighbourhood. Call once, after everything is built.
+ */
+export function mergeStatic(scene: THREE.Scene, cell = 120) {
+  const groups = new Map<string, THREE.Mesh[]>();
+  for (const o of scene.children) {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.userData.static || m.children.length || (m as any).isInstancedMesh) continue;
+    const mat = m.material as THREE.Material;
+    if (Array.isArray(m.material) || mat.transparent || !m.visible || m.renderOrder !== 0) continue;
+    const g = m.geometry;
+    if (!g.attributes.normal || !g.attributes.uv) continue;
+    const key = `${mat.uuid}|${m.castShadow}|${Math.round(m.position.x / cell)}|${Math.round(m.position.z / cell)}`;
+    let list = groups.get(key);
+    if (!list) groups.set(key, (list = []));
+    list.push(m);
+  }
+  let before = 0, after = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => {
+      m.updateMatrixWorld();
+      let g = m.geometry.clone();
+      if (g.index) g = g.toNonIndexed();
+      for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
+      g.applyMatrix4(m.matrixWorld);
+      return g;
+    });
+    const merged = concat(geos);
+    const mesh = new THREE.Mesh(merged, list[0].material);
+    mesh.castShadow = list[0].castShadow;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    for (const m of list) scene.remove(m);
+    before += list.length; after++;
+  }
+  return { before, after };
+}
+
+function concat(geos: THREE.BufferGeometry[]) {
+  let n = 0;
+  for (const g of geos) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  let o = 0;
+  for (const g of geos) {
+    const c = g.attributes.position.count;
+    pos.set(g.attributes.position.array as Float32Array, o * 3);
+    nrm.set(g.attributes.normal.array as Float32Array, o * 3);
+    uv.set(g.attributes.uv.array as Float32Array, o * 2);
+    o += c;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return out;
 }

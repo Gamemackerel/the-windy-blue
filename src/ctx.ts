@@ -3,6 +3,7 @@ import { World } from './world';
 import { Environment } from './env';
 import { Boat } from './boat';
 import { GameState } from './state';
+import { Input } from './input';
 
 /** Everything a location needs in order to build itself. */
 export interface Ctx {
@@ -11,6 +12,9 @@ export interface Ctx {
   env: Environment;
   boat: Boat;
   state: GameState;
+  input: Input;
+  /** freeze the player while a fixed device has their attention */
+  hold: (seconds: number) => void;
   /** world position of the player's offering hand, and of the player */
   playerHand: () => THREE.Vector3;
   playerPos: () => THREE.Vector3;

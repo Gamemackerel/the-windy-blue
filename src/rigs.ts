@@ -160,6 +160,7 @@ export function buildRigs(ctx: Ctx) {
       clumps.push({ x: cx + x, y: DY + 1.45, z: cz + z, r: 0.5, n: 70 });
       for (let k = 0; k < 4; k++) {
         const f = b.mesh(new THREE.SphereGeometry(0.06 + r() * 0.025, 10, 8), fruitMat, x + (r() - 0.5) * 0.5, DY + 1.0 + r() * 0.9, z + (r() - 0.5) * 0.5);
+        f.userData.static = false;
         fruits.push(f);
       }
     }

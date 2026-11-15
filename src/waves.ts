@@ -91,15 +91,23 @@ export function calmAt(x: number, z: number) {
   return c;
 }
 
-// Hook for local disturbances (wakes, the giant). Returns added height.
-type Disturbance = (x: number, z: number, t: number) => number;
-const disturbances: Disturbance[] = [];
-export function addDisturbance(fn: Disturbance) { disturbances.push(fn); }
-function extraHeight(x: number, z: number, t: number) {
+// Local disturbances (the giant's hands, splashes, the dome of water when it
+// rises). Each is a ring or mound: height a * exp(-((d - r) / w)^2).
+export interface Bump { x: number; z: number; r: number; w: number; a: number }
+export const MAX_BUMPS = 6;
+export const bumps: Bump[] = Array.from({ length: MAX_BUMPS }, () => ({ x: 0, z: 0, r: 0, w: 1, a: 0 }));
+export function bumpHeight(x: number, z: number) {
   let h = 0;
-  for (const fn of disturbances) h += fn(x, z, t);
+  for (const b of bumps) {
+    if (b.a === 0) continue;
+    const d = Math.hypot(x - b.x, z - b.z);
+    const k = (d - b.r) / b.w;
+    if (k > 3 || k < -3) continue;
+    h += b.a * Math.exp(-k * k);
+  }
   return h;
 }
+function extraHeight(x: number, z: number, _t: number) { return bumpHeight(x, z); }
 
 const f = (n: number) => {
   const s = n.toFixed(6);
@@ -133,6 +141,21 @@ export function waveGLSL(): string {
   }
   return /* glsl */ `
 uniform vec4 uCalm[${MAX_CALM}];
+uniform vec4 uBump[${MAX_BUMPS}];   // x, z, ring radius, width
+uniform float uBumpA[${MAX_BUMPS}]; // amplitude
+// height in .x and horizontal gradient in .yz
+vec3 bumpField(vec2 p) {
+  vec3 o = vec3(0.0);
+  for (int i = 0; i < ${MAX_BUMPS}; i++) {
+    vec2 dv = p - uBump[i].xy;
+    float d = length(dv);
+    float k = (d - uBump[i].z) / uBump[i].w;
+    float e = uBumpA[i] * exp(-k * k);
+    o.x += e;
+    o.yz += (dv / max(d, 0.001)) * (e * -2.0 * k / uBump[i].w);
+  }
+  return o;
+}
 float calmAt(vec2 p) {
   float c = 1.0;
   for (int i = 0; i < ${MAX_CALM}; i++) {
@@ -143,7 +166,9 @@ float calmAt(vec2 p) {
 }
 vec3 waveDisp(vec2 p, float t, float cell) {
   vec3 d = vec3(0.0); float th; float at;${disp}
-  return d * calmAt(p);
+  d *= calmAt(p);
+  d.y += bumpField(p).x;
+  return d;
 }
 // returns xyz = unnormalised normal, sets fold (crest pinch) and h (height).
 // px is the size of a pixel on the water in metres; waves finer than that fade out.
@@ -151,6 +176,8 @@ vec3 waveNormal(vec2 p, float t, float px, out float fold, out float h) {
   vec3 n = vec3(0.0, 1.0, 0.0); float th; float c; float s; float at; fold = 0.0; h = 0.0;${nrm}
   float calm = calmAt(p);
   n.xz *= calm; fold *= calm; h *= calm;
+  vec3 bf = bumpField(p);
+  n.xz -= bf.yz; h += bf.x; fold += length(bf.yz) * 0.55;
   n.y = 1.0 - fold;
   return n;
 }

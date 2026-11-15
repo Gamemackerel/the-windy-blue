@@ -10,7 +10,7 @@ import { makeItem, ItemId } from './items';
 
 const RADIUS = 0.3;
 const WALK = 2.1, RUN = 4.8;
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _t = new THREE.Vector3(), _u = new THREE.Vector3();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _t = new THREE.Vector3(), _u = new THREE.Vector3(), _m4 = new THREE.Matrix4();
 const POLE_KNEE = new THREE.Vector3(0, 0.3, 1), POLE_ELBOW = new THREE.Vector3(0, -0.6, -1), POLE_ELBOW_OUT = new THREE.Vector3(0, -1, -0.2);
 
 const lerpAngle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
@@ -25,6 +25,8 @@ export class Player {
   held: string | null = null;
   target: Interactable | null = null;
   speed = 0;
+  /** world direction the revolver is being aimed along, or null */
+  aimDir: THREE.Vector3 | null = null;
   private gait: GaitState = newGait();
   private velY = 0;
   private ladder: Ladder | null = null;
@@ -145,7 +147,22 @@ export class Player {
     });
     this.poseHands(dt);
     this.lookAt(dt, camYaw);
+    if (this.aimDir) {
+      this.yaw = lerpAngle(this.yaw, Math.atan2(this.aimDir.x, this.aimDir.z), Math.min(1, dt * 14));
+      this.poseAim();
+    }
     f.refresh(0);
+  }
+
+  /** right arm out along the line of aim */
+  private poseAim() {
+    const f = this.figure, p = f.joints;
+    f.group.updateMatrixWorld();
+    _w.copy(this.aimDir!).transformDirection(_m4.copy(f.group.matrixWorld).invert());
+    _t.copy(p[J.shR]).addScaledVector(_w, 0.56);
+    _t.x += 0.1;
+    solveIK(p[J.shR], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW_OUT, p[J.elR], p[J.haR]);
+    f.headYaw += (Math.atan2(_w.x, _w.z) - f.headYaw) * 0.3;
   }
 
   /** the hand lifts toward things that can be used, and reaches when using them */
@@ -320,6 +337,7 @@ export class Player {
     const glance = Math.max(0, Math.sin(t * 0.37) - 0.86) * 5;
     f.headYaw += (-this.sideSmooth * 0.5 + s.rudder * 0.3 - f.headYaw) * Math.min(1, dt * 3);
     f.headPitch += (-glance * 0.5 - f.headPitch) * Math.min(1, dt * 3);
+    if (this.aimDir) this.poseAim();
     f.refresh(-this.sideSmooth * 0.4);
   }
 }

@@ -104,6 +104,8 @@ export class Boat {
   hasSail = true;
   /** 0 = sail lowered, 1 = fully hoisted */
   sailUp = 1;
+  /** above zero while the boat is going down */
+  sinking = 0;
   /** speed lost in the last grounding, for sound and feel */
   bump = 0;
   private mastParts: THREE.Object3D[] = [];
@@ -290,18 +292,40 @@ export class Boat {
     const s = this.state;
     this.bump = 0;
     const sn = Math.sin(s.psi), cs = Math.cos(s.psi);
-    let hit = false;
     for (const off of [2.2, 0, -2.0]) {
       const x = s.x + sn * off, z = s.z + cs * off;
-      if (world.terrainHeight(x, z) > -0.5) { hit = true; break; }
+      if (world.terrainHeight(x, z) > -0.5) {
+        // aground: back off to where we were
+        this.bump = Math.abs(s.u);
+        s.x = px; s.z = pz;
+        s.u *= -0.25; s.v = 0;
+        return;
+      }
       _v.set(x, -0.3, z);
       world.resolve(_v, 1.0, 1.0);
-      if (Math.abs(_v.x - x) + Math.abs(_v.z - z) > 1e-4) { hit = true; break; }
+      const dx = _v.x - x, dz = _v.z - z;
+      if (Math.abs(dx) + Math.abs(dz) > 1e-4) {
+        // against something solid: slide along it, losing way
+        this.bump = Math.abs(s.u);
+        s.x += dx; s.z += dz;
+        s.u *= 0.9; s.v = 0;
+      }
     }
-    if (hit) {
-      this.bump = Math.abs(s.u);
-      s.x = px; s.z = pz;
-      s.u *= -0.25; s.v = 0;
+  }
+
+  private patches: THREE.Mesh[] = [];
+  /** rough repairs from each time the boat has been lost */
+  setPatches(n: number) {
+    const spots: [number, number, number][] = [[0.35, 0.6, 0.2], [0.6, -0.7, 0.35], [0.22, -0.55, 0.1], [0.75, 0.75, 0.3], [0.48, 0.3, -0.05], [0.12, 0.8, 0.25], [0.66, -0.35, 0.05], [0.3, -0.85, 0.3]];
+    while (this.patches.length < Math.min(n, spots.length)) {
+      const [s, u, tilt] = spots[this.patches.length];
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.26, 0.03), MAT.paleWood);
+      hullPoint(s, u, m.position);
+      m.position.x *= 1.03;
+      m.rotation.set(tilt, Math.PI / 2 - u * 0.25, tilt * 2);
+      m.castShadow = true;
+      this.group.add(m);
+      this.patches.push(m);
     }
   }
 
@@ -342,8 +366,10 @@ export class Boat {
     this.pitch += (targetPitch - this.pitch) * a;
     this.roll += (targetRoll - this.roll) * a;
 
-    this.group.position.set(s.x, this.y + 0.06, s.z);
-    this.group.rotation.set(-this.pitch, s.psi, this.roll - s.heel);
+    if (this.sinking > 0) this.sinking += dt;
+    const down = this.sinking > 0 ? (this.sinking - 1) : 0;
+    this.group.position.set(s.x, this.y + 0.06 - down * 1.6, s.z);
+    this.group.rotation.set(-this.pitch - down * 0.5, s.psi, this.roll - s.heel + down * 0.9);
     this.boomPivot.rotation.y = -s.boom;
     this.rudderPivot.rotation.y = -s.rudder * 0.5;
   }

@@ -96,12 +96,21 @@ export function buildIsland(ctx: Ctx) {
     mesh.receiveShadow = true;
     scene.add(mesh);
 
-    // dry grass tufts
+    // dry grass: each tuft is a spray of thin blades, lit like the ground it grows from
     const r = rng(7);
-    const tuft = new THREE.ConeGeometry(0.11, 0.6, 3, 1, true);
-    tuft.translate(0, 0.3, 0);
-    const COUNT = 16000;
-    const inst = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ color: '#a8935a', roughness: 1, side: THREE.DoubleSide }), COUNT);
+    const tp: number[] = [], tn: number[] = [];
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * 6.283 + r() * 0.6, lean = 0.12 + r() * 0.28, h = 0.32 + r() * 0.35, w = 0.022;
+      const bx = Math.cos(a) * 0.05, bz = Math.sin(a) * 0.05;
+      const px = -Math.sin(a) * w, pz = Math.cos(a) * w;
+      tp.push(bx - px, 0, bz - pz, bx + px, 0, bz + pz, bx + Math.cos(a) * lean, h, bz + Math.sin(a) * lean);
+      for (let v = 0; v < 3; v++) tn.push(0, 1, 0);
+    }
+    const tuft = new THREE.BufferGeometry();
+    tuft.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
+    tuft.setAttribute('normal', new THREE.Float32BufferAttribute(tn, 3));
+    const COUNT = 30000;
+    const inst = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide }), COUNT);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
     const colr = new THREE.Color();
     let n = 0;
@@ -109,15 +118,16 @@ export function buildIsland(ctx: Ctx) {
       const lx = (r() - 0.5) * 340, lz = (r() - 0.5) * 340;
       const h = localHeight(lx, lz);
       if (h < 5.2) continue;
+      if (Math.hypot(lx - 28, lz + 50) < 16) continue; // the terrace round the house is bare
       const sl = Math.abs(localHeight(lx + 1, lz) - h) + Math.abs(localHeight(lx, lz + 1) - h);
-      if (sl > 0.4) continue;
-      if (fbm(lx * 0.05 + 3, lz * 0.05) < 0.42) continue;
-      pv.set(IX + lx, h - 0.05, IZ + lz);
-      q.setFromEuler(new THREE.Euler((r() - 0.5) * 0.5, r() * 6.28, (r() - 0.5) * 0.5));
-      const s = 0.6 + r() * 1.3;
-      sc.set(s, s * (0.7 + r() * 0.9), s);
+      if (sl > 0.45) continue;
+      if (fbm(lx * 0.05 + 3, lz * 0.05) < 0.4) continue;
+      pv.set(IX + lx, h - 0.03, IZ + lz);
+      q.setFromEuler(new THREE.Euler(0, r() * 6.283, 0));
+      const s = 0.7 + r() * 1.1;
+      sc.set(s, s * (0.7 + r() * 0.8), s);
       inst.setMatrixAt(n, m4.compose(pv, q, sc));
-      inst.setColorAt(n, colr.setHSL(0.115 + r() * 0.02, 0.22 + r() * 0.15, 0.22 + r() * 0.16));
+      inst.setColorAt(n, colr.setHSL(0.12 + r() * 0.02, 0.2 + r() * 0.12, 0.3 + r() * 0.16));
       n++;
     }
     inst.count = n;
@@ -166,6 +176,7 @@ export function buildIsland(ctx: Ctx) {
 
   // sea gate
   const gate = b.box(130.2, -0.6, 10, 0.45, 4.4, 6.6, MAT.rust, 0, false);
+  gate.userData.static = false;
   const gateCol = world.addBox(IX + 130.2, -0.6, IZ + 10, 0.3, 2.2, 3.3);
   for (const z of [6.6, 13.4]) b.box(130.2, 0.6, z, 0.9, 3.4, 0.5, MAT.steel, 0, false);
 
@@ -281,6 +292,7 @@ export function buildIsland(ctx: Ctx) {
     const size = 0.24 + units * 0.08;
     const mesh = b.box(lx, DECK + size / 2, lz, size, size, size, MAT.steel, i * 0.7, false);
     mesh.userData.size = size;
+    mesh.userData.static = false;
     for (let k = 0; k < units; k++) {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(size * 1.02, 0.035, size * 1.02), MAT.bone);
       stripe.position.y = -size / 2 + (size / (units + 1)) * (k + 1);
@@ -353,6 +365,7 @@ export function buildIsland(ctx: Ctx) {
   b.box(LF.x, DECK + LF.h + 0.15, LF.z, LF.w + 0.8, 0.3, LF.d + 0.8, MAT.concrete, 0, false);                     // roof
   b.box(LF.x, DECK - 0.02, LF.z, LF.w, 0.1, LF.d, MAT.concrete, 0, false);                                         // floor
   const door = b.box(LF.x, DECK + 1.25, LF.z + LF.d / 2 - 0.2, 2, 2.5, 0.16, MAT.rust, 0, false);
+  door.userData.static = false;
   const doorCol = world.addBox(IX + LF.x, DECK + 1.25, IZ + LF.z + LF.d / 2 - 0.2, 1, 1.25, 0.2);
   const eyeMat = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.2, emissive: '#ffd9a0', emissiveIntensity: 0 });
   const eye = b.mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 20), eyeMat, LF.x, DECK + 3.2, LF.z + LF.d / 2 + 0.02, false);
@@ -362,6 +375,7 @@ export function buildIsland(ctx: Ctx) {
   b.box(LF.x, DECK + 0.4, LF.z - 2.4, 2.6, 0.8, 0.7, MAT.wood);
   const bundle = b.mesh(new THREE.CapsuleGeometry(0.22, 2.2, 6, 12), new THREE.MeshStandardMaterial({ color: '#c9c0aa', roughness: 0.95 }), LF.x, DECK + 1.0, LF.z - 2.4);
   bundle.rotation.z = Math.PI / 2;
+  bundle.userData.static = false;
   for (const dx of [-0.7, 0, 0.7]) {
     const tie = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.02, 6, 14), MAT.rope);
     tie.rotation.x = Math.PI / 2; tie.position.y = dx;

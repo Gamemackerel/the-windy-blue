@@ -13,6 +13,9 @@ export class OrbitRig {
   height = 1.7;
   /** true below the surface, where the sea must not push the camera up */
   submerged = false;
+  /** over-the-shoulder aiming */
+  aim = false;
+  private aimK = 0;
   private lastHeading: number | null = null;
   private target = new THREE.Vector3();
   private ready = false;
@@ -40,9 +43,14 @@ export class OrbitRig {
     if (!this.ready) { this.target.copy(focus); this.ready = true; }
     this.target.lerp(focus, Math.min(1, dt * 9));
 
+    this.aimK += ((this.aim ? 1 : 0) - this.aimK) * Math.min(1, dt * 9);
+    const fov = 52 - 14 * this.aimK;
+    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     const cp = Math.cos(this.pitch);
     const cam = this.camera;
-    const tx = this.target.x, ty = this.target.y + this.h, tz = this.target.z;
+    // when aiming, the view slides over the right shoulder
+    const ox = -Math.cos(this.yaw) * 0.5 * this.aimK, oz = Math.sin(this.yaw) * 0.5 * this.aimK;
+    const tx = this.target.x + ox, ty = this.target.y + this.h + 0.12 * this.aimK, tz = this.target.z + oz;
     const dx = Math.sin(this.yaw) * cp, dy = Math.sin(this.pitch), dz = Math.cos(this.yaw) * cp;
     // pull in if the ground or a wall is in the way
     let d = this.dist;
