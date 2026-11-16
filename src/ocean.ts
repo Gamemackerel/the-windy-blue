@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Environment, SKY_GLSL, NOISE_GLSL } from './env';
-import { waveGLSL, calmZones, MAX_CALM, bumps, MAX_BUMPS } from './waves';
+import { waveGLSL, calmZones, MAX_CALM, bumps, MAX_BUMPS, ampScale, steepScale, rogue, sea } from './waves';
 
 const SEG = 320;      // grid resolution
 const RADIUS = 4200;  // half-extent of the sea mesh (m)
@@ -21,6 +21,8 @@ export class Ocean {
       uCalm: { value: Array.from({ length: MAX_CALM }, () => new THREE.Vector4(0, 0, -2, -1)) },
       uBump: { value: Array.from({ length: MAX_BUMPS }, () => new THREE.Vector4(0, 0, 0, 1)) },
       uBumpA: { value: new Float32Array(MAX_BUMPS) },
+      uAmp: { value: ampScale }, uSteep: { value: steepScale }, uRogue: { value: new THREE.Vector4(0, 1, -1e7, 0) },
+      uChop: { value: 1 }, uWhite: { value: 0 },
       uShoal: { value: new THREE.Vector4(0, 0, 1, 0) }, // x, z, lagoon radius, blue-hole radius
       uShoalCol: { value: new THREE.Color('#6f8f96') },
       uWake: { value: Array.from({ length: WAKE_N }, () => new THREE.Vector4(0, 0, 1, 0)) },
@@ -35,6 +37,8 @@ export class Ocean {
         uniform vec2 uCenter;
         varying vec3 vWorld;
         varying vec2 vRest;
+        varying float vCalm;
+        varying vec3 vField;
         ${waveGLSL()}
         const float R = ${RADIUS.toFixed(1)};
         const float A = ${LINEAR.toFixed(4)};
@@ -46,8 +50,10 @@ export class Ocean {
           vec2 dw = (A + (1.0 - A) * 3.0 * ag * ag) * R / ${(SEG / 2).toFixed(1)};
           float cell = max(dw.x, dw.y);
           vec2 rest = uCenter + w;
-          vec3 d = waveDisp(rest, uTime, cell);
-          vec3 p = vec3(rest.x + d.x, d.y, rest.y + d.z);
+          vCalm = calmAt(rest);
+          vField = seaField(rest, vCalm);
+          vec3 d = waveDisp(rest, uTime, cell, vCalm);
+          vec3 p = vec3(rest.x + d.x, d.y + vField.x, rest.y + d.z);
           vWorld = p;
           vRest = rest;
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
@@ -76,6 +82,9 @@ export class Ocean {
         }
         varying vec3 vWorld;
         varying vec2 vRest;
+        varying float vCalm;
+        varying vec3 vField;
+        uniform float uChop; uniform float uWhite;
         ${SKY_GLSL}
         ${NOISE_GLSL}
         float fbm3(vec2 p) { return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.25 + vnoise(p * 4.1 + 3.7) * 0.25; }
@@ -88,17 +97,24 @@ export class Ocean {
 
           float px = max(length(fwidth(vRest)), 0.001);
           float fold; float h;
-          vec3 n = waveNormal(vRest, uTime, px, fold, h);
-          n.xz += rippleSlope(vRest, uTime, px);
-          // wind chop at two scales from drifting noise, so the surface never settles into stripes
-          vec2 q1 = vRest * 0.42 + uTime * vec2(0.11, 0.07);
-          vec2 q2 = vRest * 1.9 + uTime * vec2(-0.23, 0.17);
-          float e1 = 0.35, e2 = 0.12;
-          float a0 = fbm3(q1), b0 = fbm3(q2);
-          vec2 g1 = vec2(fbm3(q1 + vec2(e1, 0.0)) - a0, fbm3(q1 + vec2(0.0, e1)) - a0) / e1;
-          vec2 g2 = vec2(fbm3(q2 + vec2(e2, 0.0)) - b0, fbm3(q2 + vec2(0.0, e2)) - b0) / e2;
-          n.xz -= g1 * 0.16 * clamp((2.4 / px - 2.0) / 4.0, 0.0, 1.0);
-          n.xz -= g2 * 0.07 * clamp((0.5 / px - 2.0) / 4.0, 0.0, 1.0);
+          vec3 n = waveNormal(vRest, uTime, px, vCalm, fold, h);
+          n.xz -= vField.yz; h += vField.x; fold += length(vField.yz) * 0.55;
+          n.y = 1.0 - fold;
+          // fine structure only where a pixel is small enough to show it
+          if (px < 1.6) n.xz += rippleSlope(vRest, uTime, px) * uChop;
+          if (px < 1.2) {
+            // wind chop from drifting noise, so the surface never settles into stripes
+            vec2 q1 = vRest * 0.42 + uTime * vec2(0.11, 0.07);
+            float e1 = 0.35, a0 = fbm3(q1);
+            vec2 g1 = vec2(fbm3(q1 + vec2(e1, 0.0)) - a0, fbm3(q1 + vec2(0.0, e1)) - a0) / e1;
+            n.xz -= g1 * 0.16 * uChop * clamp((2.4 / px - 2.0) / 4.0, 0.0, 1.0);
+            if (px < 0.25) {
+              vec2 q2 = vRest * 1.9 + uTime * vec2(-0.23, 0.17);
+              float e2 = 0.12, b0 = fbm3(q2);
+              vec2 g2 = vec2(fbm3(q2 + vec2(e2, 0.0)) - b0, fbm3(q2 + vec2(0.0, e2)) - b0) / e2;
+              n.xz -= g2 * 0.07 * uChop * clamp((0.5 / px - 2.0) / 4.0, 0.0, 1.0);
+            }
+          }
           vec3 N = normalize(n);
 
           float ndv = max(dot(N, V), 0.0);
@@ -141,22 +157,31 @@ export class Ocean {
 
           // the boat's wake: churned foam that spreads and fades behind it
           float wake = 0.0;
-          for (int i = 0; i < ${WAKE_N}; i++) {
-            float wd = distance(vWorld.xz, uWake[i].xy);
-            wake = max(wake, smoothstep(uWake[i].z, uWake[i].z * 0.35, wd) * uWake[i].w);
+          if (dist < 160.0) {
+            for (int i = 0; i < ${WAKE_N}; i++) {
+              float wd = distance(vWorld.xz, uWake[i].xy);
+              wake = max(wake, smoothstep(uWake[i].z, uWake[i].z * 0.35, wd) * uWake[i].w);
+            }
+            if (wake > 0.0) wake *= smoothstep(0.42, 0.72, fbm(vRest * 2.6 - uTime * vec2(0.05, 0.02)) + wake * 0.3) * 0.8;
           }
-          wake *= smoothstep(0.42, 0.72, fbm(vRest * 2.6 - uTime * vec2(0.05, 0.02)) + wake * 0.3) * 0.8;
 
           float lap = sin(uTime * 0.8 + fbm(vRest * 0.25) * 7.0) * 0.25 + 0.3;
           float wash = smoothstep(lap + 0.75, lap, depth) * smoothstep(0.15, 0.55, fbm(vRest * 2.2 + uTime * vec2(0.07, 0.04)) + smoothstep(0.5, 0.0, depth) * 0.4);
           wash = max(wash, smoothstep(0.22, 0.02, depth));
 
-          // foam on pinched crests, broken up at two scales
-          float nearF = 1.0 - smoothstep(150.0, 700.0, dist);
-          float fn = fbm(vRest * 0.4 + uTime * vec2(0.05, 0.02));
-          float ft = fbm(vRest * 3.1 - uTime * vec2(0.08, 0.03));
-          float foam = smoothstep(0.40, 0.56, fold + (fn - 0.5) * 0.3) * nearF;
-          foam *= smoothstep(0.25, 0.6, ft + foam * 0.35);
+          // whitecaps: on pinched crests always, and more and more freely as the wind gets up
+          float foam = 0.0;
+          if (dist < 900.0) {
+            float nearF = 1.0 - smoothstep(250.0, 900.0, dist);
+            float fn = fbm(vRest * 0.4 + uTime * vec2(0.05, 0.02));
+            float thr = 0.42 - 0.2 * uWhite;
+            foam = smoothstep(thr, thr + 0.16, fold + (fn - 0.5) * (0.3 + 0.25 * uWhite)) * nearF;
+            if (foam > 0.0 && dist < 260.0) foam *= smoothstep(0.25, 0.6, fbm(vRest * 3.1 - uTime * vec2(0.08, 0.03)) + foam * 0.35);
+            // spindrift: long streaks of foam lying down the wind in a gale
+            foam = max(foam, smoothstep(0.62, 0.8, fbm3(vRest * vec2(0.035, 0.4) + uTime * vec2(0.01, 0.06))) * smoothstep(0.55, 1.0, uWhite) * 0.55 * nearF * vCalm);
+            // the breaking crest of a great wave
+            foam = max(foam, smoothstep(0.55, 0.95, vField.x / max(uRogue.w, 0.001)) * step(0.5, uRogue.w) * (0.5 + 0.5 * fn));
+          }
           vec3 foamCol = vec3(0.86, 0.87, 0.84) * (uAmbient * 1.4 + uLightCol * 0.45 * (0.4 + sun));
           col = mix(col, foamCol, clamp(max(max(foam, wash * 0.9), wake), 0.0, 1.0) * 0.9);
 
@@ -197,6 +222,8 @@ export class Ocean {
   update(focus: THREE.Vector3, camPos: THREE.Vector3) {
     (this.uniforms.uCenter.value as THREE.Vector2).set(focus.x, focus.z);
     (this.uniforms.uCamPos.value as THREE.Vector3).copy(camPos);
+    (this.uniforms.uRogue.value as THREE.Vector4).set(rogue.dx, rogue.dz, rogue.off, rogue.amp);
+    this.uniforms.uChop.value = sea.chop; this.uniforms.uWhite.value = sea.white;
     const bu = this.uniforms.uBump.value as THREE.Vector4[], ba = this.uniforms.uBumpA.value as Float32Array;
     for (let i = 0; i < MAX_BUMPS; i++) { const b = bumps[i]; bu[i].set(b.x, b.z, b.r, Math.max(b.w, 0.01)); ba[i] = b.a; }
     const calm = this.uniforms.uCalm.value as THREE.Vector4[];

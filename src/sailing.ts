@@ -18,6 +18,8 @@ export interface SailState {
   awa: number;       // apparent wind angle off the bow (rad, 0 = head to wind)
   aws: number;       // apparent wind speed
   trimAssist: number; // seconds since the player last touched the sheet
+  side: number;       // sideways force from the sail (N), + toward port
+  over: number;       // seconds spent laid flat: at 1 the boat is over
 }
 
 export interface SailInput {
@@ -36,7 +38,7 @@ const BEST_ALPHA = 0.33;
 export function createSailState(x = 0, z = 0, psi = 0): SailState {
   return {
     x, z, psi, u: 0, v: 0, r: 0, sheet: 0.6, rudder: 0, boom: 0, alpha: 0,
-    heel: 0, drive: 0, awa: 0, aws: 0, trimAssist: 99,
+    heel: 0, drive: 0, awa: 0, aws: 0, trimAssist: 99, side: 0, over: 0,
   };
 }
 
@@ -74,8 +76,10 @@ export function stepSailing(s: SailState, inp: SailInput, wx: number, wz: number
   } else {
     s.trimAssist += dt;
     if (s.trimAssist > 2.5) {
-      const ideal = Math.min(SHEET_MAX, Math.max(SHEET_MIN, free - BEST_ALPHA));
-      const rate = Math.min(1, (s.trimAssist - 2.5) * 0.5) * 0.35;
+      // in a blow the helping hand spills wind: it eases until the boat is no longer pressed
+      const spill = Math.max(0, Math.min(1, (Math.abs(s.side) - 1100) / 1300));
+      const ideal = Math.min(SHEET_MAX, Math.max(SHEET_MIN, free - BEST_ALPHA * (1 - 0.88 * spill)));
+      const rate = Math.min(1, (s.trimAssist - 2.5) * 0.5) * (0.35 + spill * 1.2);
       s.sheet += Math.max(-rate * dt, Math.min(rate * dt, ideal - s.sheet));
     }
   }
@@ -108,9 +112,12 @@ export function stepSailing(s: SailState, inp: SailInput, wx: number, wz: number
     Ff = q * (cl * lz + cd * wzl) + wind * wzl;
   }
   s.drive = Ff;
+  s.side = Fl;
 
   // hull
-  const dragF = 18 * s.u + 8 * s.u * Math.abs(s.u);
+  // past hull speed the water piles up: a small boat does not plane however hard it blows
+  const fast = Math.max(0, Math.abs(s.u) - 7.5);
+  const dragF = 18 * s.u + 8 * s.u * Math.abs(s.u) + Math.sign(s.u) * 160 * fast * fast;
   s.u += ((Ff - dragF) / MASS) * dt;
   s.v += (Fl / MASS) * 0.5 * dt;
   s.v -= s.v * Math.min(1, 4.5 * dt); // keel resists leeway
@@ -125,9 +132,12 @@ export function stepSailing(s: SailState, inp: SailInput, wx: number, wz: number
   s.r += yawAcc * dt;
   s.psi += s.r * dt;
 
-  // heel from side force; never capsizes
-  const heelTarget = Math.max(-0.34, Math.min(0.34, (Fl / 900) * 0.3));
+  // heel from side force. In ordinary weather the hull stiffens and holds; pressed far beyond that,
+  // with the sheet held in, it goes on over.
+  const press = Math.max(0, Math.abs(Fl) - 2100) / 1500;
+  const heelTarget = Math.sign(Fl) * (Math.min(0.34, (Math.abs(Fl) / 900) * 0.3) + Math.min(1.1, press * 0.8));
   s.heel += (heelTarget - s.heel) * Math.min(1, dt * 2.2);
+  s.over = Math.abs(s.heel) > 0.9 ? s.over + dt : Math.max(0, s.over - dt * 2);
 
   const sn2 = Math.sin(s.psi), cs2 = Math.cos(s.psi);
   s.x += (s.u * sn2 + s.v * cs2) * dt;

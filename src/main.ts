@@ -24,6 +24,7 @@ import { mergeStatic } from './build';
 import { Post } from './post';
 import { scatterJunk } from './junk';
 import { Arms } from './arms';
+import { Weather } from './weather';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -81,6 +82,9 @@ env.timeScale = num('ts', 1);
 env.days = num('days', state.data.day + env.time);
 const ocean = new Ocean(scene, env);
 const wind = new Wind();
+const weather = new Weather();
+if (params.has('sea')) weather.fixed = num('sea', 0.35);
+weather.onRogue = () => audio.play('rogue', undefined, 1.6);
 const world = new World();
 const boat = new Boat(scene, 0, 0, 0);
 boat.mode = 'cradle';
@@ -379,6 +383,7 @@ function frame() {
     }
   }
 
+  weather.update(dt, wind, env, player.pos);
   wind.update(dt);
   const t = env.elapsed + dt; // matches the value the shaders will see this frame
   const prevTime = env.time;
@@ -423,6 +428,7 @@ function frame() {
   }
   pushX = pushZ = 0;
   boat.update(dt, t, helm, wind, world);
+  if (boat.capsized) { boat.capsized = false; boat.state.over = 0; wreckBoat(); }
   // lay down the wake
   {
     const wk = ocean.wake, s = boat.state, moving = boat.mode === 'sailing' ? Math.min(1, Math.abs(s.u) / 4) : 0;
@@ -565,4 +571,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

@@ -4,7 +4,7 @@
 // Local frame: +Z forward, +Y up, +X port.
 import * as THREE from 'three';
 import { createSailState, stepSailing, SailState, SailInput } from './sailing';
-import { waveHeight } from './waves';
+import { waveHeight, rogue, rogueHeight } from './waves';
 import { Wind } from './wind';
 import { World, Mooring } from './world';
 import { MAT, patch } from './materials';
@@ -105,6 +105,9 @@ export class Boat {
   hasSail = true;
   /** 0 = sail lowered, 1 = fully hoisted */
   sailUp = 1;
+  /** set when the boat has been knocked flat by wind or sea; the main loop decides what follows */
+  capsized = false;
+  private flat = 0;
   /** above zero while the boat is going down */
   sinking = 0;
   /** speed lost in the last grounding, for sound and feel */
@@ -402,6 +405,14 @@ export class Boat {
     const a = Math.min(1, dt * 5);
     this.pitch += (targetPitch - this.pitch) * a;
     this.roll += (targetRoll - this.roll) * a;
+    // laid over by the wind, or rolled by a sea taken on the beam
+    if (this.mode === 'sailing' && dt < 1) {
+      const lean = Math.abs(this.roll - s.heel);
+      this.flat = lean > 1.0 ? this.flat + dt : Math.max(0, this.flat - dt * 2);
+      const beamOn = 1 - Math.abs(sn * rogue.dx + cs * rogue.dz);
+      const crest = rogueHeight(s.x, s.z);
+      if (s.over > 1 || this.flat > 0.5 || (crest > 5.5 && beamOn > 0.45)) this.capsized = true;
+    }
 
     if (this.sinking > 0) this.sinking += dt;
     const down = this.sinking > 0 ? (this.sinking - 1) : 0;

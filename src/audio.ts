@@ -144,7 +144,7 @@ export class Audio {
     const L = this.layers, now = c.currentTime;
     const set = (n: string, v: number, tc = 0.4) => L[n].gain.gain.setTargetAtTime(Math.max(0, v), now, tc);
     const shelter = m.submerged ? 0 : m.indoors ? 0.35 : 1;
-    const w = Math.min(1.6, m.wind / 9) * (1 + Math.max(0, m.height) / 60);
+    const w = Math.min(2.6, Math.pow(m.wind / 9, 1.3)) * (1 + Math.max(0, m.height) / 60);
     this.gustT += dt;
     const gust = 0.8 + 0.25 * Math.sin(this.gustT * 0.37) + 0.15 * Math.sin(this.gustT * 1.3);
     set('wind', 0.11 * w * gust * shelter, 0.8);
@@ -152,7 +152,7 @@ export class Audio {
     set('windHigh', 0.012 * w * gust * (m.sailing ? 1.6 : 0.5 + Math.max(0, m.height) / 40) * shelter, 0.8);
     const near = Math.exp(-Math.max(0, m.height) / 30);
     // the sea falls away, and loses its hiss, as you go inland
-    set('sea', 0.2 * near * shelter * (1 - 0.85 * m.inland) * (0.8 + 0.2 * Math.sin(this.gustT * 0.5)), 1);
+    set('sea', (0.08 + 0.13 * Math.min(2.4, m.wind / 9)) * near * shelter * (1 - 0.85 * m.inland) * (0.8 + 0.2 * Math.sin(this.gustT * 0.5)), 1);
     L.sea.filter.frequency.setTargetAtTime(420 - 250 * m.inland, now, 1);
     set('hull', m.sailing ? Math.min(0.09, Math.abs(m.boatSpeed) * 0.012) : 0, 0.3);
     set('luff', m.sailing ? 0.07 * m.luff * (0.5 + 0.5 * Math.sin(this.gustT * 23)) : 0, 0.05);
@@ -209,6 +209,7 @@ const RECIPES: Record<string, Recipe> = {
   scrape: (a, o, t) => { a.noise(o, t, 0.7, 'bandpass', 420, 260, 3, 0.4, 0.05); a.sine(o, t, 0.4, 70, 45, 0.3); },
   shot: (a, o, t) => { a.noise(o, t, 0.09, 'highpass', 900, 400, 0.5, 1.0, 0.001); a.sine(o, t, 0.35, 150, 40, 0.9, 'sine', 0.001); a.noise(o, t + 0.05, 1.8, 'lowpass', 1800, 250, 0.4, 0.35, 0.02); a.noise(o, t + 0.5, 2.6, 'lowpass', 700, 160, 0.4, 0.12, 0.3); },
   dry: (a, o, t) => { a.noise(o, t, 0.04, 'bandpass', 3200, 2000, 3, 0.25); a.sine(o, t, 0.08, 900, 700, 0.04, 'triangle'); },
+  rogue: (a, o, t) => { a.noise(o, t, 34, 'lowpass', 60, 420, 0.6, 0.9, 22); a.sine(o, t, 34, 22, 34, 0.7, 'sine', 20); a.noise(o, t + 20, 16, 'highpass', 1400, 2400, 0.4, 0.25, 9); },
   hm: (a, o, t) => { const f = 105 + Math.random() * 30; a.sine(o, t, 0.32, f, f * 0.86, 0.16, 'sawtooth', 0.05, 7); a.noise(o, t, 0.3, 'bandpass', 420, 300, 2, 0.06, 0.05); },
   grunt: (a, o, t) => { a.sine(o, t, 0.35, 150, 95, 0.25, 'sawtooth', 0.02, 9); a.noise(o, t, 0.3, 'bandpass', 600, 400, 2, 0.2, 0.02); a.noise(o, t + 0.5, 0.25, 'lowpass', 500, 150, 0.7, 0.25); },
   bodyfall: (a, o, t) => { a.sine(o, t, 0.12, 140, 90, 0.2, 'sawtooth', 0.01); a.noise(o, t + 0.45, 0.3, 'lowpass', 600, 120, 0.7, 0.45); a.sine(o, t + 0.45, 0.4, 80, 35, 0.45); },
