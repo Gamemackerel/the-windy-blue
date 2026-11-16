@@ -86,17 +86,22 @@ export function buildIsland(ctx: Ctx) {
       float joints = smoothstep(0.42, 0.5, abs(fract(q.x * 0.55 + fbm(q * 0.3) * 1.5) - 0.5));
       rock *= mix(1.0, 0.45, joints * smoothstep(0.25, 0.6, slope));
       rock *= 0.7 + 0.6 * streaks(wp, wn, 0.8);
-      vec3 straw = mix(vec3(0.2, 0.17, 0.095), vec3(0.4, 0.35, 0.21), n2);
-      straw = mix(straw, vec3(0.13, 0.115, 0.08), smoothstep(0.45, 0.75, n3) * 0.7);
-      straw *= 0.8 + 0.4 * fine;
-      vec3 shingle = mix(vec3(0.07, 0.068, 0.066), vec3(0.2, 0.19, 0.175), fbm(wp.xz * 3.0)) * (0.7 + 0.6 * mix(0.5, fine, smoothstep(40.0, 8.0, vd)));
+      // the ground itself: bare earth, with dry grass thatch thinning out toward paths and steep places
+      float db;
+      vec3 earth = dirt(wp.xz, vd, vec3(0.235, 0.175, 0.11), vec3(0.1, 0.073, 0.05), db);
+      vec3 straw = mix(vec3(0.24, 0.2, 0.11), vec3(0.42, 0.36, 0.2), n2) * (0.75 + 0.5 * fine);
+      float thatch = smoothstep(0.38, 0.62, fbm(wp.xz * 0.16 + 3.0) + (fine - 0.5) * 0.35 * smoothstep(40.0, 8.0, vd));
       float grassy = smoothstep(0.22, 0.07, slope) * smoothstep(3.0, 5.5, wp.y + n * 2.5);
-      col = mix(rock, straw, grassy);
-      col = mix(col, shingle, smoothstep(3.0, 1.3, wp.y + n) * smoothstep(0.4, 0.12, slope));
+      vec3 soil = mix(earth, straw, thatch * 0.8 * grassy);
+      // the yard and the tide line: trodden grit and shingle
+      vec3 shingle = dirt(wp.xz * 1.6 + 40.0, vd, vec3(0.2, 0.185, 0.16), vec3(0.085, 0.078, 0.07), n3);
+      float low = smoothstep(3.0, 1.3, wp.y + n) * smoothstep(0.4, 0.12, slope);
+      float soft = smoothstep(0.34, 0.12, slope);
+      col = mix(rock, mix(soil, shingle, low), max(soft * smoothstep(1.2, 2.2, wp.y + n * 2.0), low));
       float wet = smoothstep(0.9, -0.1, wp.y);
       col *= mix(1.0, 0.4, wet);
       rough = mix(0.96, 0.35, wet);
-      bump = tri3(wp, wn, 2.2) * 0.09 + tri3(wp, wn, 11.0) * 0.012 * smoothstep(22.0, 5.0, vd) - joints * smoothstep(0.25, 0.6, slope) * 0.05;`, 'terrain');
+      bump = mix(tri3(wp, wn, 2.2) * 0.09 - joints * smoothstep(0.25, 0.6, slope) * 0.05, db, soft);`, 'terrain');
     const mesh = new THREE.Mesh(g, mat);
     mesh.receiveShadow = true;
     mesh.castShadow = true;

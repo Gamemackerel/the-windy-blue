@@ -64,12 +64,16 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     g.setIndex(idx);
     g.computeVertexNormals();
     const mat = patch(new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.95 }), /* glsl */ `
-      float n = tri(wp, wn, 0.5); float f = fbm(wp.xz * 6.0);
-      vec3 sand = mix(vec3(0.42, 0.4, 0.34), vec3(0.62, 0.6, 0.53), fbm(wp.xz * 0.6)) * (0.85 + 0.3 * f);
+      float n = tri(wp, wn, 0.5); float f = fbm(wp.xz * 6.0); float db;
+      // coral sand: pale, shelly, rippled by the wind, with dark coral rock showing through low down
+      vec3 sand = dirt(wp.xz * 1.3, vd, vec3(0.62, 0.59, 0.5), vec3(0.4, 0.37, 0.3), db);
+      float ripple = sin(wp.x * 7.0 + wp.z * 3.0 + fbm(wp.xz * 0.4) * 9.0) * 0.5 + 0.5;
+      sand *= 0.9 + 0.14 * ripple * smoothstep(40.0, 6.0, vd);
       vec3 coral = mix(vec3(0.03, 0.03, 0.032), vec3(0.13, 0.12, 0.11), n) * (0.7 + 0.6 * f);
-      col = mix(coral, sand, smoothstep(0.9, 2.0, wp.y + n * 1.2) * smoothstep(0.5, 0.2, 1.0 - wn.y));
+      float sandy = smoothstep(0.9, 2.0, wp.y + n * 1.2) * smoothstep(0.5, 0.2, 1.0 - wn.y);
+      col = mix(coral, sand, sandy);
       float wet = smoothstep(0.7, -0.1, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(0.95, 0.3, wet);
-      bump = tri3(wp, wn, 2.5) * 0.05 + tri3(wp, wn, 13.0) * 0.01;`, 'reef');
+      bump = mix(tri3(wp, wn, 2.5) * 0.05 + tri3(wp, wn, 13.0) * 0.01, db + ripple * 0.008, sandy);`, 'reef');
     const mesh = new THREE.Mesh(g, mat);
     mesh.receiveShadow = true;
     scene.add(mesh);

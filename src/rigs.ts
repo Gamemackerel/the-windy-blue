@@ -208,9 +208,20 @@ export function buildRigs(ctx: Ctx) {
   {
     const { x: cx, z: cz } = PLACES.jungle;
     const DY = 4.2;
-    const mossy = patch(new THREE.MeshStandardMaterial({ color: '#3c4044', roughness: 0.7, metalness: 0.4 }), /* glsl */ `
-      float n = tri(wp, wn, 0.9); float mm = smoothstep(0.38, 0.6, tri(wp, wn, 0.33) + wn.y * 0.25);
-      col = mix(col * (0.6 + 0.6 * n), mix(vec3(0.05, 0.16, 0.04), vec3(0.16, 0.34, 0.08), n), mm); rough = mix(rough, 0.95, mm);`, 'mossy');
+    // the deck has long since vanished under leaf litter and dark, damp earth; steel shows only on the sides
+    const mossy = patch(new THREE.MeshStandardMaterial({ color: '#3c4044', roughness: 0.7, metalness: 0.1 }), /* glsl */ `
+      float n = tri(wp, wn, 0.9); float db;
+      vec3 steelC = col * (0.6 + 0.6 * n);
+      vec3 earth = dirt(wp.xz * 1.4, vd, vec3(0.2, 0.17, 0.09), vec3(0.085, 0.075, 0.04), db);
+      float moss = smoothstep(0.45, 0.72, fbm(wp.xz * 0.55 + 7.0));
+      earth = mix(earth, mix(vec3(0.09, 0.14, 0.045), vec3(0.16, 0.2, 0.07), fbm3(wp.xz * 6.0)), moss * 0.65);            // moss and rot
+      float litter = step(0.72, hash21(floor(wp.xz * 9.0))) * smoothstep(20.0, 5.0, vd);
+      earth = mix(earth, vec3(0.22, 0.14, 0.05) * (0.6 + 0.8 * hash21(floor(wp.xz * 9.0) + 3.0)), litter * 0.6);         // fallen leaves
+      float top = smoothstep(0.5, 0.85, wn.y);
+      float creep = smoothstep(0.42, 0.62, tri(wp, wn, 0.33)) * (1.0 - top);
+      col = mix(mix(steelC, vec3(0.08, 0.13, 0.04), creep * 0.8), earth, top);
+      rough = mix(rough, 0.97, max(top, creep));
+      bump = db * top;`, 'mossy');
     const b = platform(ctx, 'jungle', cx, cz, 20, 16, DY, mossy);
     const r = rng(33);
     const bark = patch(new THREE.MeshStandardMaterial({ color: '#3a2e22', roughness: 0.95 }), /* glsl */ `
@@ -302,6 +313,40 @@ export function buildRigs(ctx: Ctx) {
       for (let i = 0; i < 10; i++) { const z = hz - 2.1 + r() * 4.2, len = 0.6 + r() * 1.5; b.bar(cxh - CW / 2 - 0.1, FY + CH, z, cxh - CW / 2 - 0.15, FY + CH - len, z, 0.02, vine, 4); clumps.push({ x: cx + cxh - CW / 2 - 0.15, y: FY + CH - len * 0.6, z: cz + z, r: 0.3, n: 16 }); }
     }
     leaves(ctx, clumps, 9, 0.5);
+    // grasses pushing up through the litter: thin blades in tufts, greener in the open, yellowing in the shade
+    {
+      const tp: number[] = [], tn: number[] = [];
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 9) * 6.283 + r() * 0.7, lean = 0.1 + r() * 0.34, h = 0.3 + r() * 0.5, w = 0.02;
+        const bx = Math.cos(a) * 0.05, bz = Math.sin(a) * 0.05, px = -Math.sin(a) * w, pz = Math.cos(a) * w;
+        tp.push(bx - px, 0, bz - pz, bx + px, 0, bz + pz, bx + Math.cos(a) * lean, h, bz + Math.sin(a) * lean);
+        for (let v = 0; v < 3; v++) tn.push(0, 1, 0);
+      }
+      const tuft = new THREE.BufferGeometry();
+      tuft.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
+      tuft.setAttribute('normal', new THREE.Float32BufferAttribute(tn, 3));
+      const COUNT = 2600;
+      const grass = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, side: THREE.DoubleSide }), COUNT);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), c = new THREE.Color();
+      let n = 0;
+      const place = (x: number, y: number, z: number, s: number) => {
+        pv.set(cx + x, y, cz + z);
+        q.setFromEuler(new THREE.Euler(0, r() * 6.283, 0));
+        sc.set(s, s * (0.7 + r() * 0.9), s);
+        grass.setMatrixAt(n, m4.compose(pv, q, sc));
+        grass.setColorAt(n, c.setHSL(0.2 + r() * 0.09, 0.3 + r() * 0.3, 0.14 + r() * 0.16));
+        n++;
+      };
+      while (n < COUNT - 320) {
+        const x = (r() - 0.5) * 19.4, z = (r() - 0.5) * 15.4;
+        if (Math.abs(x + 7) < 1.1 && z < -6.2) continue;              // the ladder head
+        place(x, DY, z, 0.7 + r() * 1.3);
+      }
+      while (n < COUNT) place(UX + (r() - 0.5) * 6.6, UY, UZ + (r() - 0.5) * 4.6, 0.6 + r());
+      grass.count = n;
+      grass.receiveShadow = true;
+      scene.add(grass);
+    }
     // dripping water
     const drops = new THREE.InstancedMesh(new THREE.SphereGeometry(0.02, 5, 4), new THREE.MeshBasicMaterial({ color: '#b8c8cc' }), 40);
     const dp = Array.from({ length: 40 }, () => ({ x: cx + (r() - 0.5) * 21, z: cz + (r() - 0.5) * 17, y: r() * DY, v: 3 + r() * 2 }));

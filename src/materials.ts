@@ -24,6 +24,31 @@ float streaks(vec3 p, vec3 n, float s) {
   vec2 q = abs(n.x) > abs(n.z) ? p.zy : p.xy;
   return fbm(vec2(q.x * s, q.y * s * 0.12)) * side;
 }
+// Earth underfoot: clods, pebbles, grit, damp patches and drying cracks. q is the ground plane in metres,
+// vd the distance from the eye (fine detail fades with it). Writes relief into bump.
+vec3 dirt(vec2 q, float vd, vec3 dry, vec3 damp, out float bump) {
+  float near = smoothstep(26.0, 4.0, vd), mid = smoothstep(90.0, 20.0, vd);
+  float big = fbm(q * 0.11), patchy = fbm(q * 0.45 + 31.0);
+  float clod = fbm3(q * 2.3), grit = fbm3(q * 17.0);
+  vec3 c = mix(dry, damp, smoothstep(0.35, 0.7, big));
+  c *= 0.6 + 0.78 * patchy;
+  c = mix(c, c * vec3(0.5, 0.46, 0.42), smoothstep(0.52, 0.72, fbm3(q * 0.23 + 60.0)) * 0.6);   // dark, humus-stained ground
+  c = mix(c, c * vec3(1.16, 1.07, 0.9), smoothstep(0.55, 0.8, fbm3(q * 0.9 + 9.0)) * 0.5);   // paler, sandier drifts
+  c *= mix(1.0, 0.55 + 0.9 * clod, mid);
+  c *= mix(1.0, 0.82 + 0.36 * grit, near);
+  // stones: few, small, irregular, mostly darker than the earth they lie in, gathered in drifts
+  vec2 pc = q * 9.0 + vec2(fbm3(q * 3.0), fbm3(q * 3.0 + 9.0)) * 1.6, id = floor(pc), fr = fract(pc) - 0.5;
+  float rnd = hash21(id), rr = 0.12 + 0.3 * fract(rnd * 7.3);
+  vec2 off = (vec2(fract(rnd * 13.7), fract(rnd * 29.1)) - 0.5) * 0.5;
+  float shape = length((fr - off) * vec2(1.0, 0.65 + 0.7 * fract(rnd * 5.1))) + (grit - 0.5) * 0.12;
+  float peb = step(0.9 - 0.12 * smoothstep(0.5, 0.75, patchy), rnd) * smoothstep(rr, rr * 0.6, shape) * near;
+  c = mix(c, mix(vec3(0.075, 0.07, 0.066), vec3(0.3, 0.28, 0.25), fract(rnd * 3.1)) * (0.8 + 0.4 * grit), peb * 0.85);
+  // cracks where the ground has dried hard
+  float crack = (1.0 - smoothstep(0.0, 0.06, abs(fbm3(q * 1.25 + 5.0) - 0.5))) * smoothstep(0.45, 0.25, big) * near;
+  c *= 1.0 - crack * 0.55;
+  bump = (clod * 0.06 + grit * 0.008 * near + peb * 0.014 - crack * 0.02) * mid;
+  return c;
+}
 // 1 on a thin line every 'period', 0 elsewhere
 float seam(float x, float period, float width) {
   float f = abs(fract(x / period) - 0.5) * period;
