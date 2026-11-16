@@ -8,7 +8,7 @@ import { waveHeight, rogue, rogueHeight } from './waves';
 import { Wind } from './wind';
 import { World, Mooring } from './world';
 import { MAT, patch } from './materials';
-import { bodyMaterial } from './figure';
+import { bodyMaterial, Tube } from './figure';
 
 const LEN = 5.2;
 const BEAM = 1.9;
@@ -22,7 +22,7 @@ const halfBeam = (s: number) => (BEAM / 2) * Math.pow(Math.sin(Math.PI * (0.2 + 
 const sheer = (s: number) => 0.52 + 0.3 * s * s + 0.05 * (1 - s) * (1 - s);
 const keel = (s: number) => DRAFT * (0.3 + 0.7 * Math.sin(Math.PI * Math.min(1, s * 0.85 + 0.15)));
 const stationZ = (s: number) => -LEN / 2 + s * LEN;
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _xAxis = new THREE.Vector3(1, 0, 0);
 /** hull surface point: s along the length (0 stern, 1 bow), u across (-1 starboard, 1 port) */
 function hullPoint(s: number, u: number, out: THREE.Vector3) {
   const au = Math.abs(u);
@@ -114,6 +114,9 @@ export class Boat {
   bump = 0;
   private mastParts: THREE.Object3D[] = [];
   private sheetLine!: THREE.Mesh;
+  private sheet!: Tube;
+  private yarns: THREE.Mesh[] = [];
+  private sheetPts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   private boomPivot = new THREE.Group();
   private rudderPivot = new THREE.Group();
   private pennant: THREE.Mesh;
@@ -169,8 +172,19 @@ export class Boat {
     bailer.position.set(-0.32, -0.02, 0.5); bailer.rotation.z = 0.2;
     this.group.add(bailer);
     // the mainsheet, from the boom down to a block on the floor
-    this.sheetLine = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 1, 5), MAT.rope);
-    this.group.add(this.sheetLine);
+    {
+      const c = new THREE.Color('#fff');
+      this.sheet = new Tube(this.group, MAT.rope, [{ t: 0, rx: 0.008, rz: 0.008, c }, { t: 1, rx: 0.008, rz: 0.008, c }], 14, 5, 2);
+      this.sheetLine = this.sheet.mesh;
+    }
+    // telltales: three lengths of red yarn on the sail that show how the air is flowing over it
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.BoxGeometry(0.006, 0.012, 0.24);
+      g.translate(0, 0, -0.12);
+      const y = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: '#a8281a', roughness: 0.9 }));
+      this.boomPivot.add(y);
+      this.yarns.push(y);
+    }
 
     const floor = new THREE.Mesh(buildDeck(() => -0.1, 0.02, 0.9), paleWood);
     floor.receiveShadow = true;
@@ -420,12 +434,14 @@ export class Boat {
     this.group.rotation.set(-this.pitch - down * 0.5, s.psi, this.roll - s.heel + down * 0.9);
     this.boomPivot.rotation.y = -s.boom;
     this.rudderPivot.rotation.y = -s.rudder * 0.5;
-    // mainsheet from the boom to its block
-    _v.set(Math.sin(s.boom) * 1.7, BOOM_Y - 0.03, MAST_Z - Math.cos(s.boom) * 1.7);
-    _w.set(0, -0.06, -1.05);
-    this.sheetLine.position.copy(_v).lerp(_w, 0.5);
-    this.sheetLine.scale.y = _v.distanceTo(_w);
-    this.sheetLine.quaternion.setFromUnitVectors(_up, _w.sub(_v).normalize());
+    // mainsheet: from the boom to its block, taut when the sail is drawing, hanging in a slack curve when it is not
+    const P = this.sheetPts, slack = 0.06 + (1 - this.sailFill) * 0.3 * Math.min(1, s.sheet);
+    P[0].set(Math.sin(s.boom) * 1.7, BOOM_Y - 0.03, MAST_Z - Math.cos(s.boom) * 1.7);
+    P[3].set(0, -0.06, -1.05);
+    const sway = Math.sin(t * 2.7) * slack * 0.35;
+    P[1].copy(P[0]).lerp(P[3], 0.33); P[1].y -= slack * 0.9; P[1].x += sway;
+    P[2].copy(P[0]).lerp(P[3], 0.66); P[2].y -= slack; P[2].x += sway * 0.7;
+    this.sheet.update(P, _xAxis, _xAxis);
   }
 
   private updateSail(t: number, dt: number) {
@@ -439,6 +455,7 @@ export class Boat {
     const g = this.sail.geometry;
     const pos = g.attributes.position, uv = g.attributes.uv;
     const H = MAST_H - BOOM_Y - 0.35;
+    const blow = Math.min(1.7, s.aws / 9);
     for (let i = 0; i < pos.count; i++) {
       const u = uv.getX(i), v = uv.getY(i);
       // triangular outline: full foot along the boom, tapering to the head
@@ -450,10 +467,24 @@ export class Boat {
       x += Math.sin(u * 11 - t * 17 + v * 5) * 0.09 * luff * u * (1 - v * 0.5);
       // gentle life when full
       x += Math.sin(u * 5 - t * 3.1 + v * 3) * 0.012 * this.sailFill;
+      // the leech (the free edge) never stops trembling in a breeze, and the whole sail breathes with the gusts
+      x += Math.sin(v * 21 - t * (14 + blow * 9)) * 0.02 * blow * u * u * u * (0.35 + this.sailFill);
+      x += Math.sin(u * 3.2 - t * 1.7 + v * 2.0) * 0.03 * blow * this.sailFill * Math.sin(Math.PI * u) * this.sailSide;
       pos.setXYZ(i, x * this.sailUp, 0.06 + v * H * (0.06 + 0.94 * this.sailUp), -along);
     }
     pos.needsUpdate = true;
     g.computeVertexNormals();
+    // yarns: streaming straight aft when the trim is right, lifting and flicking when the sail luffs, hanging when it stalls
+    const SU1 = 13;
+    this.yarns.forEach((y, i) => {
+      const row = [5, 8, 11][i], col = 3, vi = (16 - row) * SU1 + col;      // rows run top to bottom in the plane
+      y.position.set(pos.getX(vi) + this.sailSide * 0.015, pos.getY(vi), pos.getZ(vi));
+      y.visible = this.sailUp > 0.9;
+      const trim = s.alpha / 0.33;
+      if (this.sailFill < 0.4) y.rotation.set(Math.sin(t * 23 + i * 2) * 0.9, Math.sin(t * 17 + i) * 0.7, 0);
+      else if (trim > 1.9) y.rotation.set(-1.15 + Math.sin(t * 9 + i) * 0.3, Math.sin(t * 6 + i) * 0.4, 0);
+      else y.rotation.set(Math.sin(t * 31 + i) * 0.07, Math.sin(t * 27 + i * 2) * 0.07, 0);
+    });
   }
 }
 

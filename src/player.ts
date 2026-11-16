@@ -11,7 +11,7 @@ import { ItemId } from './items';
 
 const RADIUS = 0.3;
 const WALK = 2.1, RUN = 4.8;
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _t = new THREE.Vector3(), _u = new THREE.Vector3(), _m4 = new THREE.Matrix4();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _t = new THREE.Vector3(), _u = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q4 = new THREE.Quaternion();
 const POLE_KNEE = new THREE.Vector3(0, 0.3, 1), POLE_ELBOW = new THREE.Vector3(0, -0.6, -1), POLE_ELBOW_OUT = new THREE.Vector3(0, -1, -0.2);
 
 const lerpAngle = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
@@ -465,6 +465,12 @@ export class Player {
     f.headYaw += (-this.sideSmooth * 0.5 + s.rudder * 0.3 - f.headYaw) * Math.min(1, dt * 3);
     f.headPitch += (-glance * 0.5 - f.headPitch) * Math.min(1, dt * 3);
     if (this.aimDir) this.poseAim();
+    // the wind over the deck, as the sailor feels it
+    {
+      const sn = Math.sin(s.psi), cs = Math.cos(s.psi);
+      _w.set(wind.x - (s.u * sn + s.v * cs), 0, wind.z - (s.u * cs - s.v * sn));
+      f.wind.copy(_w).applyQuaternion(_q4.copy(f.group.quaternion).invert());
+    }
     f.refresh(-this.sideSmooth * 0.4);
   }
 }

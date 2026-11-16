@@ -235,6 +235,9 @@ export class Figure {
   headYaw = 0; headPitch = 0;
   readonly rightHandSlot = new THREE.Group();
   readonly mouthSlot = new THREE.Group();
+  /** the air moving past the figure, in its own frame (m/s): lifts the coat and the scarf */
+  readonly wind = new THREE.Vector3();
+  private tail: THREE.Mesh | null = null;
   /** length of the coat below the belt, 0 hides it */
   skirtAmount = 1;
   private spine = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
@@ -283,9 +286,11 @@ export class Figure {
         sc.rotation.set(Math.PI / 2 + tilt, 0, 0); sc.scale.set(s, s * 0.9, 1.1);
         fr.add(sc);
       }
-      const tail = part(new THREE.BoxGeometry(0.07, 0.22, 0.02, 1, 4, 1), cloth, accent, -0.05, 0.45, -0.1);
-      tail.rotation.set(0.12, 0, 0.1);
-      fr.add(tail);
+      // the loose end of the scarf: a strip that hangs, and streams out when the wind takes it
+      const tg = new THREE.PlaneGeometry(0.075, 0.3, 1, 7);
+      this.tail = new THREE.Mesh(paint(tg, accent), clothTwo);
+      this.tail.castShadow = true; this.tail.frustumCulled = false;
+      g.add(this.tail);
       // collar standing up round the neck
       const collar = part(new THREE.CylinderGeometry(0.085, 0.1, 0.07, 18, 1, true), clothTwo, dim, 0, 0.5, 0.0);
       collar.scale.z = 0.85;
@@ -399,6 +404,24 @@ export class Figure {
     this.frame.position.copy(hips);
     this.frame.scale.set(1, len / (CHEST_Y - HIP_Y), 1);
 
+    const now = performance.now() / 1000;
+    const wl = Math.min(this.wind.length(), 16), gust = 0.8 + 0.2 * Math.sin(now * 2.3) + 0.12 * Math.sin(now * 5.9);
+    if (this.tail) {
+      // from the back of the neck: hanging in still air, flying level in a gale
+      const blow = Math.min(1, wl / 9) * gust, pos = this.tail.geometry.attributes.position as THREE.BufferAttribute;
+      _e.set(0, -1, 0).multiplyScalar(1 - blow * 0.85);
+      if (wl > 0.01) _e.addScaledVector(this.wind, blow / wl);
+      _e.normalize();
+      for (let i = 0; i < 8; i++) {
+        const k = i / 7, fl = Math.sin(now * 13 - k * 5) * 0.022 * k * (0.25 + blow) + Math.sin(now * 21 - k * 9) * 0.008 * k * blow;
+        _tmp.copy(hips).addScaledVector(_a, len * 1.12).addScaledVector(_c, -0.1).addScaledVector(_b, -0.05).addScaledVector(_e, 0.3 * k).addScaledVector(_b, fl);
+        _tmp.y += Math.sin(now * 17 - k * 7) * 0.012 * k * blow;
+        pos.setXYZ(i * 2, _tmp.x - _b.x * 0.037, _tmp.y - _b.y * 0.037, _tmp.z - _b.z * 0.037);
+        pos.setXYZ(i * 2 + 1, _tmp.x + _b.x * 0.037, _tmp.y + _b.y * 0.037, _tmp.z + _b.z * 0.037);
+      }
+      pos.needsUpdate = true;
+      this.tail.geometry.computeVertexNormals();
+    }
     // trunk: crotch, hips, waist, chest, neck
     const sp = this.spine;
     sp[0].copy(hips).addScaledVector(_a, -0.12);
@@ -426,7 +449,13 @@ export class Figure {
         this.hem[1].copy(hips).addScaledVector(_a, -L * 0.45).addScaledVector(_e, L * 0.06);
         this.hem[2].copy(hips).addScaledVector(_e, L);
         const spread = Math.abs(p[J.knL].z - p[J.knR].z) + Math.abs(p[J.ftL].z - p[J.ftR].z) * 0.5;
-        this.skirt.update(this.hem, _d, _d, 1, spread * 0.22);
+        // the wind carries the hem downwind and sets it snapping
+        if (wl > 0.3) {
+          this.hem[1].addScaledVector(this.wind, 0.006 * gust);
+          this.hem[2].addScaledVector(this.wind, 0.021 * gust);
+          this.hem[2].x += Math.sin(now * 8.3) * 0.004 * wl; this.hem[2].z += Math.sin(now * 11.1 + 1.0) * 0.004 * wl;
+        }
+        this.skirt.update(this.hem, _d, _d, 1, spread * 0.22 + wl * 0.004);
       }
     }
 
