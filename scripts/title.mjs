@@ -11,7 +11,7 @@ console.log('first visit:', await vis());
 await page.screenshot({ path: 'shots/title.png' });
 await page.click('#titleStart');
 await page.waitForTimeout(3500);
-console.log('after Start:', await vis(), await page.evaluate(() => { const g = window.__game; return g.player.mode + ' cam y ' + g.camera.position.y.toFixed(1); }));
+console.log('after Start:', await vis(), await page.evaluate(() => { const g = window.__game; return g.player.mode + ' input ' + (g.input.suspended ? 'held' : 'live'); }));
 await page.screenshot({ path: 'shots/title_after.png' });
 await page.keyboard.down('KeyW'); await page.waitForTimeout(3000); await page.keyboard.up('KeyW');   // move, so there is something to save
 await page.evaluate(() => { window.__game.state.touch(); window.__game.state.flush(true); });

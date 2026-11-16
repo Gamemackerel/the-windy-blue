@@ -342,8 +342,7 @@ let debug = params.has('debug');
 debugEl.style.display = debug ? 'block' : 'none';
 const fixedCam = params.has('cam') ? params.get('cam')!.split(',').map(Number) : null;
 
-// ---- the title: shown on a plain visit, over the open sea seen from straight above ----
-const TITLE_AT = new THREE.Vector3(-380, 6.1, -420);    // twenty feet up, well clear of everything
+// ---- the title: shown on a plain visit, over the view the game is about to begin with, dimmed a little ----
 const titleEl = document.getElementById('title')!;
 let title = location.search === '' && sessionStorage.getItem('ww-skip-title') === null;
 sessionStorage.removeItem('ww-skip-title');
@@ -354,9 +353,11 @@ if (title) {
   titleEl.style.display = 'flex';
   input.suspended = true;
   const begin = () => {
-    titleEl.style.display = 'none';
+    // the view is already the right one: the dimming simply lifts
+    titleEl.style.opacity = '0'; titleEl.style.pointerEvents = 'none';
+    setTimeout(() => { titleEl.style.display = 'none'; }, 1300);
     try { (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* the first click in the game will capture the mouse */ }
-    ctx.fade(() => { title = false; input.suspended = false; }, 0.9);
+    title = false; input.suspended = false;
   };
   cont.addEventListener('click', begin);
   start.addEventListener('click', () => {
@@ -725,14 +726,7 @@ function frame() {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
   }
-  if (title) {
-    // straight down at the water, turning very slowly, lifting and falling a little as if hung from a kite
-    camera.position.set(TITLE_AT.x + Math.sin(t * 0.05) * 3, TITLE_AT.y + Math.sin(t * 0.31) * 0.25, TITLE_AT.z + Math.cos(t * 0.04) * 3);
-    camera.rotation.set(-Math.PI / 2, 0, t * 0.012);
-    if (Math.abs(camera.fov - 62) > 0.01) { camera.fov = 62; camera.updateProjectionMatrix(); }
-    focus.copy(camera.position);
-    markEl.style.opacity = '0';
-  }
+  if (title) markEl.style.opacity = '0';
 
   // shadows hug the action
   const sc = env.sun.shadow.camera;
