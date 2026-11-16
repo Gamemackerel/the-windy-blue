@@ -14,6 +14,9 @@ export class ViewRig {
   aim = false;
   /** eye to a telescope: a very narrow view that moves slowly */
   scope = false;
+  /** the telescope's field of view in degrees (mouse wheel), and the eased value actually shown */
+  scopeFov = 4.2;
+  private scopeNow = 4.2;
   private aimK = 0;
   private lastHeading: number | null = null;
   private eye = new THREE.Vector3();
@@ -33,7 +36,9 @@ export class ViewRig {
   /** eye: where the head is. heading: the boat's heading while sailing, else null. speed: walking speed, for head bob. */
   /** follow: when given, the camera pulls back and orbits this point (the boat) instead of sitting at the eye */
   update(dt: number, t: number, input: Input, eye: THREE.Vector3, heading: number | null, speed: number, follow: THREE.Vector3 | null = null) {
-    const sens = this.scope ? 0.00022 : this.aim ? 0.0016 : 0.0026;
+    if (this.scope) this.scopeFov = THREE.MathUtils.clamp(this.scopeFov * Math.exp(input.wheel * 0.0015), 1.2, 22);
+    this.scopeNow += (this.scopeFov - this.scopeNow) * Math.min(1, dt * 10);
+    const sens = this.scope ? 0.000052 * this.scopeNow : this.aim ? 0.0016 : 0.0026;
     this.yaw -= input.lookX * sens;
     this.pitch = THREE.MathUtils.clamp(this.pitch + input.lookY * sens, -1.45, 1.45);
     if (follow) this.dist = THREE.MathUtils.clamp(this.dist * Math.exp(input.wheel * 0.001), 4.5, 45);
@@ -46,8 +51,8 @@ export class ViewRig {
     } else this.lastHeading = null;
 
     this.aimK += ((this.aim ? 1 : 0) - this.aimK) * Math.min(1, dt * 9);
-    const fov = this.scope ? 4.2 : 62 - 24 * this.aimK - 8 * this.third;
-    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    const fov = this.scope ? this.scopeNow : 62 - 24 * this.aimK - 8 * this.third;
+    if (Math.abs(this.camera.fov - fov) > 0.005 * fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
 
     // the head follows the body closely but not rigidly, which takes the edge off steps and swell
     if (!this.ready) { this.eye.copy(eye); this.ready = true; }

@@ -150,7 +150,7 @@ In the demo the door **cannot be opened**. The pad accepts input and answers eve
 ### 4.8 The house, the summit and the player's hands
 
 - **The house** on the terrace is a single room you can walk into: bed, table and chair, a stove, a shelf, and a lamp that is always lit.
-- **The summit** of the starting island carries a ruined ring wall and a brass telescope with its eyepiece missing. The lens is on the table in the house. Once fitted, using the telescope puts the eye to it: a very narrow, slow-moving view for studying distant places. E or any step steps back.
+- **The summit** of the starting island carries a ruined ring wall and a brass telescope with its eyepiece missing. The lens is on the table in the house. Once fitted, using the telescope puts the eye to it: a very narrow, slow-moving view for studying distant places. The mouse wheel zooms it between a wide 22° and a very tight 1.2° field, and the view turns more slowly the further in it is. E, Space, a click or any step steps back.
 - **Arms.** The player's arms are visible. A hand (left or right at random) reaches out to whatever is used; both hands hold the tiller and mainsheet when sailing and take the rails when climbing.
 - **Carrying.** The crane weights are lifted in both hands, carried, and set down on the pan (or on the ground if E is pressed elsewhere). Hands full means walking pace only, and no climbing or boarding.
 - **Marker.** A small ring appears on whatever E would act on: the nearest usable thing in front, a ladder, the boat when it can be boarded, or the berth when the boat can be moored. It promises a response, not a result: a locked door rattles, a person with nothing to trade only grunts.

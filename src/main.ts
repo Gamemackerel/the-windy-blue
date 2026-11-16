@@ -102,6 +102,7 @@ let carry: { obj: THREE.Object3D; size: number; drop: () => void } | null = null
 const arms = new Arms(camera);
 const markEl = document.getElementById('mark')!;
 const _mk = new THREE.Vector3(), _g0 = new THREE.Vector3(), _g1 = new THREE.Vector3(), _held = new THREE.Vector3();
+let scopeT = 0;
 let scopeDone: (() => void) | null = null, scopeAt: THREE.Vector3 | null = null;
 const scopeEl = document.getElementById('scope')!;
 const ctx: Ctx = {
@@ -131,6 +132,7 @@ const ctx: Ctx = {
     scopeDone = on ? done ?? null : null;
     scopeAt = on && at ? at.clone() : null;
     rig.scope = on;
+    scopeT = 0;
     scopeEl.style.opacity = on ? '1' : '0';
     if (on) { rig.pitch = Math.min(rig.pitch, 0.05); player.busy = 0.4; }
   },
@@ -183,7 +185,7 @@ function cullPass(dt: number) {
   for (const l of lamps) l.userData.d = l.getWorldPosition(_lampP).distanceToSquared(p) / Math.max(l.distance * l.distance, 1);
   lamps.sort((a, b) => a.userData.d - b.userData.d);
   for (let i = 0; i < lamps.length; i++) lamps[i].visible = i < 4;
-  const k = rig.scope ? 0.0003 : 0.004;      // through the telescope, small things matter
+  const k = rig.scope ? 0.00007 * rig.scopeFov : 0.004;      // through the telescope, small things matter
   for (const e of cullable) {
     const d = (e.moves ? e.o.position : e.c).distanceTo(p);
     const tiny = e.r / Math.max(d, 1) < k;
@@ -450,8 +452,9 @@ function frame() {
 
   // at the telescope: nothing but looking, until E or any step away
   if (rig.scope) {
-    if (player.busy <= 0 && (input.hit('KeyE') || input.hit('Escape') || input.axis('KeyS', 'KeyW') !== 0 || input.axis('KeyA', 'KeyD') !== 0)) { ctx.scope(false); player.busy = 0.3; input.endFrame(); }
-    else player.busy = Math.max(player.busy, 0.05);
+    scopeT += dt;
+    if (scopeT > 0.4 && (input.hit('KeyE') || input.hit('Escape') || input.hit('Space') || input.mouseHit(0) || input.axis('KeyS', 'KeyW') !== 0 || input.axis('KeyA', 'KeyD') !== 0)) { ctx.scope(false); player.busy = 0.3; input.endFrame(); }
+    else player.busy = Math.max(player.busy, 0.05);   // hands and feet stay still while the eye is at the glass
   }
   // aiming and firing
   const canAim = player.held === 'revolver' && player.busy <= 0 && player.mode !== 'climb';
