@@ -162,7 +162,7 @@ export function buildRigs(ctx: Ctx) {
       b.bar(x, DY + 0.7, z, x, DY + 2.2, z, 0.012, MAT.wood, 5);
       clumps.push({ x: cx + x, y: DY + 1.45, z: cz + z, r: 0.5, n: 70 });
       for (let k = 0; k < 4; k++) {
-        const f = b.mesh(new THREE.SphereGeometry(0.06 + r() * 0.025, 10, 8), fruitMat, x + (r() - 0.5) * 0.5, DY + 1.0 + r() * 0.9, z + (r() - 0.5) * 0.5);
+        const f = b.mesh(new THREE.SphereGeometry(0.075 + r() * 0.03, 12, 10), fruitMat, x + 0.3 + r() * 0.28, DY + 1.0 + r() * 0.8, z + (r() - 0.5) * 0.5);   // hanging on the aisle side, clear of the leaves
         f.userData.static = false;
         fruits.push(f);
       }
@@ -179,11 +179,27 @@ export function buildRigs(ctx: Ctx) {
     for (let i = 0; i < 6; i++) clumps.push({ x: cx - 2.2 + i * 0.9, y: DY + 0.9, z: cz + 3.1, r: 0.3, n: 30 });
     leaves(ctx, clumps, 5, 0.28);
 
-    world.interactables.push({
-      pos: new THREE.Vector3(cx - 3.2, DY + 1.3, cz + 0.6), radius: 1.9,
-      enabled: () => !state.has('fruit') && state.flag('fruitDay') !== state.data.day + 1,
-      use: () => { state.give('fruit'); state.set('fruitDay', state.data.day + 1); ctx.sfx('take', new THREE.Vector3(cx, DY, cz)); },
-    });
+    // harvest: any vine along the west bed gives up a tomato, which comes off the plant into the hand.
+    // One a day; the plant has more by the next morning.
+    const canPick = () => !state.has('fruit') && state.flag('fruitDay') !== state.data.day + 1;
+    let pickedDay = -1;
+    for (let i = 0; i < 6; i++) {
+      const z = -1.6 + i * 0.9;
+      world.interactables.push({
+        pos: new THREE.Vector3(cx - 3.45, DY + 1.35, cz + z), radius: 1.5,
+        enabled: canPick,
+        use: () => {
+          const pp = ctx.playerPos();
+          let best: THREE.Mesh | null = null, bd = 1e9;
+          for (const f of fruits) { if (!f.visible) continue; const d = f.position.distanceTo(pp); if (d < bd) { bd = d; best = f; } }
+          if (best) best.visible = false;
+          pickedDay = state.data.day;
+          state.give('fruit'); ctx.setHeld('fruit'); state.set('fruitDay', state.data.day + 1);
+          ctx.sfx('take', new THREE.Vector3(cx, DY, cz));
+        },
+      });
+    }
+    world.updaters.push(() => { if (pickedDay >= 0 && state.data.day > pickedDay) { pickedDay = -1; for (const f of fruits) f.visible = true; } });
     // grow lamps: the greenhouse glows at night and can be seen from far away
     const lampMat = new THREE.MeshStandardMaterial({ color: '#f4e6d0', emissive: '#ffd9a0', emissiveIntensity: 0.6 });
     for (const x of [-3.2, 0, 3.2]) b.box(x, DY + RIDGE - 0.35, zm, 1.4, 0.06, 0.12, lampMat, 0, false);

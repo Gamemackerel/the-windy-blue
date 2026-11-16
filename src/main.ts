@@ -17,6 +17,7 @@ import { buildWindmill, WINDMILL } from './windmill';
 import { buildLab, LAB } from './lab';
 import { buildAtoll, ATOLL, atollHeight } from './giant';
 import { buildTower, TOWER } from './tower';
+import { buildFauna, FaunaKind } from './fauna';
 import { bumpHeight, waveHeight } from './waves';
 import { J } from './figure';
 import { Audio } from './audio';
@@ -161,6 +162,8 @@ const giant = buildAtoll(ctx, {
   fling: () => fling(),
 });
 const tower = buildTower(ctx);
+const fauna = buildFauna(ctx, { push: (ax, az) => { pushX += ax; pushZ += az; } });
+if (params.has('fauna')) world.after(9, () => fauna.trigger(params.get('fauna') as FaunaKind));
 ocean.setShoal(ATOLL.x, ATOLL.z, ATOLL.r - 14, ATOLL.hole);
 ocean.addShore(ISLAND.x, ISLAND.z, 480, islandHeight);
 ocean.addShore(ATOLL.x, ATOLL.z, 580, atollHeight);
@@ -625,7 +628,7 @@ function frame() {
   const cl = player.climbing();
   if (sailing) grips = [boat.tillerGrip(_g0), boat.sheetPoint(_g1)];
   else if (cl) {
-    const sx = Math.cos(cl.l.face) * 0.24, sz = -Math.sin(cl.l.face) * 0.24, top = cl.l.y1 + 0.95;
+    const sx = Math.cos(cl.l.face) * 0.13, sz = -Math.sin(cl.l.face) * 0.13, top = cl.l.y1 + 0.95;
     _g0.set(cl.l.x + sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6) * 0.6), cl.l.z + sz);
     _g1.set(cl.l.x - sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6 + 0.5) * 0.6 - 0.3), cl.l.z - sz);
     grips = [_g0, _g1];
@@ -735,4 +738,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { fauna, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

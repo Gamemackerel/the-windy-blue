@@ -70,7 +70,12 @@ export class Arms {
         cam.worldToLocal(want.copy(this.carry.obj.getWorldPosition(_e)));
         want.x += -s * (this.carry.size * 0.5 + 0.03); want.y -= 0.02; want.z += 0.03;
         rate = 16;
-      } else if (grips) { cam.worldToLocal(want.copy(i === 0 ? gl! : gr!)); rate = 14; palmDown = 1; }
+      } else if (grips) {
+        cam.worldToLocal(want.copy(i === 0 ? gl! : gr!)); rate = 14; palmDown = 1;
+        // the wrist stops short of the bar and a little under it, so it is the curled fingers that lie over it
+        _e.subVectors(want, a.sh).normalize();
+        want.addScaledVector(_e, -0.075); want.y -= 0.025;
+      }
       else if (i === 1 && held) { want.copy(held); want.x += 0.02; want.y -= 0.075; want.z += 0.09; rate = 18; }
       if (a.reachT > 0) {
         a.reachT += dt * 2.3;
