@@ -32,14 +32,23 @@ function atollLocal(lx: number, lz: number) {
   const ring = Math.exp(-(((d - R) / W) ** 2));
   let base = d > R ? -9 - (d - R) * 0.14 : -7;
   base -= (1 - smooth(ATOLL.hole * 0.72, ATOLL.hole * 1.1, d)) * 60;
-  const crest = 11.6 + (fbm(lx * 0.03 + 3, lz * 0.03 + 8) - 0.5) * 5 + (fbm(lx * 0.11, lz * 0.11) - 0.5) * 1.6;
+  const crest = 9.0 + (fbm(lx * 0.03 + 3, lz * 0.03 + 8) - 0.5) * 2.4 + (fbm(lx * 0.11, lz * 0.11) - 0.5) * 0.8;   // barely clear of the sea
   return base + ring * crest * (1 - gap);
 }
 export const atollHeight = (x: number, z: number) => atollLocal(x - ATOLL.x, z - ATOLL.z);
 
-type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'dying' | 'dead';
+type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'take' | 'hold' | 'throw' | 'dying' | 'dead';
 
-export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: number, az: number) => void }) {
+export interface GiantHooks {
+  wreck: () => void; push: (ax: number, az: number) => void;
+  /** the boat lies broken on the reef */ stranded: () => boolean;
+  /** the hand has come down on someone on foot */ kill: () => void;
+  swimming: () => boolean;
+  /** take the swimmer into the hand, or let go */ hold: (on: boolean) => void;
+  held: () => boolean;
+  /** let fly */ fling: () => void;
+}
+export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   const { scene, world, state, boat } = ctx;
   const cx = ATOLL.x, cz = ATOLL.z;
   world.addTerrain(atollHeight, cx, cz, 320);
@@ -71,7 +80,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       float ripple = sin(wp.x * 7.0 + wp.z * 3.0 + fbm(wp.xz * 0.4) * 9.0) * 0.5 + 0.5;
       sand *= 0.9 + 0.14 * ripple * smoothstep(40.0, 6.0, vd);
       vec3 coral = mix(vec3(0.03, 0.03, 0.032), vec3(0.13, 0.12, 0.11), n) * (0.7 + 0.6 * f);
-      float sandy = smoothstep(0.9, 2.0, wp.y + n * 1.2) * smoothstep(0.5, 0.2, 1.0 - wn.y);
+      float sandy = smoothstep(0.25, 1.0, wp.y + n * 0.6) * smoothstep(0.5, 0.2, 1.0 - wn.y);
       col = mix(coral, sand, sandy);
       float wet = smoothstep(0.7, -0.1, wp.y); col *= mix(1.0, 0.45, wet); rough = mix(0.95, 0.3, wet);
       bump = mix(tri3(wp, wn, 2.5) * 0.05 + tri3(wp, wn, 13.0) * 0.01, db + ripple * 0.008, sandy);`, 'reef');
@@ -79,18 +88,26 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     mesh.receiveShadow = true;
     scene.add(mesh);
 
-    // bleached trees and a broken jetty with somewhere to tie up
+    // a very little grass along the crown of the reef, and a broken jetty with somewhere to tie up
     const r = rng(404);
-    for (let i = 0; i < 26; i++) {
-      const a = r() * 6.283, d = ATOLL.r + (r() - 0.5) * 16;
-      const lx = Math.sin(a) * d, lz = Math.cos(a) * d, h = atollLocal(lx, lz);
-      if (h < 1.2) continue;
-      const hgt = 3 + r() * 5;
-      const pts = [0, 1, 2, 3].map((k) => new THREE.Vector3(cx + lx + Math.sin(k + i) * 0.4 * k, h - 0.3 + (hgt * k) / 3, cz + lz + Math.cos(k * 2 + i) * 0.3 * k));
-      const tree = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 8, 0.13 + r() * 0.1, 6), MAT.bone);
-      tree.castShadow = true;
-      scene.add(tree);
-      world.addCyl(cx + lx, cz + lz, 0.3, h - 1, h + 2);
+    {
+      const blade = new THREE.BufferGeometry();
+      const bp: number[] = [];
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * 6.283 + 0.4, w = 0.012, lean = 0.1 + (i % 3) * 0.05, hh = 0.2 + (i % 2) * 0.1; const c = Math.cos(a), s2 = Math.sin(a); bp.push(-s2 * w, 0, c * w, s2 * w, 0, -c * w, c * lean, hh, s2 * lean); }
+      blade.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+      blade.computeVertexNormals();
+      const tufts = new THREE.InstancedMesh(blade, new THREE.MeshStandardMaterial({ color: '#8a8a52', roughness: 1, side: THREE.DoubleSide }), 420);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
+      let n = 0;
+      for (let tries = 0; tries < 6000 && n < 420; tries++) {
+        const a = r() * 6.283, d = ATOLL.r + (r() - 0.5) * 14, lx = Math.sin(a) * d, lz = Math.cos(a) * d, h = atollLocal(lx, lz);
+        if (h < 1.25 || fbm(lx * 0.09 + 5, lz * 0.09) < 0.5) continue;
+        pv.set(cx + lx, h - 0.02, cz + lz); q.setFromEuler(new THREE.Euler(0, r() * 6.283, 0)); sc.setScalar(0.7 + r() * 0.9);
+        tufts.setMatrixAt(n++, m4.compose(pv, q, sc));
+      }
+      tufts.count = n;
+      tufts.receiveShadow = true;
+      scene.add(tufts);
     }
     const ja = 1.55, b = new Builder(scene, world, cx, 0, cz);
     const jx = Math.sin(ja), jz = Math.cos(ja);
@@ -233,6 +250,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const iris = patch(new THREE.MeshStandardMaterial({ color: '#4a3418', roughness: 0.15, emissive: '#5a3a14', emissiveIntensity: 0.18 }), /* glsl */ `
     float a = atan(wp.y, wp.x); float r = length(wp.xy) / 0.02;
     col *= 0.45 + 0.9 * vnoise(vec2(a * 14.0, r * 3.0)); col = mix(col, vec3(0.02, 0.015, 0.01), smoothstep(0.72, 1.0, r) * 0.8);`, 'iris', true);
+  const lidMat = skin.clone(); lidMat.side = THREE.DoubleSide; lidMat.onBeforeCompile = skin.onBeforeCompile; lidMat.customProgramCacheKey = () => 'giantlid';
   for (const s of [-1, 1]) {
     const eye = new THREE.Group();
     eye.position.set(s * 0.0415, 0.006, 0.076);
@@ -242,7 +260,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     const cornea = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.03, 24, 18), new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, transparent: true, opacity: 0.16, clearcoat: 1, clearcoatRoughness: 0.02, depthWrite: false }));
     eye.add(cornea);
     headFlesh.add(eye); eyes.push(eye);
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.08, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), skin);
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.1, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2), lidMat);
     lid.position.copy(eye.position);
     headFlesh.add(lid); lids.push(lid);
   }
@@ -353,7 +371,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   let blink = 0, blinkAt = 4, lidOpen = 1;
   let acting = 0;                // which hand is busy
   const strike = new THREE.Vector3();
-  let struck = false, away = 0, idle = 3, attention = 0, provoked = 0;
+  let struck = false, away = 0, idle = 3, attention = 0, provoked = 0, onFoot = false;
   let sheet = 0;                 // water still pouring off after surfacing
   let body: CylCollider | null = null;
   const bodyCols: CylCollider[] = [];
@@ -447,6 +465,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     for (let i = 0; i < NP; i++) {
       if (pLife[i] <= 0) continue;
       pLife[i] -= dt;
+      if (pLife[i] <= 0) { pPos[i * 3 + 1] = -500; continue; }
       pVel[i * 3 + 1] -= 16 * dt;
       pPos[i * 3] += pVel[i * 3] * dt; pPos[i * 3 + 1] += pVel[i * 3 + 1] * dt; pPos[i * 3 + 2] += pVel[i * 3 + 2] * dt;
       if (pPos[i * 3 + 1] < -1) { pLife[i] = 0; pPos[i * 3 + 1] = -500; }
@@ -484,7 +503,8 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       bumps[0].a = bumps[1].a = bumps[2].a = 0;
       root.position.set(cx, sink * S, cz);
       if (body) { world.remove(body); body = null; }
-      if (sailing && bd < 62) { setPhase('emerge'); yaw = toBoat; sfx('giant-rise', 1.6); }
+      if (hooks.held()) hooks.hold(false);
+      if ((sailing && bd < 62) || (hooks.swimming() && pd < 75)) { setPhase('emerge'); yaw = sailing ? toBoat : Math.atan2(pp.x - cx, pp.z - cz); sfx('giant-rise', 1.6); }
       root.visible = false;
       return;
     }
@@ -512,6 +532,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         if (k < 0.45) { b.r = 0; b.w = 70; b.a = 13 * Math.sin((k / 0.45) * Math.PI * 0.5); }
         else { b.r = (k - 0.45) * 420; b.w = 60; b.a = 13 * Math.max(0, 1 - (k - 0.45) / 0.55); }
         if (k > 0.2) for (let i = 0; i < 26; i++) { const a = Math.random() * 6.283, r = 22 + 44 * e + Math.random() * 6; emit(cx + Math.cos(a) * r, 0.5 + Math.random() * 2, cz + Math.sin(a) * r, Math.cos(a) * (5 + Math.random() * 9), 3 + Math.random() * 9, Math.sin(a) * (5 + Math.random() * 9)); }
+        if (sailing && bd < 190 && k < 0.85) {
+          const ox = (boatW.x - cx) / Math.max(bd, 1), oz = (boatW.z - cz) / Math.max(bd, 1), f = 15 * Math.sin((k / 0.85) * Math.PI) * (1 - bd / 230);
+          hooks.push(ox * f, oz * f);
+        }
         if (k >= 1) { setPhase(nightSky && bd > 150 ? 'stargaze' : 'watch'); idle = 4; sheet = 12; sfx('giant-hum'); }
         break;
       }
@@ -519,6 +543,12 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         leanT = 0; sinkT = 0;
         if (nightSky && provoked <= 0 && tau > 8 && bd > 170) { setPhase('stargaze'); break; }   // it only goes back to the stars once the boat has drawn off
         idle -= dt;
+        if (hooks.swimming() && pd < 190 && tau > 1.5) { acting = angDiff(Math.atan2(pp.x - cx, pp.z - cz), yaw) > 0 ? 0 : 1; setPhase('take'); sfx('giant-curious'); break; }
+        if (idle <= 0 && !sailing && hooks.stranded() && pd < 235) {
+          acting = angDiff(Math.atan2(pp.x - cx, pp.z - cz), yaw) > 0 ? 0 : 1;
+          setPhase('slap'); strike.set(pp.x, 0, pp.z); onFoot = true; sfx('giant-amused');
+          break;
+        }
         if (idle <= 0 && sailing && bd < 215) {
           const r = Math.random();
           acting = angDiff(toBoat, yaw) > 0 ? 0 : 1;   // the hand on the boat's side
@@ -571,9 +601,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
             struck = true;
             splash(_b.x, _b.z, 1); ring(_b.x, _b.z, 6.5, 17); sfx('giant-slap', 2);
             if (sailing && Math.hypot(boatW.x - _b.x, boatW.z - _b.z) < 23) hooks.wreck();
+            if (onFoot && Math.hypot(pp.x - _b.x, pp.z - _b.z) < 26) hooks.kill();
           }
         } else { a.target.copy(REST[acting]); a.k = 3; a.c = 3.4; a.flatT = 0; a.curlT = 0.5; }
-        if (tau > 8) { setPhase('watch'); idle = 3 + Math.random() * 5; if (Math.random() < 0.5) sfx('giant-amused'); }
+        if (tau > 8) { onFoot = false; setPhase('watch'); idle = 3 + Math.random() * 5; if (Math.random() < 0.5) sfx('giant-amused'); }
         break;
       }
       case 'scoop': {
@@ -593,6 +624,37 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
           if (sailing && Math.hypot(boatW.x - _b.x, boatW.z - _b.z) < 15) hooks.wreck();
         } else { a.target.copy(REST[acting]); a.k = 3; a.c = 3.4; a.flatT = 0; a.curlT = 0.5; bumps[1 + acting].a *= Math.max(0, 1 - dt * 2); }
         if (tau > 10) { bumps[1 + acting].a = 0; setPhase('watch'); idle = 3 + Math.random() * 4; }
+        break;
+      }
+      case 'take': {
+        // the open hand slides under the swimmer
+        const a = arms[acting];
+        a.flatT = 1; a.curlT = 0.2; leanT = 0.12;
+        rig.worldToLocal(_a.copy(pp));
+        a.target.set(_a.x, -0.07, _a.z - 0.03); a.k = 7; a.c = 4.6;
+        palmWorld(a, _b);
+        if (!hooks.swimming() || tau > 14) { a.target.copy(REST[acting]); a.flatT = 0; a.curlT = 0.5; setPhase('watch'); idle = 4; break; }
+        if (tau > 1.2 && Math.hypot(_b.x - pp.x, _b.z - pp.z) < 20 && _b.y < 12) { hooks.hold(true); setPhase('hold'); sfx('giant-curious'); }
+        break;
+      }
+      case 'hold': {
+        // lifted to the face and turned over like something found on a beach
+        const a = arms[acting], s = acting === 0 ? 1 : -1;
+        a.flatT = 1; a.curlT = 0.22 + 0.06 * Math.sin(tau * 1.3); leanT = 0.05;
+        a.target.set(s * 0.02 + Math.sin(tau * 0.5) * 0.015, 0.165, 0.215 + Math.sin(tau * 0.8) * 0.012); a.k = 2.6; a.c = 3.2;
+        if (tau > 9.5) { setPhase('throw'); sfx('giant-amused'); }
+        break;
+      }
+      case 'throw': {
+        // the fingers close, the arm goes back, and it lets fly
+        const a = arms[acting], s = acting === 0 ? 1 : -1;
+        a.curlT = 1.15; a.flatT = 0.35; leanT = tau < 1.5 ? -0.08 : 0.2;
+        if (tau < 1.5) { a.target.set(s * 0.34, 0.3, -0.12); a.k = 7; a.c = 4.5; }
+        else if (tau < 2.3) {
+          a.target.set(s * 0.12, 0.46, 0.62); a.k = 42; a.c = 8;
+          if (!struck && tau > 1.78) { struck = true; hooks.fling(); sfx('giant-blow', 1.5); }
+        } else { a.target.copy(REST[acting]); a.k = 3; a.c = 3.4; a.flatT = 0; a.curlT = 0.5; }
+        if (tau > 6) { setPhase('watch'); idle = 6; }
         break;
       }
       case 'dying': {
@@ -628,16 +690,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       if (phase !== 'emerge') { const b = bumps[0]; b.x = cx; b.z = cz; b.r = 50 + leanA * 20; b.w = 7; b.a = 0.7 + Math.sin(t * 0.55) * 0.35; }
       // water keeps pouring off for a while after it surfaces
       sheet = Math.max(0, sheet - dt);
-      if (sheet > 0) {
-        const cy = Math.cos(yaw), sy = Math.sin(yaw), n = Math.ceil(7 * Math.min(1, sheet / 6));
-        for (let i = 0; i < n; i++) {
-          const a = Math.random() * 6.283, X = Math.cos(a) * 64, Zl = Math.sin(a) * 39;
-          emit(cx + X * cy + Zl * sy, root.position.y - 6 - Math.random() * 8, cz - X * sy + Zl * cy, Math.cos(a) * 1.5, -3, Math.sin(a) * 1.5);
-        }
-      }
 
       // head and eyes
       const up = phase === 'stargaze';
+      if (phase === 'take' || phase === 'hold' || phase === 'throw' || onFoot) rig.worldToLocal(boatL.copy(pp));   // it watches the person, not the boat
       let hy = THREE.MathUtils.clamp(Math.atan2(boatL.x, boatL.z), -0.95, 0.95);
       let hp = THREE.MathUtils.clamp(Math.atan2(HEAD.y - boatL.y, Math.hypot(boatL.x, boatL.z)) - leanA, -0.2, 0.95);
       if (up) { hy = Math.sin(t * 0.05) * 0.3; hp = -0.85; }
@@ -647,7 +703,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       headQ.slerp(headT, Math.min(1, dt * (phase === 'dying' ? 5 : 0.9)));
       blink -= dt; blinkAt -= dt;
       if (blinkAt <= 0) { blink = 0.5; blinkAt = 3.5 + Math.random() * 7; }
-      const wide = phase === 'peer' ? 1.15 : phase === 'bored' ? 0.55 : up ? 0.9 : 1;
+      const wide = phase === 'peer' || phase === 'hold' ? 1.15 : phase === 'bored' ? 0.55 : up ? 0.9 : 1;
       lidOpen += ((blink > 0 ? 0.05 : wide) - lidOpen) * Math.min(1, dt * (blink > 0 ? 14 : 5));
     }
     headPivot.quaternion.copy(headQ); gb.head.quaternion.copy(headQ);
@@ -655,12 +711,20 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     // the eyes finish the look that the head begins
     root.updateMatrixWorld(true);
     if (alive) for (const e of eyes) {
-      headFlesh.worldToLocal(_a.copy(phase === 'stargaze' ? _b.set(cx, 4000, cz + 2000) : boatW));
+      headFlesh.worldToLocal(_a.copy(phase === 'stargaze' ? _b.set(cx, 4000, cz + 2000) : phase === 'take' || phase === 'hold' || phase === 'throw' || onFoot ? pp : boatW));
       _a.sub(e.position);
       e.rotation.set(THREE.MathUtils.clamp(-Math.atan2(_a.y, Math.hypot(_a.x, _a.z)), -0.45, 0.45), THREE.MathUtils.clamp(Math.atan2(_a.x, _a.z), -0.5, 0.5), 0, 'YXZ');
     }
     solveArms(dt);
+    if (hooks.held() && (phase === 'hold' || phase === 'throw')) { root.updateMatrixWorld(true); palmWorld(arms[acting], _b); pp.copy(_b); }
+    else if (hooks.held()) hooks.hold(false);
   });
+
+  /** the middle of the palm, in the world */
+  function palmWorld(a: Arm, out: THREE.Vector3) {
+    a.gb.hand.updateWorldMatrix(true, false);
+    return out.set(0, 0.022, 0.055).applyMatrix4(a.gb.hand.matrixWorld);
+  }
 
   function pickStrike(dist: number) {
     // somewhere near the boat, led a little along its course: close enough to soak it
@@ -722,6 +786,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         if (miss < EYE_R * S * 1.25 && lidOpen > 0.35) {
           state.set('giantDead'); state.set('giantPhase', 1); state.set('giantStamp', state.data.day);
           fromPos.copy(root.position); fromQ.copy(root.quaternion);
+          if (hooks.held()) hooks.hold(false);
           setPhase('dying'); sfx('giant-death', 2.2);
           setVisual(); // the body's resting place becomes solid now, easing the boat out from under it
           bumps[1].a = bumps[2].a = 0;
@@ -729,7 +794,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         }
         if (miss < 0.13 * S) headHit = true;
       }
-      if (headHit) { provoked = 12; idle = 0.5; blink = 0.9; sfx('giant-annoyed', 1.5); if (phase !== 'slap' && phase !== 'scoop') setPhase('watch'); }
+      if (headHit) { provoked = 12; idle = 0.5; blink = 0.9; sfx('giant-annoyed', 1.5); if (phase !== 'slap' && phase !== 'scoop' && phase !== 'hold' && phase !== 'throw') setPhase('watch'); }
       return false;
     },
   };

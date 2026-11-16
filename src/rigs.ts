@@ -426,6 +426,16 @@ export function buildRigs(ctx: Ctx) {
     const door = b.box(0.45, DY + 1.0, CZ1 + 0.42, 0.06, 2.0, 0.95, MAT.paleWood, 0.25, false); // hanging open
     void door;
     for (const z of [-3.2, -0.6]) for (const x of [CX0 - 0.07, CX1 + 0.07]) b.box(x, DY + 1.45, z, 0.03, 0.5, 0.8, MAT.black, 0, false);
+    // a storm lantern turned right down in the far corner: just enough to make out the room at night
+    {
+      const lx = CX1 - 0.32, lz = CZ0 + 0.34;
+      b.cyl(lx, lz, 0.06, DY + 0.06, DY + 0.1, MAT.dark, false, 0.06, 10);
+      b.mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.12, 10), new THREE.MeshStandardMaterial({ color: '#3a2412', emissive: '#ff8a3a', emissiveIntensity: 1.6, transparent: true, opacity: 0.85 }), lx, DY + 0.16, lz, false);
+      b.cyl(lx, lz, 0.04, DY + 0.22, DY + 0.26, MAT.dark, false, 0.02, 10);
+      const glim = new THREE.PointLight('#ff8a3a', 0.9, 6, 1.6);
+      glim.position.set(cx + lx - 0.1, DY + 0.3, cz + lz + 0.1);
+      scene.add(glim);
+    }
     // inside: bunk, strongbox, drawers, the overturned table, the man in the chair
     b.box(-1.25, DY + 0.28, -3.0, 0.9, 0.5, 2.4, MAT.paleWood);
     b.box(-1.25, DY + 0.58, -3.0, 0.86, 0.1, 2.36, new THREE.MeshStandardMaterial({ color: '#5a5548', roughness: 1 }), 0, false);

@@ -20,7 +20,11 @@ export class Player {
   readonly figure = new Figure({ coat: '#b08a3c', trousers: '#2b2a2c', skin: '#b08f78', hood: true });
   readonly pos = new THREE.Vector3();
   yaw = 0;
-  mode: 'foot' | 'sail' | 'climb' | 'swim' = 'foot';
+  /** held: in the giant's hand, going where it goes. flung: thrown, on a ballistic path until something stops it */
+  mode: 'foot' | 'sail' | 'climb' | 'swim' | 'held' | 'flung' = 'foot';
+  readonly fly = new THREE.Vector3();
+  /** set for one frame when a throw ends in the sea */
+  splashed = false;
   /** seconds spent swimming without a rest; past five minutes the swimmer goes under */
   swimT = 0;
   /** how far the eyes are being pulled under by exhaustion (m) */
@@ -85,7 +89,7 @@ export class Player {
     const lad = this.world.nearestLadder(this.pos);
     if (lad) { out.set(lad.ladder.x, lad.atTop ? lad.ladder.y1 + 0.5 : Math.min(lad.ladder.y1, this.pos.y + 1.3), lad.ladder.z); return true; }
     const b = this.boat;
-    if (b.mode === 'moored' && b.hasMast && b.hasSail && Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) <= 4.6) { b.local(0, 0.7, -0.6, out); return true; }
+    if (b.mode === 'moored' && b.hasMast && b.hasSail && !b.stranded && Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) <= 4.6) { b.local(0, 0.7, -0.6, out); return true; }
     return false;
   }
   /** where the eyes are */
@@ -100,6 +104,20 @@ export class Player {
     this.busy = Math.max(0, this.busy - dt);
     const free = this.busy <= 0;
     if (this.mode !== 'swim') { this.swimT = Math.max(0, this.swimT - dt * 4); this.dip *= Math.max(0, 1 - dt * 4); }
+    this.splashed = false;
+    if (this.mode === 'held') { this.speed = 0; this.yaw = camYaw + Math.PI; return; }
+    if (this.mode === 'flung') {
+      // thrown: nothing to do but fall. Gravity is light enough for a long arc across the sea.
+      this.speed = 0; this.yaw = camYaw + Math.PI;
+      this.fly.y -= 12 * dt;
+      this.pos.addScaledVector(this.fly, dt);
+      const sea = waveHeight(this.pos.x, this.pos.z, t), land = this.world.terrainHeight(this.pos.x, this.pos.z);
+      if (this.pos.y <= Math.max(sea - 1.3, land)) {
+        if (land > sea - 1.2) { this.pos.y = land; this.mode = 'foot'; this.velY = 0; }
+        else { this.pos.y = sea - 1.3; this.mode = 'swim'; this.swimT = 0; this.dip = 0.9; this.splashed = true; }
+      }
+      return;
+    }
     if (this.mode === 'foot') this.updateFoot(dt, t, input, camYaw, free);
     else if (this.mode === 'swim') this.updateSwim(dt, t, input, camYaw, free);
     else if (this.mode === 'climb') this.updateClimb(dt, input, free);
@@ -293,7 +311,7 @@ export class Player {
   /** get into the boat from a dock or from the water. It stays at anchor until the anchor is weighed. */
   private tryBoard() {
     const b = this.boat;
-    if (b.mode !== 'moored' || !b.hasMast || !b.hasSail) return false;
+    if (b.mode !== 'moored' || !b.hasMast || !b.hasSail || b.stranded) return false;
     if (Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) > 4.6) return false;
     this.mode = 'sail';
     this.busy = 0.6;

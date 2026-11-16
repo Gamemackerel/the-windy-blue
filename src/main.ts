@@ -147,7 +147,19 @@ const npcs = buildRigs(ctx);
 const windmill = buildWindmill(ctx);
 const lab = buildLab(ctx);
 let pushX = 0, pushZ = 0, wrecking = false;
-const giant = buildAtoll(ctx, { wreck: wreckBoat, push: (ax, az) => { pushX += ax; pushZ += az; } });
+let turnTo = 0;   // seconds left of being turned to face the giant after it picks you up
+const giant = buildAtoll(ctx, {
+  wreck: wreckBoat, push: (ax, az) => { pushX += ax; pushZ += az; },
+  stranded: () => boat.stranded,
+  kill: () => killed(),
+  swimming: () => player.mode === 'swim',
+  hold: (on) => {
+    if (on) { player.mode = 'held'; player.dropHook?.(); turnTo = 2.2; }
+    else if (player.mode === 'held') player.mode = 'swim';
+  },
+  held: () => player.mode === 'held',
+  fling: () => fling(),
+});
 const tower = buildTower(ctx);
 ocean.setShoal(ATOLL.x, ATOLL.z, ATOLL.r - 14, ATOLL.hole);
 ocean.addShore(ISLAND.x, ISLAND.z, 480, islandHeight);
@@ -196,6 +208,67 @@ function cullPass(dt: number) {
 cullPass(1);
 if (params.has('debug')) console.log(`${junkCount} junk objects; merged ${merged.before} static parts into ${merged.after}`);
 
+/** put the boat back where it was built: afloat in the dock, or on its blocks if the dock has been pumped out */
+function boatHome() {
+  const m = island.mooring;
+  boat.sinking = 0; boat.stranded = false;
+  if (state.flag('flooded')) { boat.mode = 'moored'; boat.mooring = m; } else { boat.mode = 'cradle'; boat.mooring = null; }
+  boat.state.x = m.x; boat.state.z = m.z; boat.state.psi = m.psi; boat.state.u = boat.state.v = 0;
+  state.data.boat.mooring = m.name;
+}
+/** driven onto the reef: the boat breaks where it lies and its sailor is left standing beside it */
+function strandBoat() {
+  if (boat.stranded || wrecking) return;
+  const s = boat.state;
+  boat.stranded = true;
+  boat.mode = 'moored';
+  boat.mooring = { name: 'wreck', x: s.x, z: s.z, psi: s.psi, dock: new THREE.Vector3(s.x, 0, s.z) };
+  s.u = s.v = 0;
+  audio.play('wreck', boat.position, 2);
+  // step out on the landward side
+  let bx = s.x, bz = s.z, bh = -99;
+  for (let a = 0; a < 6.28; a += 0.4) { const x = s.x + Math.sin(a) * 3.2, z = s.z + Math.cos(a) * 3.2, h = world.terrainHeight(x, z); if (h > bh) { bh = h; bx = x; bz = z; } }
+  player.mode = 'foot';
+  player.place(bx, Math.max(bh, 0), bz, 0);
+  player.busy = 1.2;
+  state.data.boat.patches++;
+  state.touch();
+}
+/** the giant's hand comes down on someone with no boat to hide in: wake at home, beside a boat made good */
+function killed() {
+  if (wrecking) return;
+  wrecking = true;
+  audio.play('wreck', player.pos, 2);
+  player.busy = 5;
+  ctx.fade(() => {
+    boatHome();
+    boat.setPatches(state.data.boat.patches);
+    const m = island.mooring;
+    player.mode = 'foot'; player.swimT = 0; player.dip = 0;
+    player.place(m.dock.x, m.dock.y, m.dock.z, 0);
+    env.time = (env.time + 0.15) % 1;
+    state.touch(); state.flush(true);
+    wrecking = false;
+  }, 2.2);
+}
+/** thrown by the giant: pick somewhere out at sea and work out the throw that lands there */
+function fling() {
+  const g = 12;
+  let dx = 0, dz = 0;
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * 6.283, d = 380 + Math.random() * 520;
+    dx = ATOLL.x + Math.sin(a) * d; dz = ATOLL.z + Math.cos(a) * d;
+    if (world.terrainHeight(dx, dz) > -3) continue;
+    if (Object.values(PLACES).some((p) => Math.hypot(p.x - dx, p.z - dz) < 70)) continue;
+    if (Math.hypot(dx - ISLAND.x, dz - ISLAND.z) < 260 || Math.hypot(dx - TOWER.x, dz - TOWER.z) < 80) continue;
+    break;
+  }
+  const p = player.pos, dist = Math.hypot(dx - p.x, dz - p.z), T = THREE.MathUtils.clamp(dist / 55, 7, 15);
+  player.fly.set((dx - p.x) / T, (0 - p.y) / T + 0.5 * g * T, (dz - p.z) / T);
+  player.mode = 'flung';
+  audio.play('giant-blow', p, 1.5);
+}
+
 /** the giant has broken the boat: wake on the slip beside a patched hull */
 function wreckBoat() {
   if (wrecking || boat.mode !== 'sailing') return;
@@ -204,12 +277,10 @@ function wreckBoat() {
   boat.sinking = 1;
   ctx.fade(() => {
     const m = island.mooring;
-    boat.sinking = 0;
-    boat.mode = 'moored'; boat.mooring = m;
-    boat.state.x = m.x; boat.state.z = m.z; boat.state.psi = m.psi; boat.state.u = boat.state.v = 0;
+    boatHome();
     player.mode = 'foot';
     player.place(m.dock.x, m.dock.y, m.dock.z, 0);
-    state.data.boat.patches++; state.data.boat.mooring = m.name;
+    state.data.boat.patches++;
     boat.setPatches(state.data.boat.patches);
     env.time = (env.time + 0.12) % 1;
     state.touch(); state.flush(true);
@@ -483,6 +554,8 @@ function frame() {
     const side = (ax * cs - az * sn) * dt * 0.6;
     s.x += side * cs; s.z -= side * sn;
   }
+  // shoved up onto the atoll's reef, the hull breaks there
+  if (boat.mode === 'sailing' && giant.phase !== 'asleep' && giant.phase !== 'dead' && Math.hypot(boat.state.x - ATOLL.x, boat.state.z - ATOLL.z) < ATOLL.r + 60 && world.terrainHeight(boat.state.x, boat.state.z) > -0.5) strandBoat();
   pushX = pushZ = 0;
   boat.update(dt, t, helm, wind, world);
   if (boat.capsized) { boat.capsized = false; wreckBoat(); }
@@ -499,12 +572,14 @@ function frame() {
   player.update(dt, t, input, rig.yaw, wind);
   // the anchor going down or coming up
   if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
-  // gone under for good: wake where the boat was built, the boat left where it lay
+  if (player.splashed) audio.play('giant-slap', player.pos, 0.5);
+  // gone under for good: wake where the boat was built, with the boat brought home
   if (player.drowned) {
     player.drowned = false;
     player.busy = 5;
     ctx.fade(() => {
       const m = island.mooring;
+      boatHome();                                        // whoever drowns wakes beside their boat, brought home
       player.mode = 'foot'; player.swimT = 0; player.dip = 0;
       player.place(m.dock.x, m.dock.y, m.dock.z, 0);
       env.time = (env.time + 0.15) % 1;
@@ -512,6 +587,13 @@ function frame() {
     }, 4);
   }
 
+  if (turnTo > 0 && player.mode === 'held') {
+    // lifted up to the face: the eyes are drawn to it
+    turnTo -= dt;
+    const want = Math.atan2(ATOLL.x - player.pos.x, ATOLL.z - player.pos.z) + Math.PI;
+    rig.yaw += Math.atan2(Math.sin(want - rig.yaw), Math.cos(want - rig.yaw)) * Math.min(1, dt * 3);
+    rig.pitch += (0.12 - rig.pitch) * Math.min(1, dt * 3);
+  }
   // the view
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);

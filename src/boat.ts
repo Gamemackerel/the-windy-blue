@@ -11,6 +11,7 @@ import { MAT, patch } from './materials';
 import { bodyMaterial, Tube } from './figure';
 
 const LEN = 5.2;
+const _w3 = new THREE.Vector3(), _up3 = new THREE.Vector3(0, 1, 0);
 const BEAM = 1.9;
 const DRAFT = 0.42;
 const MAST_Z = 0.85;
@@ -107,6 +108,12 @@ export class Boat {
   sailUp = 1;
   /** set when the boat has been rolled by a great wave; the main loop decides what follows */
   capsized = false;
+  /** driven hard onto a reef and broken there: lies heeled over where it struck, and cannot be sailed */
+  stranded = false;
+  /** 0 stowed in the bow .. 1 on the bottom, for the anchor's throw and recovery */
+  anchorK = 0;
+  private anchor = new THREE.Group();
+  private anchorLine!: THREE.Mesh;
   /** above zero while the boat is going down */
   sinking = 0;
   /** speed lost in the last grounding, for sound and feel */
@@ -371,6 +378,45 @@ export class Boat {
     pp.needsUpdate = true;
   }
 
+  /** a small grapnel stowed in the bow, and the line it goes over the side on */
+  private buildAnchor() {
+    const iron = new THREE.MeshStandardMaterial({ color: '#1c1b1a', roughness: 0.6, metalness: 0.6 });
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.5, 8), iron); shank.position.y = 0.25;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.01, 6, 12), iron); ring.position.y = 0.53;
+    this.anchor.add(shank, ring);
+    for (let i = 0; i < 4; i++) {
+      const fl = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.014, 6, 10, Math.PI * 0.55), iron);
+      fl.rotation.set(0, (i / 4) * Math.PI * 2, Math.PI * 1.0); fl.position.set(Math.cos((i / 4) * Math.PI * 2) * -0.13, 0.02, Math.sin((i / 4) * Math.PI * 2) * 0.13);
+      this.anchor.add(fl);
+    }
+    this.anchor.traverse((m) => { m.castShadow = true; });
+    this.anchorLine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 5), new THREE.MeshStandardMaterial({ color: '#8a7b5e', roughness: 1 }));
+    this.anchorLine.geometry.translate(0, 0.5, 0);
+    this.group.add(this.anchor, this.anchorLine);
+  }
+  /** the anchor goes over in an arc, takes its line down after it, and comes back the same way */
+  private syncAnchor(dt: number) {
+    if (!this.anchorLine) this.buildAnchor();
+    const down = this.mode === 'moored' && this.mooring?.name === 'anchor';
+    if (dt < 1) this.anchorK = THREE.MathUtils.clamp(this.anchorK + (down ? dt / 1.5 : -dt / 1.3), 0, 1); else this.anchorK = down ? 1 : 0;
+    const k = this.anchorK, a = this.anchor;
+    const toss = Math.min(1, k / 0.42), e = toss * toss * (3 - 2 * toss), sink = Math.max(0, (k - 0.42) / 0.58);
+    // stowed on the bow boards -> out over the gunwale in an arc -> down through the water
+    a.position.set(0.15 + 0.95 * e, 0.34 + Math.sin(e * Math.PI) * 0.75 - e * 0.5 - sink * sink * 3.2, LEN / 2 - 1.15 + 0.35 * e);
+    a.rotation.set(e * 2.6 + sink * 0.5, 0, -e * 1.2);
+    a.visible = k < 0.98;
+    const l = this.anchorLine;
+    l.visible = k > 0.03;
+    if (l.visible) {
+      _v.set(0.05, 0.52, LEN / 2 - 0.75);                     // made fast at the bow
+      l.position.copy(_v);
+      _w3.copy(a.position).sub(_v);
+      const len = Math.max(0.05, _w3.length());
+      l.quaternion.setFromUnitVectors(_up3, _w3.multiplyScalar(1 / len));
+      l.scale.set(1, len, 1);
+    }
+  }
+
   /** keep the hull out of land and structures; grounding scrapes rather than sinks */
   private collide(world: World, px: number, pz: number) {
     const s = this.state;
@@ -459,6 +505,8 @@ export class Boat {
     const down = this.sinking > 0 ? (this.sinking - 1) : 0;
     this.group.position.set(s.x, this.y + 0.06 - down * 1.6, s.z);
     this.group.rotation.set(-this.pitch - down * 0.5, s.psi, this.roll - s.heel + down * 0.9);
+    if (this.stranded) { this.group.position.y = 0.25; this.group.rotation.set(0.08, s.psi, 0.5); }
+    this.syncAnchor(dt);
     this.boomPivot.rotation.y = -s.boom;
     this.rudderPivot.rotation.y = -s.rudder * 0.5;
     // mainsheet: from the boom to its block, taut when the sail is drawing, hanging in a slack curve when it is not
