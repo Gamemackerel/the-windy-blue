@@ -164,7 +164,7 @@ Pressing **R** takes a picture of the current view and asks for a note. Sending 
 - **Weather** is one slowly wandering value from glass calm to full storm. It sets wave height, whitecaps, wind strength and how dark the sky is. Most of the time it is fair; storms are uncommon and build over a few minutes.
 - **Sea states.** Glass (almost no swell, no foam), light airs, a sailing breeze, rough (whitecaps everywhere), and storm (high seas, spindrift, a lid of dark cloud, a dim flat light).
 - **Great waves.** In a storm, a single very large wave occasionally travels down the wind, 9-14 m high. Met bow-on or stern-on the boat rides over it; taken on the beam it rolls the boat over.
-- **Capsizing.** Ordinary weather cannot overturn the boat. In a storm, holding the sheet in hard across the wind can: left alone, the sheet eases itself and the boat survives. A capsize is treated like the giant wrecking the boat (wake on the slip, patched hull).
+- **Capsizing.** Exceptional. No wind and no ordinary sea, whitecaps and full storm included, can overturn the boat; pressed hard it only puts the rail under. The one thing that rolls it is a great wave (the rare 9–14 m storm wave) taken on the beam near its crest; met bow-on or stern-on the boat rides over. A capsize is treated like the giant wrecking the boat (wake on the slip, patched hull).
 - **Sun, moon and stars** follow a turning planet seen from about 34 degrees north. The moon rises about an eighth of a day later each day and shows its true phase (an eight-day month); nights with a full moon are noticeably brighter than moonless ones. The sun's light is gone before the moon's begins to count, so neither ever switches on.
 
 ### 4.11 Moving about
@@ -220,7 +220,7 @@ Jungle orchid ─► Watcher ─► chart (optional; the passes can be found wit
 ### 6.2 Forgiveness
 
 - Trim has a wide sweet spot, and a default assist eases the sail toward a reasonable setting if the player ignores it.
-- The boat heels but never capsizes. In irons it drifts back and falls off the wind by itself.
+- The boat heels but does not capsize from wind (see Capsizing). In irons it drifts back and falls off the wind by itself.
 - Tacks and gybes are one input; the character ducks the boom and changes sides.
 - Shallow reef scrapes and slows the boat rather than sinking it.
 

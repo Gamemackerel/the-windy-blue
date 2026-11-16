@@ -19,7 +19,6 @@ export interface SailState {
   aws: number;       // apparent wind speed
   trimAssist: number; // seconds since the player last touched the sheet
   side: number;       // sideways force from the sail (N), + toward port
-  over: number;       // seconds spent laid flat: at 1 the boat is over
 }
 
 export interface SailInput {
@@ -38,7 +37,7 @@ const BEST_ALPHA = 0.33;
 export function createSailState(x = 0, z = 0, psi = 0): SailState {
   return {
     x, z, psi, u: 0, v: 0, r: 0, sheet: 0.6, rudder: 0, boom: 0, alpha: 0,
-    heel: 0, drive: 0, awa: 0, aws: 0, trimAssist: 99, side: 0, over: 0,
+    heel: 0, drive: 0, awa: 0, aws: 0, trimAssist: 99, side: 0,
   };
 }
 
@@ -132,12 +131,11 @@ export function stepSailing(s: SailState, inp: SailInput, wx: number, wz: number
   s.r += yawAcc * dt;
   s.psi += s.r * dt;
 
-  // heel from side force. In ordinary weather the hull stiffens and holds; pressed far beyond that,
-  // with the sheet held in, it goes on over.
+  // heel from side force. The hull stiffens and holds: pressed hard in a storm it puts the rail under
+  // but wind alone never puts it over (only a great wave does that, see Boat.sync).
   const press = Math.max(0, Math.abs(Fl) - 2100) / 1500;
-  const heelTarget = Math.sign(Fl) * (Math.min(0.34, (Math.abs(Fl) / 900) * 0.3) + Math.min(1.1, press * 0.8));
+  const heelTarget = Math.sign(Fl) * (Math.min(0.34, (Math.abs(Fl) / 900) * 0.3) + Math.min(0.45, press * 0.4));
   s.heel += (heelTarget - s.heel) * Math.min(1, dt * 2.2);
-  s.over = Math.abs(s.heel) > 0.9 ? s.over + dt : Math.max(0, s.over - dt * 2);
 
   const sn2 = Math.sin(s.psi), cs2 = Math.cos(s.psi);
   s.x += (s.u * sn2 + s.v * cs2) * dt;

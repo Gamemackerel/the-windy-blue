@@ -482,7 +482,7 @@ function frame() {
   }
   pushX = pushZ = 0;
   boat.update(dt, t, helm, wind, world);
-  if (boat.capsized) { boat.capsized = false; boat.state.over = 0; wreckBoat(); }
+  if (boat.capsized) { boat.capsized = false; wreckBoat(); }
   // lay down the wake
   {
     const wk = ocean.wake, s = boat.state, moving = boat.mode === 'sailing' ? Math.min(1, Math.abs(s.u) / 4) : 0;

@@ -7,14 +7,14 @@ const ev = (f, a) => page.evaluate(f, a);
 await page.goto('http://localhost:5173/?new&boat&t=0.42&sea=1&ts=0&bx=0&bz=0&psi=2.0');
 await page.waitForTimeout(18000);
 console.log('assisted, 15 s of storm:', await ev(() => { const g = window.__game, s = g.boat.state; return `${g.player.mode} heel ${(s.heel * 57.3).toFixed(0)} speed ${s.u.toFixed(1)} side ${s.side.toFixed(0)}`; }));
-// 2. haul the sheet hard in across the wind and hold it: should go over
+// 2. haul the sheet hard in across the wind and hold it: rail under, but should NOT go over
 await page.mouse.click(640, 360);
 await ev(() => { const g = window.__game; g.boat.state.psi = g.wind.dir + Math.PI / 2; });
 await page.keyboard.down('KeyW');
 let over = false;
-for (let i = 0; i < 24 && !over; i++) { await page.waitForTimeout(500); over = await ev(() => window.__game.player.mode !== 'sail'); }
+for (let i = 0; i < 40 && !over; i++) { await page.waitForTimeout(500); over = await ev(() => window.__game.player.mode !== 'sail'); }
 await page.keyboard.up('KeyW');
-console.log('sheet held in, beam to the storm -> capsized:', over);
+console.log('sheet held in, beam to the storm -> capsized (want false):', over, await ev(() => 'heel ' + (window.__game.boat.state.heel * 57.3).toFixed(0)));
 // 3. the great wave, taken on the beam and then bow-on
 for (const [name, off] of [['beam-on', Math.PI / 2], ['bow-on', Math.PI]]) {
   await page.goto('http://localhost:5173/?new&boat&t=0.42&sea=0.9&ts=0&bx=0&bz=0');
