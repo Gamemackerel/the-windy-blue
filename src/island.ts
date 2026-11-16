@@ -241,17 +241,55 @@ export function buildIsland(ctx: Ctx) {
   b.rail(110, 13, 118.2, 13, DECK, MAT.rust, 0.9);
   b.rail(119.8, 13, 130, 13, DECK, MAT.rust, 0.9);
   world.addBox(IX + 119, DECK + 0.45, IZ + 13, 0.8, 0.45, 0.06);                        // the gap is for the gangway, not for walking off the edge
+  // The gangway: a framed and boarded brow hinged at the dock's edge, hung on chains from two posts and resting on
+  // iron knees bolted to the dock wall. It stands raised while the dock is dry and is lowered once the boat floats.
+  const brow = new THREE.Group();
+  const BROW_L = 1.85, BROW_UP = 1.32, BROW_DOWN = -0.45;
+  brow.position.set(IX + 119, DECK + 0.05, IZ + 13.06);
+  scene.add(brow);
+  const browChains: THREE.Mesh[] = [];
   {
-    // gangway: a boarded ramp with rope rails from the dock side down toward the boat
-    const g0 = new THREE.Vector3(119, DECK + 0.03, 13.25), g1 = new THREE.Vector3(119, DECK - 0.75, 11.5);
-    const plank = b.box(119, (g0.y + g1.y) / 2, (g0.z + g1.z) / 2, 0.8, 0.05, g0.distanceTo(g1), MAT.paleWood, 0, false);
-    plank.rotation.x = -Math.atan2(g0.y - g1.y, g0.z - g1.z);
-    for (let i = 1; i < 6; i++) { const c = b.box(119, g0.y + (g1.y - g0.y) * (i / 6) + 0.035, g0.z + (g1.z - g0.z) * (i / 6), 0.8, 0.025, 0.05, MAT.wood, 0, false); c.rotation.x = plank.rotation.x; }
-    for (const sx of [-0.4, 0.4]) {
-      b.bar(119 + sx, DECK, 13.1, 119 + sx, DECK + 0.9, 13.1, 0.03, MAT.rust, 6);
-      b.bar(119 + sx, DECK + 0.85, 13.1, 119 + sx, DECK + 0.05, 11.5, 0.012, MAT.rope, 4);
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; brow.add(m); return m; };
+    for (const sx of [-0.37, 0.37]) {
+      add(new THREE.BoxGeometry(0.06, 0.1, BROW_L), MAT.wood, sx, -0.05, -BROW_L / 2);                                 // stringers
+      for (const z of [0.25, 1.0, 1.75]) add(new THREE.CylinderGeometry(0.014, 0.014, 0.72, 6), MAT.rust, sx * 1.08, 0.36, -z);   // stanchions
+      const railTop = add(new THREE.CylinderGeometry(0.016, 0.016, 1.56, 6), MAT.rust, sx * 1.08, 0.72, -1.0); railTop.rotation.x = Math.PI / 2;
     }
+    for (let i = 0; i < 9; i++) add(new THREE.BoxGeometry(0.82, 0.028, 0.185), MAT.paleWood, 0, 0.014, -0.11 - i * 0.205);   // boards
+    for (let i = 0; i < 4; i++) add(new THREE.BoxGeometry(0.7, 0.02, 0.03), MAT.wood, 0, 0.04, -0.4 - i * 0.42);            // battens underfoot
+    add(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), MAT.dark, 0, -0.03, 0).rotation.z = Math.PI / 2;                    // hinge pin
+    // the posts the chains hang from, and the knees on the wall
+    for (const sx of [-0.52, 0.52]) {
+      b.bar(119 + sx, DECK, 13.2, 119 + sx, DECK + 1.55, 13.2, 0.04, MAT.rust, 8);
+      b.mesh(new THREE.SphereGeometry(0.06, 10, 8), MAT.dark, 119 + sx, DECK + 1.58, 13.2, false);
+      const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 1, 5), MAT.dark);
+      ch.geometry.translate(0, 0.5, 0);
+      ch.userData.from = new THREE.Vector3(IX + 119 + sx, DECK + 1.52, IZ + 13.2);
+      ch.userData.sx = sx * 0.77;
+      scene.add(ch); browChains.push(ch);
+    }
+    for (const sx of [-0.3, 0.3]) {
+      b.box(119 + sx, DECK - 0.5, 12.985, 0.07, 1.0, 0.03, MAT.rust, 0, false);                                             // plate bolted to the wall
+      b.bar(119 + sx, DECK - 0.06, 12.97, 119 + sx, DECK - 0.34, 12.38, 0.028, MAT.rust, 6);                               // arm the brow lies on
+      b.bar(119 + sx, DECK - 0.34, 12.38, 119 + sx, DECK - 0.95, 12.97, 0.024, MAT.rust, 6);                               // strut back to the wall
+    }
+    b.bar(118.7, DECK - 0.34, 12.38, 119.3, DECK - 0.34, 12.38, 0.024, MAT.rust, 6);
   }
+  const _bw = new THREE.Vector3(), _bu = new THREE.Vector3(0, 1, 0);
+  /** 0 = raised, 1 = lowered to the boat */
+  const setBrow = (k: number) => {
+    brow.rotation.x = BROW_UP + (BROW_DOWN - BROW_UP) * k;
+    brow.updateMatrixWorld(true);
+    for (const ch of browChains) {
+      const from = ch.userData.from as THREE.Vector3;
+      _bw.set(ch.userData.sx as number, 0.05, -BROW_L + 0.08).applyMatrix4(brow.matrixWorld).sub(from);
+      const len = _bw.length();
+      ch.position.copy(from);
+      ch.quaternion.setFromUnitVectors(_bu, _bw.multiplyScalar(1 / len));
+      ch.scale.set(1, len, 1);
+    }
+  };
+  setBrow(0);
   b.rail(110, 7, 130, 7, DECK, MAT.rust, 0.9);
   // the dock-head gate across the slip: two barred leaves on heavy posts, one standing a little open
   {
@@ -268,8 +306,10 @@ export function buildIsland(ctx: Ctx) {
       add(new THREE.BoxGeometry(0.035, 0.05, Math.hypot(W, H)), 0, H / 2, dir * W / 2, -dir * Math.atan2(H, W));       // the brace that keeps it from sagging
       b.flatten(g);
     };
-    leaf(7.12, 1, 0); leaf(12.88, -1, 0.42);
-    world.addBox(IX + 110, DECK + 0.45, IZ + 10, 0.06, 0.45, 3);
+    leaf(7.12, 1, 0); leaf(12.88, -1, 0);
+    world.addBox(IX + 110, DECK + 1.3, IZ + 10, 0.06, 1.3, 3);
+    // the rails round the dock are for leaning on, not for vaulting: nothing gets over them into the basin
+    world.addBox(IX + 120, DECK + 1.3, IZ + 13, 10, 1.3, 0.05); world.addBox(IX + 120, DECK + 1.3, IZ + 7, 10, 1.3, 0.05);
   }
   // bollards and fenders
   for (const x of [112, 118, 124, 129]) { b.cyl(x, 19.3, 0.16, DECK, DECK + 0.45, MAT.dark, false); b.cyl(x, 0.7, 0.16, DECK, DECK + 0.45, MAT.dark, false); }
@@ -584,7 +624,13 @@ export function buildIsland(ctx: Ctx) {
     mirror.add(dish, lens, tube, yoke, cap);
   }
   const beamMat = new THREE.MeshBasicMaterial({ color: '#ffe6b8', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-  const ray = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 1, 12, 1, true), beamMat);
+  const rayMat = new THREE.ShaderMaterial({
+    uniforms: { uOp: { value: 0 }, uFade: { value: 1 } },
+    vertexShader: 'varying float vAlong; void main() { vAlong = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform float uOp; uniform float uFade; varying float vAlong; void main() { float a = mix(1.0, pow(1.0 - vAlong, 1.6), uFade); gl_FragColor = vec4(vec3(1.0, 0.9, 0.72) * uOp * a, 1.0); }',
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const ray = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.2, 1, 14, 1, true), rayMat);
   ray.geometry.rotateX(Math.PI / 2);
   ray.geometry.translate(0, 0, 0.5);
   mirror.add(ray);
@@ -618,7 +664,7 @@ export function buildIsland(ctx: Ctx) {
     glassMat.emissiveIntensity = lit * 2.5;
     // where does the thrown light land?
     const dx = Math.sin(mYaw), dz = Math.cos(mYaw);
-    let len = 26, onWall = false;
+    let len = 70, onWall = false;
     const wallZ = LF.z + LF.d / 2 + 0.01;
     if (dz < -0.2) {
       const k = (wallZ - MR.z) / dz;
@@ -626,10 +672,11 @@ export function buildIsland(ctx: Ctx) {
       if (Math.abs(hx - LF.x) < LF.w / 2) { len = k; onWall = true; spot.position.set(IX + hx, DECK + 3.2, IZ + wallZ + 0.02); }
     }
     // the beam climbs from the mirror to the height of the receiver, so it meets the wall exactly where the spot is
-    const rise = onWall ? DECK + 3.2 - MR.y : 1.5 * (len / 15);
+    const rise = onWall ? DECK + 3.2 - MR.y : 1.5 * (len / 15) * 0.4;
     ray.scale.set(1, 1, Math.hypot(len, rise));
     ray.rotation.x = -Math.atan2(rise, len);
     beamMat.opacity = lit * 0.05;
+    rayMat.uniforms.uOp.value = lit * 0.05; rayMat.uniforms.uFade.value = onWall ? 0.2 : 1;   // in the open it spreads and dies away; onto the wall it arrives nearly whole
     spot.visible = onWall && lit > 0.02;
     const onEye = mStep === STEPS / 2 && Math.abs(d) < 0.05;
     const aligned = onEye && lit > 0.5;
@@ -695,7 +742,7 @@ export function buildIsland(ctx: Ctx) {
       world.remove(gateCol);
       if (boat.mode === 'cradle') { boat.mode = 'moored'; boat.mooring = mooring; }
     };
-    if (instant) { finish(); return; }
+    if (instant) { finish(); setBrow(1); return; }
     fill.visible = true;
     ctx.sfx('flood', fill.position);
     world.tween(16, (k) => {
@@ -704,7 +751,7 @@ export function buildIsland(ctx: Ctx) {
       boat.cradle.y = -0.72 + Math.max(0, k - 0.42) * 1.3;
     }, () => {
       ctx.sfx('gate', gate.position);
-      world.tween(6, (k) => { gate.position.y = -0.6 - 4.6 * k; }, finish);
+      world.tween(6, (k) => { gate.position.y = -0.6 - 4.6 * k; }, () => { finish(); ctx.sfx('ratchet', brow.position); world.tween(3, (k) => setBrow(k * k * (3 - 2 * k))); });
     });
   }
 
@@ -732,6 +779,7 @@ export function buildIsland(ctx: Ctx) {
         draining = true;
         ctx.sfx('ratchet', lever.position);
         world.tween(0.8, (k) => { lever.rotation.x = -0.45 + 0.9 * k; });
+        world.tween(2.5, (k) => setBrow(1 - k * k * (3 - 2 * k)));               // up comes the brow before anything else
         ctx.sfx('gate', gate.position);
         world.tween(6, (k) => { gate.position.y = -5.2 + 4.6 * k; }, () => {
           gateCol = world.addBox(IX + 130.2, -0.6, IZ + 10, 0.3, 2.2, 3.3);
@@ -987,19 +1035,23 @@ export function buildIsland(ctx: Ctx) {
     {
       const brass2 = MAT.brass.clone(); brass2.side = THREE.DoubleSide;
       const dark2 = MAT.dark.clone(); dark2.side = THREE.DoubleSide;
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 2.3, 20, 1, true), brass2);
-      body.rotation.x = Math.PI / 2; body.position.z = -0.45;                 // looks along -Z
-      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 20, 1, true), dark2);
-      hood.rotation.x = Math.PI / 2; hood.position.z = -1.72;
-      const draw = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 14, 1, true), brass2);
-      draw.rotation.x = Math.PI / 2; draw.position.z = 0.86;
+      // Everything lies along Z, looking toward -Z. Built as one turned profile from the dew shield at the front to the
+      // draw tube at the back, so each part runs into the next and nothing hangs in the air.
+      const prof: [number, number][] = [[0.172, -1.9], [0.172, -1.55], [0.152, -1.55], [0.152, -1.5], [0.15, -1.5], [0.122, 0.62], [0.13, 0.62], [0.13, 0.7], [0.07, 0.74], [0.066, 0.74], [0.066, 1.06], [0.072, 1.06], [0.072, 1.1], [0.045, 1.1]];
+      const body = new THREE.Mesh(new THREE.LatheGeometry(prof.map(([r, z]) => new THREE.Vector2(r, z)), 28), brass2);
+      body.rotation.x = Math.PI / 2;                                           // the lathe's axis (Y) laid along Z
+      const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.1725, 0.1725, 0.352, 28, 1, true), dark2);   // the dew shield is blackened
+      shield.rotation.x = Math.PI / 2; shield.position.z = -1.725;
+      const lip = new THREE.Mesh(new THREE.RingGeometry(0.15, 0.1725, 28), dark2); lip.position.z = -1.9;
       const glassM = new THREE.MeshStandardMaterial({ color: '#0b1014', roughness: 0.05, metalness: 0.6 });
-      const front = new THREE.Mesh(new THREE.CircleGeometry(0.145, 20), glassM);
-      front.rotation.y = Math.PI; front.position.z = -1.55;
-      for (const z of [-1.2, -0.3, 0.55]) { const band = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.014, 6, 22), MAT.dark); band.position.z = z; band.scale.setScalar(z > 0 ? 0.86 : 1); tube.add(band); }
-      const finder = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.55, 8), MAT.dark);
-      finder.rotation.x = Math.PI / 2; finder.position.set(0.12, 0.17, 0.1);
-      tube.add(body, hood, draw, front, finder);
+      const front = new THREE.Mesh(new THREE.CircleGeometry(0.151, 24), glassM);
+      front.rotation.y = Math.PI; front.position.z = -1.52;
+      // bands sized to the tube where they sit
+      for (const z of [-1.2, -0.3, 0.45]) { const rr = 0.15 - ((z + 1.5) / 2.12) * 0.028; const band = new THREE.Mesh(new THREE.TorusGeometry(rr + 0.004, 0.012, 6, 26), MAT.dark); band.position.z = z; tube.add(band); }
+      const finder = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.55, 10), MAT.dark);
+      finder.rotation.x = Math.PI / 2; finder.position.set(0.1, 0.19, 0.1);
+      for (const z of [-0.1, 0.3]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.03), MAT.dark); st.position.set(0.085, 0.15, z); st.rotation.z = -0.45; tube.add(st); }   // the finder's two stalks
+      tube.add(body, shield, lip, front, finder);
       tube.traverse((m) => { m.castShadow = true; });
     }
     // the eyepiece: missing until the lens is brought up
@@ -1040,5 +1092,7 @@ export function buildIsland(ctx: Ctx) {
       || (Math.abs(lx - 50) < 4.3 && Math.abs(lz - 10.5) < 3.3 && p.y < 5.5)
       || (Math.abs(lx - 64) < 5.8 && Math.abs(lz + 15) < 3.8 && p.y < 6.5);
   };
-  return { mooring, start: P(74, DECK, 20), indoors };
+  /** down in the dock while it is empty: there is no water there to swim in */
+  const dockDry = (p: THREE.Vector3) => !state.flag('flooded') && Math.abs(p.x - IX - 120) < 10.2 && Math.abs(p.z - IZ - 10) < 3.2;
+  return { mooring, start: P(74, DECK, 20), indoors, dockDry };
 }

@@ -3,6 +3,7 @@
 // with gait cycles and two-bone IK, and the same joints can be handed to a
 // ragdoll simulation, so there are no authored clips anywhere.
 import * as THREE from 'three';
+import { meshField } from './sdfmesh';
 import { NOISE_GLSL } from './env';
 import { MAT, BUMP_GLSL } from './materials';
 
@@ -200,26 +201,64 @@ const part = (g: THREE.BufferGeometry, mat: THREE.Material, c: THREE.Color, x = 
   return m;
 };
 
-/** palm, four fingers and a thumb. Local +Y runs out along the forearm; s is +1 for a left hand. */
+const handGeo: Record<string, THREE.BufferGeometry> = {};
+/**
+ * A hand as one continuous surface: wrist, palm, the heel of the thumb, four fingers lightly curled and a thumb,
+ * all run together the way flesh does. Local +Y runs out along the forearm, the palm faces +Z; s is +1 for a left hand.
+ */
+function handGeometry(s: number) {
+  const key = s > 0 ? 'L' : 'R';
+  if (handGeo[key]) return handGeo[key];
+  type Cap = { ax: number; ay: number; az: number; bx: number; by: number; bz: number; r0: number; r1: number };
+  const caps: Cap[] = [], thumb: Cap[] = [];
+  const chain = (list: Cap[], x: number, y: number, z: number, splay: number, lens: number[], bends: number[], r: number, yawOut = 0) => {
+    let px = x, py = y, pz = z, bend = 0;
+    lens.forEach((L, i) => {
+      bend += bends[i];
+      // forward along the finger, curling toward the palm side (+Z), fanned a little in the plane of the hand
+      const fy = Math.cos(bend), fz = Math.sin(bend);
+      const dx = Math.sin(splay) * fy + Math.sin(yawOut) * 0.0, dy = Math.cos(splay) * fy, dz = fz;
+      const qx = px + dx * L, qy = py + dy * L, qz = pz + dz * L;
+      list.push({ ax: px, ay: py, az: pz, bx: qx, by: qy, bz: qz, r0: r * (1 - i * 0.08), r1: r * (1 - (i + 1) * 0.08) });
+      px = qx; py = qy; pz = qz;
+    });
+  };
+  for (let f = 0; f < 4; f++) {
+    const k = 1 - Math.abs(f - 1.4) * 0.1;
+    chain(caps, (f - 1.5) * 0.0205, 0.08, 0.0, (f - 1.5) * 0.075, [0.036 * k, 0.024 * k, 0.019 * k], [0.3, 0.42, 0.36], 0.0093);
+  }
+  // the thumb leaves the side of the palm and comes round in front of it
+  {
+    const o = { x: -s * 0.028, y: 0.022, z: 0.01 }, d1 = new THREE.Vector3(-s * 0.72, 0.6, 0.34).normalize(), d2 = new THREE.Vector3(-s * 0.4, 0.82, 0.4).normalize();
+    thumb.push({ ax: o.x, ay: o.y, az: o.z, bx: o.x + d1.x * 0.036, by: o.y + d1.y * 0.036, bz: o.z + d1.z * 0.036, r0: 0.0125, r1: 0.0105 });
+    const m = thumb[0];
+    thumb.push({ ax: m.bx, ay: m.by, az: m.bz, bx: m.bx + d2.x * 0.028, by: m.by + d2.y * 0.028, bz: m.bz + d2.z * 0.028, r0: 0.0105, r1: 0.009 });
+  }
+  const cap = (c: Cap, x: number, y: number, z: number) => {
+    const bx = c.bx - c.ax, by = c.by - c.ay, bz = c.bz - c.az, px = x - c.ax, py = y - c.ay, pz = z - c.az;
+    const t = Math.min(1, Math.max(0, (px * bx + py * by + pz * bz) / (bx * bx + by * by + bz * bz)));
+    return Math.hypot(px - bx * t, py - by * t, pz - bz * t) - (c.r0 + (c.r1 - c.r0) * t);
+  };
+  const smin = (a: number, b: number, k: number) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+  const field = (x: number, y: number, z: number) => {
+    // palm: a rounded slab, a little hollow on the palm side
+    const qx = Math.abs(x) - 0.031, qy = Math.abs(y - 0.044) - 0.034, qz = Math.abs(z + 0.001) - 0.006;
+    let d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - 0.0105;
+    d = Math.max(d, -(Math.hypot(x * 0.8, y - 0.045, z - 0.034) - 0.022));                                    // the hollow of the palm
+    d = smin(d, Math.hypot(x, (y + 0.012) * 0.8, z * 1.35) - 0.025, 0.012);                                    // wrist
+    d = smin(d, Math.hypot(x + s * 0.02, y - 0.026, (z - 0.008) * 1.2) - 0.017, 0.01);                         // heel of the thumb
+    let fd = 1;
+    for (const c of caps) fd = Math.min(fd, cap(c, x, y, z));       // fingers lie against each other without growing together
+    d = smin(d, fd, 0.007);
+    let td = 1;
+    for (const c of thumb) td = smin(td, cap(c, x, y, z), 0.004);
+    return smin(d, td, 0.008);
+  };
+  const g = meshField(field, new THREE.Vector3(-0.075, -0.05, -0.03), new THREE.Vector3(0.075, 0.175, 0.075), 0.0022);
+  return (handGeo[key] = g);
+}
 export function fillHand(hand: THREE.Group, s: number, skinMat: THREE.Material, skin: THREE.Color) {
-    const palm = part(new THREE.SphereGeometry(0.04, 12, 10), skinMat, skin, 0, 0.04, 0);
-    palm.scale.set(0.95, 1.2, 0.42);
-    hand.add(palm);
-    for (let f = 0; f < 4; f++) {
-      const fg = new THREE.Group();
-      fg.position.set((f - 1.5) * 0.019, 0.082, 0.002);
-      fg.rotation.set(0.5, 0, (f - 1.5) * -0.07);
-      const len = 0.036 - Math.abs(f - 1.4) * 0.005;
-      fg.add(part(new THREE.CapsuleGeometry(0.0088, len, 3, 8), skinMat, skin, 0, len / 2, 0));
-      const tip = part(new THREE.CapsuleGeometry(0.008, len * 0.8, 3, 8), skinMat, skin, 0, len * 0.4, 0);
-      const kn = new THREE.Group(); kn.position.y = len + 0.008; kn.rotation.x = 0.7; kn.add(tip);
-      fg.add(kn);
-      hand.add(fg);
-    }
-    const th = new THREE.Group();
-    th.position.set(s * -0.036, 0.03, 0.01); th.rotation.set(0.5, 0, s * 0.9);   // thumb on the forward edge when the palm faces the body
-    th.add(part(new THREE.CapsuleGeometry(0.0105, 0.035, 3, 8), skinMat, skin, 0, 0.02, 0));
-    hand.add(th);
+  hand.add(part(handGeometry(s).clone(), skinMat, skin, 0, 0, 0));
 }
 
 export class Figure {

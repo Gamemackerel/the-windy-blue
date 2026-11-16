@@ -188,7 +188,8 @@ export const MAT = {
   // sheet roofing: ribs, rust creeping in from the edges and the fixings
   corrugated: patch(std('#5b3a2c', 0.75, 0.35), /* glsl */ `
     vec2 q = faceUV(wp, wn);
-    float rib = sin(q.x * 44.0) * 0.5 + 0.5;
+    // ribs finer than a pixel are averaged away instead of beating against the screen into rings
+    float rib = mix(0.5, sin(q.x * 44.0) * 0.5 + 0.5, smoothstep(0.07, 0.02, fwidth(q.x)));
     float n = tri(wp, wn, 0.9); float m = tri(wp, wn, 0.3);
     float sheet = seam(q.y, 1.9, 0.02);
     col = mix(col, vec3(0.36, 0.15, 0.07), smoothstep(0.4, 0.7, n) * 0.7);

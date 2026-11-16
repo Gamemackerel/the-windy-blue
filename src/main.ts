@@ -609,7 +609,7 @@ function frame() {
     // the bow wave travels with the hull
     wk[0].set(s.x + Math.sin(s.psi) * 1.9, s.z + Math.cos(s.psi) * 1.9, 1.5, moving * 0.6);
   }
-  player.dry = lab.inside();
+  player.dry = lab.inside() || island.dockDry(player.pos);
   player.update(dt, t, input, rig.yaw, wind);
   // the anchor going down or coming up
   if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
