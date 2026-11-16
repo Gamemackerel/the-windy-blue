@@ -48,7 +48,7 @@ float vnoise(vec2 p) {
 }
 float fbm(vec2 p) {
   float a = 0.5, s = 0.0;
-  for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 3.7); a *= 0.5; }
+  for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = mat2(1.624, 1.218, -1.218, 1.624) * p + vec2(17.1, 3.7); a *= 0.5; }   // each octave turned, so no lattice lines up with another
   return s;
 }
 `;

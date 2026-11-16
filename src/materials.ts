@@ -6,7 +6,7 @@ import { NOISE_GLSL } from './env';
 const HELPERS = /* glsl */ `
 ${NOISE_GLSL}
 // cheaper three-octave noise for relief and fine grain
-float fbm3(vec2 p) { return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.25 + vnoise(p * 4.1 + 3.7) * 0.25; }
+float fbm3(vec2 p) { return vnoise(p) * 0.5 + vnoise(mat2(1.624, 1.218, -1.218, 1.624) * p + 17.1) * 0.25 + vnoise(mat2(-1.15, 3.94, -3.94, -1.15) * p + 3.7) * 0.25; }
 // noise projected along the dominant axis blend (triplanar)
 float tri(vec3 p, vec3 n, float s) {
   vec3 w = abs(n); w = w * w; w /= (w.x + w.y + w.z);
@@ -28,8 +28,17 @@ float streaks(vec3 p, vec3 n, float s) {
 // vd the distance from the eye (fine detail fades with it). Writes relief into bump.
 vec3 dirt(vec2 q, float vd, vec3 dry, vec3 damp, out float bump) {
   float near = smoothstep(26.0, 4.0, vd), mid = smoothstep(90.0, 20.0, vd);
+  // every layer gets its own turn and a gentle warp, so none of them follows the world's axes or each other
+  vec2 q0 = q;
+  vec2 warp = vec2(fbm3(q0 * 0.31 + 3.0), fbm3(q0 * 0.31 + 41.0)) - 0.5;
+  q = mat2(0.94, 0.342, -0.342, 0.94) * q0 + warp * 1.4;
+  vec2 qc = mat2(0.5, 0.866, -0.866, 0.5) * q0 + warp * 0.7, qg = mat2(-0.616, 0.788, -0.788, -0.616) * q0 + warp.yx * 0.5;
   float big = fbm(q * 0.11), patchy = fbm(q * 0.45 + 31.0);
-  float clod = fbm3(q * 2.3), grit = fbm3(q * 17.0);
+  float clod = fbm3(qc * 2.3), grit = fbm3(qg * 17.0);
+  // grain finer than a pixel is averaged away rather than left to shimmer into a pattern
+  float px = length(fwidth(q0));
+  grit = mix(0.5, grit, smoothstep(0.035, 0.008, px));
+  clod = mix(0.5, clod, smoothstep(0.3, 0.07, px));
   vec3 c = mix(dry, damp, smoothstep(0.35, 0.7, big));
   c *= 0.6 + 0.78 * patchy;
   c = mix(c, c * vec3(0.5, 0.46, 0.42), smoothstep(0.52, 0.72, fbm3(q * 0.23 + 60.0)) * 0.6);   // dark, humus-stained ground
@@ -37,11 +46,11 @@ vec3 dirt(vec2 q, float vd, vec3 dry, vec3 damp, out float bump) {
   c *= mix(1.0, 0.55 + 0.9 * clod, mid);
   c *= mix(1.0, 0.82 + 0.36 * grit, near);
   // stones: few, small, irregular, mostly darker than the earth they lie in, gathered in drifts
-  vec2 pc = q * 9.0 + vec2(fbm3(q * 3.0), fbm3(q * 3.0 + 9.0)) * 1.6, id = floor(pc), fr = fract(pc) - 0.5;
+  vec2 pc = qg * 9.0 + vec2(fbm3(qc * 3.0), fbm3(qc * 3.0 + 9.0)) * 1.6, id = floor(pc), fr = fract(pc) - 0.5;
   float rnd = hash21(id), rr = 0.12 + 0.3 * fract(rnd * 7.3);
   vec2 off = (vec2(fract(rnd * 13.7), fract(rnd * 29.1)) - 0.5) * 0.5;
   float shape = length((fr - off) * vec2(1.0, 0.65 + 0.7 * fract(rnd * 5.1))) + (grit - 0.5) * 0.12;
-  float peb = step(0.9 - 0.12 * smoothstep(0.5, 0.75, patchy), rnd) * smoothstep(rr, rr * 0.6, shape) * near;
+  float peb = step(0.9 - 0.12 * smoothstep(0.5, 0.75, patchy), rnd) * smoothstep(rr, rr * 0.6, shape) * near * smoothstep(0.05, 0.015, px);
   c = mix(c, mix(vec3(0.075, 0.07, 0.066), vec3(0.3, 0.28, 0.25), fract(rnd * 3.1)) * (0.8 + 0.4 * grit), peb * 0.85);
   // cracks where the ground has dried hard
   float crack = (1.0 - smoothstep(0.0, 0.06, abs(fbm3(q * 1.25 + 5.0) - 0.5))) * smoothstep(0.45, 0.25, big) * near;

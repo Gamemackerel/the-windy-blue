@@ -81,7 +81,10 @@ export function buildIsland(ctx: Ctx) {
     const mat = patch(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95 }), /* glsl */ `
       float slope = 1.0 - wn.y;
       float n = tri(wp, wn, 0.35); float n2 = fbm(wp.xz * 1.7); float n3 = fbm(wp.xz * 0.06);
-      float fine = fbm(wp.xz * 9.0);
+      // detail finer than a pixel is averaged away, or it beats against the screen into a checker
+      float px = length(fwidth(wp.xz));
+      float fine = mix(0.5, fbm(mat2(0.6, 0.8, -0.8, 0.6) * wp.xz * 9.0), smoothstep(0.05, 0.012, px));
+      n2 = mix(0.5, n2, smoothstep(0.3, 0.07, px));
       // columnar basalt: dark, with vertical jointing on the steep faces
       vec3 rock = mix(vec3(0.022, 0.022, 0.024), vec3(0.085, 0.082, 0.08), n);
       vec2 q = abs(wn.x) > abs(wn.z) ? wp.zy : wp.xy;
