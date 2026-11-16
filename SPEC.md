@@ -348,6 +348,10 @@ This shapes the look. Fidelity comes from light, water, atmosphere, material res
 - **Ending:** none. The demo continues for as long as the player wants.
 - **Input:** keyboard and mouse. Gamepad later; no touch.
 
+### 4.12 The giant's body
+
+The giant is one continuous skin (head, neck, torso, arms, hands, fingers), generated in code from a blend of simple volumes and tied to bones, never an assembly of separate shapes. Water effects stay at the body: foam thrown out along the waterline as it rises, run-off from the shoulders for a few seconds after. At night it watches the stars only while the boat is far off; within about 150 m it looks at the boat.
+
 ## 14. Build status
 
 Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.

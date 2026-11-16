@@ -76,8 +76,8 @@ export function buildGiantBody(material: THREE.Material) {
   const bones: THREE.Bone[] = [], blend: number[] = [];
   const bone = (parent: THREE.Object3D, bl: number) => { const b = new THREE.Bone(); parent.add(b); bones.push(b); blend.push(bl); return b; };
   const idx = (b: THREE.Bone) => bones.indexOf(b);
-  const body = bone(skel, 0.05);
-  const head = bone(skel, 0.03);
+  const body = bone(skel, 0.09);
+  const head = bone(skel, 0.08);   // wide blends: the neck bends over its whole length instead of creasing under the jaw
   head.position.copy(G_HEAD);
 
   const arms: GiantArmBones[] = G_SH.map((sh, i) => {
