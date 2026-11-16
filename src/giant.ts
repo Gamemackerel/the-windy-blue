@@ -15,6 +15,7 @@ import { CHART_GAPS } from './items';
 import { solveIK } from './figure';
 import { softDot } from './npc';
 import { CylCollider } from './world';
+import { buildGiantBody, GiantArmBones } from './giantbody';
 
 export const ATOLL = { x: -100, z: 800, r: 200, hole: 78 };
 const S = 250;                 // metres per model unit
@@ -178,34 +179,10 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     col *= mix(0.45, 1.0, smoothstep(-1.0, 5.0, wp.y));`, 'giantbone');
   const dark = new THREE.MeshStandardMaterial({ color: '#070707', roughness: 0.9 });
 
-  // turned profiles are smoothed through a spline so the body has no facets
-  const lathe = (pts: [number, number][], seg = 40) =>
-    new THREE.LatheGeometry(new THREE.SplineCurve(pts.map(([r, y]) => new THREE.Vector2(r, y))).getPoints(48).map((v) => (v.x = Math.max(v.x, 0.0005), v)), seg);
-  // torso: shoulders that run into the neck, with collarbones and a hollow at the throat
-  const torsoG = lathe([[0.001, 0.075], [0.06, 0.07], [0.12, 0.05], [0.2, 0.024], [0.25, -0.012], [0.265, -0.055], [0.25, -0.12], [0.215, -0.2], [0.176, -0.32], [0.155, -0.42], [0.172, -0.55], [0.15, -0.8]], 56);
-  torsoG.scale(1, 1, 0.6);
-  {
-    const p = torsoG.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), y = p.getY(i); let z = p.getZ(i);
-      if (z > 0) {
-        z += Math.exp(-(((y + 0.012 + Math.abs(x) * 0.12) / 0.012) ** 2)) * 0.012 * smooth(0.02, 0.06, Math.abs(x)) * smooth(0.2, 0.14, Math.abs(x)); // collarbones
-        z -= Math.exp(-(x * x) / 0.0006 - ((y - 0.0) ** 2) / 0.0008) * 0.012;                                                                          // throat notch
-        z += Math.exp(-((Math.abs(x) - 0.09) ** 2) / 0.005 - ((y + 0.13) ** 2) / 0.006) * 0.012;                                                       // chest
-        z -= Math.exp(-(x * x) / 0.0008 - ((y + 0.2) ** 2) / 0.03) * 0.008;                                                                            // sternum line
-      } else z -= Math.exp(-(x * x) / 0.0006) * 0.006 * smooth(0.0, -0.1, y);                                                                         // spine furrow
-      p.setZ(i, z);
-    }
-    torsoG.computeVertexNormals();
-  }
-  const torso = new THREE.Mesh(tag(torsoG), skin);
-  flesh.add(torso);
-  // the neck flares into the shoulders, so there is no collar edge
-  const neckG = lathe([[0.046, 0.21], [0.047, 0.13], [0.051, 0.09], [0.064, 0.062], [0.095, 0.04], [0.14, 0.018], [0.17, 0.0]], 40);
-  neckG.scale(1, 1, 0.8);
-  const neck = new THREE.Mesh(tag(neckG, 1, 0, 0, 0.005), skin);
-  neck.position.set(0, 0, 0.005);
-  flesh.add(neck);
+  // the whole body is one continuous skin over a few bones (see giantbody.ts)
+  const gb = buildGiantBody(skin);
+  rig.add(gb.skel);
+  flesh.add(gb.mesh);
   // head
   const HEAD = new THREE.Vector3(0, 0.215, 0.02);
   const headPivot = new THREE.Group();
@@ -246,8 +223,6 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     return tag(g, 1, 0, 0.215, 0.02);
   };
   const sg = skullGeo();
-  headFlesh.add(new THREE.Mesh(sg, skin));
-  for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), skin); ear.scale.set(0.3, 1.1, 0.7); ear.position.set(s * 0.098, 0.0, -0.01); headFlesh.add(ear); }
   const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0035, 6, 16, Math.PI), dark);
   mouth.rotation.set(0.5, 0, 0); mouth.position.set(0, -0.07, 0.097); mouth.scale.set(1.0, 0.1, 1); mouth.visible = false;
   headFlesh.add(mouth);
@@ -295,32 +270,12 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     for (const c of m.userData.caps as THREE.Mesh[]) c.scale.set(1, 1 / len, 1);
   };
   const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
-  interface Arm { upper: THREE.Mesh; fore: THREE.Mesh; hand: THREE.Group; fingers: THREE.Group[]; elbow: THREE.Vector3; wrist: THREE.Vector3; pos: THREE.Vector3; vel: THREE.Vector3; target: THREE.Vector3; flat: number; flatT: number; curl: number; curlT: number; k: number; c: number; bUpper: THREE.Mesh; bFore: THREE.Mesh }
-  const arms: Arm[] = SH.map((sh, i) => {
+  interface Arm { gb: GiantArmBones; elbow: THREE.Vector3; wrist: THREE.Vector3; pos: THREE.Vector3; vel: THREE.Vector3; target: THREE.Vector3; flat: number; flatT: number; curl: number; curlT: number; k: number; c: number; bUpper: THREE.Mesh; bFore: THREE.Mesh }
+  const arms: Arm[] = SH.map((_sh, i) => {
     const s = i === 0 ? 1 : -1;
-    const hand = new THREE.Group();
-    const pg = new THREE.SphereGeometry(0.05, 24, 16);
-    pg.scale(0.9, 0.3, 1.05);
-    const palm = new THREE.Mesh(tag(pg, 1, 0.3, 0.2, 0.1), skin);
-    palm.position.z = 0.048;
-    hand.add(palm);
-    const fingers: THREE.Group[] = [];
-    for (let f = 0; f < 5; f++) {
-      const thumb = f === 0;
-      const fg = new THREE.Group();
-      fg.position.set(thumb ? s * -0.045 : s * (-0.032 + (f - 1) * 0.0215), 0, thumb ? 0.03 : 0.098);
-      fg.rotation.y = thumb ? s * -1.0 : (f - 2.5) * 0.06 * s;
-      const len = thumb ? 0.05 : 0.075 - Math.abs(f - 2.4) * 0.008;
-      const p1 = new THREE.Mesh(tag(new THREE.CapsuleGeometry(0.0095, len * 0.55, 4, 12), 1, 0.1 * f, 0.3, 0.2), skin); p1.rotation.x = Math.PI / 2; p1.position.z = len * 0.3;
-      const kn = new THREE.Group(); kn.position.z = len * 0.62;
-      const p2 = new THREE.Mesh(tag(new THREE.CapsuleGeometry(0.0085, len * 0.45, 4, 12), 1, 0.1 * f, 0.35, 0.2), skin); p2.rotation.x = Math.PI / 2; p2.position.z = len * 0.25;
-      kn.add(p2); fg.add(p1, kn); fg.userData.kn = kn;
-      hand.add(fg); fingers.push(fg);
-    }
-    flesh.add(hand);
     const rest = new THREE.Vector3(s * 0.3, -0.76, 0.06);
     return {
-      upper: limb(0.056, 0.042, flesh, skin), fore: limb(0.042, 0.03, flesh, skin), hand, fingers,
+      gb: gb.arms[i],
       elbow: new THREE.Vector3(), wrist: new THREE.Vector3(), pos: rest.clone(), vel: new THREE.Vector3(), target: rest.clone(),
       flat: 0, flatT: 0, curl: 0.5, curlT: 0.5, k: 6, c: 4.2,
       bUpper: limb(0.016, 0.013, bones, boneMat), bFore: limb(0.013, 0.01, bones, boneMat),
@@ -429,7 +384,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     flesh.visible = ph < 3; headFlesh.visible = ph < 3;
     bones.visible = ph === 3; (bones.userData.skull as THREE.Group).visible = ph === 3;
     rot.value = ph === 2 ? 1 : 0;
-    torso.scale.set(ph === 2 ? 1.12 : 1, 1, ph === 2 ? 1.25 : 1);
+    gb.body.scale.set(ph === 2 ? 1.12 : 1, 1, ph === 2 ? 1.25 : 1);
     birds.visible = ph === 2;
     for (const e of eyes) e.visible = ph < 2;
     for (const c of bodyCols) world.remove(c);
@@ -518,7 +473,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         birds.instanceMatrix.needsUpdate = true;
       }
       solveArms(dt);
-      headPivot.quaternion.copy(headQ);
+      headPivot.quaternion.copy(headQ); gb.head.quaternion.copy(headQ);
       for (const l of lids) l.rotation.x = 1.45 - 1.7 * Math.min(1, lidOpen);
       return;
     }
@@ -689,7 +644,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       const wide = phase === 'peer' ? 1.15 : phase === 'bored' ? 0.55 : up ? 0.9 : 1;
       lidOpen += ((blink > 0 ? 0.05 : wide) - lidOpen) * Math.min(1, dt * (blink > 0 ? 14 : 5));
     }
-    headPivot.quaternion.copy(headQ);
+    headPivot.quaternion.copy(headQ); gb.head.quaternion.copy(headQ);
     for (const l of lids) l.rotation.x = 1.45 - 1.7 * Math.min(1, lidOpen);
     // the eyes finish the look that the head begins
     root.updateMatrixWorld(true);
@@ -723,19 +678,23 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       a.curl += (a.curlT - a.curl) * Math.min(1, dt * 1.6);
       _c.set(s * 0.7, -0.5, -0.6);
       solveIK(SH[i], a.pos, UARM, FARM, _c, a.elbow, a.wrist);
-      place(a.upper, SH[i], a.elbow); place(a.fore, a.elbow, a.wrist);
+      const g = a.gb;
+      g.upper.quaternion.setFromUnitVectors(g.bindDir, _a.subVectors(a.elbow, SH[i]).normalize()).multiply(g.armQ);
+      g.fore.position.copy(a.elbow);
       place(a.bUpper, SH[i], a.elbow); place(a.bFore, a.elbow, a.wrist);
       // hand: in line with the forearm at rest, flat to the water when it strikes
       _a.subVectors(a.wrist, a.elbow).normalize();
-      const qArm = _q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), _a).clone();
+      const qArm = _q.setFromUnitVectors(g.bindDir, _a).clone();
+      g.fore.quaternion.copy(qArm).multiply(g.armQ);
+      qArm.multiply(g.handQ);
       _b.copy(_a).setY(0);
       if (_b.lengthSq() < 1e-6) _b.set(0, 0, 1);
       _b.normalize();
       _m.makeBasis(_c.crossVectors(UPV, _b).normalize(), UPV, _b);
       const qFlat = new THREE.Quaternion().setFromRotationMatrix(_m);
-      a.hand.position.copy(a.wrist);
-      a.hand.quaternion.copy(qArm).slerp(qFlat, a.flat);
-      for (const f of a.fingers) { f.rotation.x = a.curl * 0.9; (f.userData.kn as THREE.Group).rotation.x = a.curl * 1.3; }
+      g.hand.position.copy(a.wrist);
+      g.hand.quaternion.copy(qArm).slerp(qFlat, a.flat);
+      for (const f of g.fingers) { f.base.rotation.x = a.curl * 0.9; f.kn.rotation.x = a.curl * 1.3; }
     });
   }
 
