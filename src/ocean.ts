@@ -178,7 +178,13 @@ export class Ocean {
             foam = smoothstep(thr, thr + 0.16, fold + (fn - 0.5) * (0.3 + 0.25 * uWhite)) * nearF;
             if (foam > 0.0 && dist < 260.0) foam *= smoothstep(0.25, 0.6, fbm(vRest * 3.1 - uTime * vec2(0.08, 0.03)) + foam * 0.35);
             // spindrift: long streaks of foam lying down the wind in a gale
-            foam = max(foam, smoothstep(0.62, 0.8, fbm3(vRest * vec2(0.035, 0.4) + uTime * vec2(0.01, 0.06))) * smoothstep(0.55, 1.0, uWhite) * 0.55 * nearF * vCalm);
+{
+              // thin, broken lines lying down the wind
+              vec2 sp = vec2(vRest.x * 0.94 - vRest.y * 0.34, vRest.x * 0.34 + vRest.y * 0.94);
+              float streak = smoothstep(0.7, 0.8, fbm3(sp * vec2(1.1, 0.05) + uTime * vec2(0.01, 0.08)));
+              streak *= smoothstep(0.35, 0.65, fbm3(sp * vec2(1.7, 0.5) - uTime * 0.05));
+              foam = max(foam, streak * smoothstep(0.6, 1.0, uWhite) * 0.4 * nearF * vCalm * (1.0 - smoothstep(60.0, 320.0, dist)));
+            }
             // the breaking crest of a great wave
             foam = max(foam, smoothstep(0.55, 0.95, vField.x / max(uRogue.w, 0.001)) * step(0.5, uRogue.w) * (0.5 + 0.5 * fn));
           }
