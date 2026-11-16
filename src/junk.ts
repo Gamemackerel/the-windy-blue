@@ -285,7 +285,7 @@ export function scatterJunk(ctx: Ctx) {
   let count = 0;
   /** put one object down. y: explicit height, or omitted to rest on whatever is under it near yHint */
   const put = (kind: string, x: number, z: number, o: { y?: number; hint?: number; yaw?: number; sink?: number; tip?: number; scale?: number; r?: () => number } = {}) => {
-    taken.push({ x, z, r: LARGE.includes(kind) ? 0.5 : SMALL.includes(kind) ? 0.22 : 0.38 });
+    taken.push({ x, z, r: kind === 'mannequin' ? 1.0 : LARGE.includes(kind) ? 0.5 : SMALL.includes(kind) ? 0.22 : 0.38 });
     const g = new THREE.Group(), r = o.r ?? rng(count * 7919 + 13);
     const info = JUNK[kind](g, r) || {};
     const inner = new THREE.Group();          // keeps the object's own pose separate from where it is put
@@ -311,7 +311,7 @@ export function scatterJunk(ctx: Ctx) {
   /** n objects from a list at random spots inside a rectangle, skipping anywhere `skip` says is taken */
   // Things are never dropped on top of one another: each takes up a patch of floor of its own.
   const taken: { x: number; z: number; r: number }[] = [];
-  const room = (k: string) => (LARGE.includes(k) ? 0.5 : SMALL.includes(k) ? 0.22 : 0.38);
+  const room = (k: string) => (k === 'mannequin' ? 1.0 : LARGE.includes(k) ? 0.5 : SMALL.includes(k) ? 0.22 : 0.38);   // a fallen mannequin takes its whole length
   const strew = (seed: number, n: number, kinds: string[], x0: number, x1: number, z0: number, z1: number, hint: number, skip?: (x: number, z: number) => boolean, lift = 0) => {
     const r = rng(seed);
     for (let i = 0, tries = 0; i < n && tries < n * 30; tries++) {
@@ -326,9 +326,9 @@ export function scatterJunk(ctx: Ctx) {
   const IX = ISLAND.x, IZ = ISLAND.z, D = 1.7;
 
   // ---- the storehouse: the densest pile, with the museum pieces
+  put('bust', IX + 50.4, IZ + 10.2, { y: D + 0.035, yaw: 1.2 });                           // under the gap in the roof
   strew(11, 18, [...STONE, ...MEDIUM, 'fridge', 'mannequin', 'lampfloor'], IX + 47.6, IX + 53.4, IZ + 7.8, IZ + 12.4, D, (x, z) => x > IX + 52.2 && Math.abs(z - IZ - 10.5) < 1.3, 0.035);
   strew(12, 14, SMALL, IX + 47.4, IX + 53.6, IZ + 7.6, IZ + 12.6, D, undefined, 0.035);
-  put('bust', IX + 50.4, IZ + 10.2, { y: D + 0.035, yaw: 1.2 });                           // under the gap in the roof
   for (const [k, z, y] of [['bookstack', -2.2, 0.53], ['clock', -1.2, 0.53], ['radio', 0.4, 1.23], ['bottle', 1.5, 1.23], ['monitor', 2.3, 0.53], ['typewriter', -0.7, 1.23], ['can', 2.0, 1.93], ['kettle', -1.8, 1.93], ['telephone', 1.0, 0.53]] as const)
     put(k, IX + 46.15, IZ + 10.5 + z, { y: 1.6 + y, yaw: Math.PI / 2 + (z % 1) });
   for (const [k, x] of [['lampdesk', -1.4], ['board', -0.6], ['board', 0.1], ['keyboard', 0.9], ['bookopen', 1.9], ['tower', 2.15]] as const) put(k, IX + 50.6 + x, IZ + 13.25, { y: 1.6 + 0.84, yaw: Math.PI + x * 0.2 });

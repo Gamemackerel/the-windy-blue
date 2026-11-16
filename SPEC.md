@@ -352,6 +352,18 @@ This shapes the look. Fidelity comes from light, water, atmosphere, material res
 
 The giant is one continuous skin (head, neck, torso, arms, hands, fingers), generated in code from a blend of simple volumes and tied to bones, never an assembly of separate shapes. Water effects stay at the body: foam thrown out along the waterline as it rises, run-off from the shoulders for a few seconds after. At night it watches the stars only while the boat is far off; within about 150 m it looks at the boat.
 
+### 4.13 Sea life, the giant's hands, and being wrecked
+
+- **Sea life.** While under way far from any place, something occasionally turns up for a while: fish leaping (common), gulls circling the mast, a pod of dolphins porpoising alongside, a seal that puts its head up and barks, two sharks that circle and one of which rams the hull (rare; a shove and a lurch, no damage), a whale breaching a hundred metres off (very rare). All generated in code as single smooth bodies.
+- **A swimmer near the giant** is scooped up in an open hand, lifted to its face and looked at very closely, then balled up and thrown on a ballistic arc to a random point at sea. A swimmer also wakes it.
+- **Rising**, the giant pushes the boat bodily away.
+- **Stranding.** A boat driven onto the atoll's reef breaks where it lies and cannot be sailed; its sailor is left on foot. The giant's next blow lands on them, and they wake at the starting island beside the boat.
+- **Dying** by any means brings the boat home too (afloat in the dock, or on its blocks if the dock is dry).
+- **The dock can be emptied again** with the pump lever by the valve wall: the gate shuts, the water goes, the boat settles on its blocks and the three valves reset.
+- **Anchor.** F throws a grapnel over the bow in an arc with its line; F again hauls it back.
+- **Roofs are solid**: a jump stops at a ceiling.
+- **Greenhouse.** One tomato a day can be picked from any vine; it comes off the plant into the hand.
+
 ## 14. Build status
 
 Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.
