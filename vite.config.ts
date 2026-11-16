@@ -6,6 +6,7 @@ import path from 'node:path';
 // one folder each: the screenshot, the note, and everything needed to put the
 // game back in the same state (open the game with ?report=<folder name>).
 export default defineConfig({
+  base: './',   // relative paths, so the built game runs from any folder (GitHub Pages serves it under /<repo>/)
   build: { target: 'es2022' },
   server: { watch: { ignored: ['**/reports/**', '**/shots/**'] } },
   plugins: [{
