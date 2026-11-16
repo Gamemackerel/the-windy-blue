@@ -64,9 +64,11 @@ log('mode', await ev(() => window.__game.player.mode + ' / boat ' + window.__gam
 const moorAt = async (name) => {
   await ev((name) => { const g = window.__game; const m = g.world.moorings.find((k) => k.name === name); g.player.mode = 'sail'; g.boat.mode = 'sailing'; g.boat.mooring = null; g.boat.state.x = m.x + 2; g.boat.state.z = m.z + 2; g.boat.state.u = 0; g.player.busy = 0; }, name);
   await wait(300);
-  await ev(() => window.__game.input.press('KeyE'));
+  await ev(() => window.__game.input.press('KeyF'));      // drop anchor
+  await wait(700);
+  await ev(() => window.__game.input.press('KeyE'));      // step ashore
   await wait(600);
-  return ev(() => { const g = window.__game; return `${g.player.mode} at ${g.boat.mooring?.name} y=${g.player.pos.y.toFixed(2)}`; });
+  return ev(() => { const g = window.__game; return `${g.player.mode}, boat ${g.boat.mooring?.name} y=${g.player.pos.y.toFixed(2)}`; });
 };
 log('greenhouse', await moorAt('greenhouse'));
 log('fruit', await useAt(-250 - 3.2, 3.4, -150 + 0.6), await items());

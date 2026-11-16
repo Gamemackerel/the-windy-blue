@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Figure, J, LIMB, GaitState, newGait, animateGait, solveIK } from './figure';
 import { World, Ladder, Interactable } from './world';
+import { waveHeight } from './waves';
 import { Boat } from './boat';
 import { Input } from './input';
 import { Wind } from './wind';
@@ -19,7 +20,14 @@ export class Player {
   readonly figure = new Figure({ coat: '#b08a3c', trousers: '#2b2a2c', skin: '#b08f78', hood: true });
   readonly pos = new THREE.Vector3();
   yaw = 0;
-  mode: 'foot' | 'sail' | 'climb' = 'foot';
+  mode: 'foot' | 'sail' | 'climb' | 'swim' = 'foot';
+  /** seconds spent swimming without a rest; past five minutes the swimmer goes under */
+  swimT = 0;
+  /** how far the eyes are being pulled under by exhaustion (m) */
+  dip = 0;
+  drowned = false;
+  private dipPhase = 0;
+  private mantle: { from: THREE.Vector3; to: THREE.Vector3; k: number } | null = null;
   /** blocks input during scripted moments */
   busy = 0;
   held: string | null = null;
@@ -75,27 +83,30 @@ export class Player {
     const lad = this.world.nearestLadder(this.pos);
     if (lad) { out.set(lad.ladder.x, lad.atTop ? lad.ladder.y1 + 0.5 : Math.min(lad.ladder.y1, this.pos.y + 1.3), lad.ladder.z); return true; }
     const b = this.boat;
-    if (b.mode === 'moored' && b.mooring && b.hasMast && b.hasSail && (this.pos.distanceTo(b.mooring.dock) <= 3.2 || this.pos.distanceTo(b.position) <= 4.5)) { b.local(0, 0.7, -0.6, out); return true; }
+    if (b.mode === 'moored' && b.hasMast && b.hasSail && Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) <= 4.6) { b.local(0, 0.7, -0.6, out); return true; }
     return false;
   }
   /** where the eyes are */
   eye(out: THREE.Vector3) {
     if (this.mode === 'sail') { this.boat.seat(out, this.sideSmooth); out.y += 0.82; return out; }
     if (this.mode === 'climb') return out.set(this.pos.x, this.pos.y + 1.6, this.pos.z);
+    if (this.mode === 'swim') return out.set(this.pos.x, this.pos.y + 1.64 - this.dip, this.pos.z);
     return out.set(this.pos.x, this.pos.y + 1.64, this.pos.z);
   }
 
   update(dt: number, t: number, input: Input, camYaw: number, wind: Wind) {
     this.busy = Math.max(0, this.busy - dt);
     const free = this.busy <= 0;
-    if (this.mode === 'foot') this.updateFoot(dt, input, camYaw, free);
+    if (this.mode !== 'swim') { this.swimT = Math.max(0, this.swimT - dt * 4); this.dip *= Math.max(0, 1 - dt * 4); }
+    if (this.mode === 'foot') this.updateFoot(dt, t, input, camYaw, free);
+    else if (this.mode === 'swim') this.updateSwim(dt, t, input, camYaw, free);
     else if (this.mode === 'climb') this.updateClimb(dt, input, free);
     else this.updateSail(dt, t, input, wind, free);
     this.state.data.player = { x: this.pos.x, y: this.pos.y, z: this.pos.z, yaw: this.yaw, mode: this.mode === 'sail' ? 'sail' : 'foot' };
   }
 
   // ---------------------------------------------------------------- on foot
-  private updateFoot(dt: number, input: Input, camYaw: number, free: boolean) {
+  private updateFoot(dt: number, t: number, input: Input, camYaw: number, free: boolean) {
     const w = this.world;
     let ix = 0, iz = 0;
     if (free) { ix = input.axis('KeyA', 'KeyD'); iz = input.axis('KeyS', 'KeyW'); }
@@ -109,12 +120,12 @@ export class Player {
     if (ml > 0.01) {
       mx /= ml; mz /= ml;
       speed = this.encumbered ? WALK * 0.8 : input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
+      if (this.pos.y < -0.25) speed *= 0.55;   // wading
       const step = speed * dt;
       const tryMove = (dx: number, dz: number) => {
         _v.set(this.pos.x + dx, this.pos.y, this.pos.z + dz);
         w.resolve(_v, RADIUS);
         const g = w.groundAt(_v.x, _v.z, this.pos.y);
-        if (g < -0.55) return false; // no wading into deep water
         // too steep to climb
         const ahead = w.groundAt(_v.x + dx * 4, _v.z + dz * 4, this.pos.y + 2);
         const run = Math.hypot(dx, dz) * 4;
@@ -132,6 +143,11 @@ export class Player {
 
     // gravity and ground following
     const ground = w.groundAt(this.pos.x, this.pos.z, this.pos.y);
+    // a short hop: enough to clear a kerb or get onto a crate
+    if (free && input.hit('Space') && !this.encumbered && this.pos.y <= ground + 0.08) { this.velY = 5.3; this.pos.y = ground + 0.1; }
+    // out of your depth: start swimming
+    const sea = waveHeight(this.pos.x, this.pos.z, t);
+    if (ground < sea - 1.2 && this.pos.y < sea - 1.15) { this.mode = 'swim'; this.velY = 0; if (this.dropHook) this.dropHook(); return; }
     if (this.pos.y > ground + 0.08) {
       this.velY -= 20 * dt;
       this.pos.y += this.velY * dt;
@@ -268,43 +284,137 @@ export class Player {
   }
 
   // ---------------------------------------------------------------- sailing
+  /** get into the boat from a dock or from the water. It stays at anchor until the anchor is weighed. */
   private tryBoard() {
     const b = this.boat;
-    if (b.mode !== 'moored' || !b.mooring || !b.hasMast || !b.hasSail) return;
-    if (this.pos.distanceTo(b.mooring.dock) > 3.2 && this.pos.distanceTo(b.position) > 4.5) return;
+    if (b.mode !== 'moored' || !b.hasMast || !b.hasSail) return false;
+    if (Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) > 4.6) return false;
     this.mode = 'sail';
-    b.mode = 'sailing';
-    b.mooring = null;
-    b.state.sheet = 1.2;
     this.busy = 0.6;
-    this.state.data.boat.mooring = null;
     this.state.touch();
+    return true;
   }
 
-  private tryMoor() {
+  /** drop the anchor where the boat lies, or weigh it and get under way */
+  private toggleAnchor() {
     const b = this.boat, s = b.state;
-    if (Math.abs(s.u) > 4.5) return;
-    let best = null, bd = 16;
-    for (const m of this.world.moorings) {
-      const d = Math.hypot(m.x - s.x, m.z - s.z);
-      if (d < bd) { bd = d; best = m; }
+    if (b.mode === 'sailing') {
+      b.mode = 'moored';
+      b.mooring = { name: 'anchor', x: s.x, z: s.z, psi: s.psi, dock: new THREE.Vector3(s.x, 0, s.z) };
+      this.state.data.boat.mooring = 'anchor';
+    } else if (b.mode === 'moored') {
+      b.mode = 'sailing';
+      b.mooring = null;
+      s.sheet = 1.2;
+      this.state.data.boat.mooring = null;
     }
-    if (!best) return;
-    b.mode = 'moored';
-    b.mooring = best;
-    this.mode = 'foot';
-    this.pos.copy(best.dock);
-    this.yaw = Math.atan2(best.x - best.dock.x, best.z - best.dock.z) + Math.PI;
-    this.velY = 0;
     this.busy = 0.5;
-    this.state.data.boat.mooring = best.name;
+    this.anchorHit = true;
     this.state.touch();
     this.state.flush(true);
+  }
+  /** set for one frame when the anchor goes down or comes up, for the sound */
+  anchorHit = false;
+
+  /** step ashore if anything solid is within a stride or two; otherwise over the side and swim */
+  private leaveBoat(t: number) {
+    const b = this.boat, w = this.world;
+    let best: THREE.Vector3 | null = null, bd = Infinity;
+    for (const r of [1.7, 2.4, 3.1, 3.8, 4.5]) for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2, x = b.position.x + Math.sin(a) * r, z = b.position.z + Math.cos(a) * r;
+      const g = w.groundAt(x, z, 2.4);
+      if (g < waveHeight(x, z, t) - 0.25 || g > 2.9) continue;
+      _v.set(x, g, z);
+      w.resolve(_v, RADIUS);
+      if (Math.abs(_v.x - x) + Math.abs(_v.z - z) > 0.05) continue;     // inside something
+      if (r < bd) { bd = r; best = _v.clone(); }
+    }
+    this.busy = 0.5;
+    this.velY = 0;
+    if (best) { this.mode = 'foot'; this.pos.copy(best); return; }
+    // nothing to stand on: slip into the water on the side away from the boom
+    const sx = Math.cos(b.state.psi) * 1.5 * this.side, sz = -Math.sin(b.state.psi) * 1.5 * this.side;
+    this.mode = 'swim';
+    this.pos.set(b.position.x + sx, waveHeight(b.position.x + sx, b.position.z + sz, t) - 1.42, b.position.z + sz);
+  }
+
+  // ---------------------------------------------------------------- swimming
+  private updateSwim(dt: number, t: number, input: Input, camYaw: number, free: boolean) {
+    const w = this.world;
+    this.yaw = camYaw + Math.PI;
+    this.swimT += dt;
+    // exhaustion: nothing for the first few minutes, then the head starts to go under, longer and deeper
+    const f = THREE.MathUtils.clamp((this.swimT - 200) / 100, 0, 1);
+    this.dipPhase += dt * (0.45 + 1.5 * f);
+    const want = f * (0.12 + 0.75 * f) * Math.max(0, Math.sin(this.dipPhase)) + f * f * 0.35;
+    this.dip += (want - this.dip) * Math.min(1, dt * 3);
+    if (this.swimT > 322) { this.drowned = true; return; }
+
+    if (this.mantle) {
+      // hauling out onto something
+      const m = this.mantle;
+      m.k = Math.min(1, m.k + dt * 1.7);
+      const e = m.k * m.k * (3 - 2 * m.k);
+      this.pos.lerpVectors(m.from, m.to, e);
+      this.pos.y = m.from.y + (m.to.y - m.from.y) * Math.min(1, e * 1.5) + Math.sin(e * Math.PI) * 0.15;
+      if (m.k >= 1) { this.mantle = null; this.mode = 'foot'; this.velY = 0; }
+      return;
+    }
+    let ix = 0, iz = 0;
+    if (free) { ix = input.axis('KeyA', 'KeyD'); iz = input.axis('KeyS', 'KeyW'); }
+    const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
+    let mx = fx * iz + -fz * ix, mz = fz * iz + fx * ix;
+    const ml = Math.hypot(mx, mz);
+    let speed = 0;
+    if (ml > 0.01) {
+      mx /= ml; mz /= ml;
+      speed = (input.down('ShiftLeft') || input.down('ShiftRight') ? 1.55 : 1.1) * (1 - 0.6 * f);
+      _v.set(this.pos.x + mx * speed * dt, this.pos.y, this.pos.z + mz * speed * dt);
+      w.resolve(_v, RADIUS);
+      this.pos.x = _v.x; this.pos.z = _v.z;
+    }
+    this.speed = 0;
+    const sea = waveHeight(this.pos.x, this.pos.z, t);
+    const ground = w.groundAt(this.pos.x, this.pos.z, sea - 0.9);
+    // feet find the bottom: wade out
+    if (ground > sea - 1.15) { this.mode = 'foot'; this.pos.y = Math.max(this.pos.y, ground); this.velY = 0; return; }
+    this.pos.y += (sea - 1.42 + Math.sin(t * 2.1) * 0.035 - this.pos.y) * Math.min(1, dt * 5);
+
+    if (free && (input.hit('KeyE') || input.hit('Space'))) {
+      // the boat, a ladder, or an edge low enough to haul out on
+      if (input.hit('KeyE') && this.tryBoard()) return;      // only E gets you back into the boat
+      for (const l of w.ladders) {
+        if (Math.hypot(this.pos.x - l.x, this.pos.z - l.z) < 1.7 && l.y0 < sea + 1.3) { this.startClimb(l, false); return; }
+      }
+      for (const d of [0.6, 0.95, 1.3]) {
+        const x = this.pos.x + fx * d, z = this.pos.z + fz * d, g = w.groundAt(x, z, sea + 1.6);
+        if (g > sea - 0.5 && g < sea + 2.1) {
+          this.mantle = { from: this.pos.clone(), to: new THREE.Vector3(x, g, z), k: 0 };
+          this.busy = 0.6;
+          return;
+        }
+      }
+    }
+  }
+  /** is there something here to climb out on (for the marker)? */
+  swimExit(out: THREE.Vector3, camYaw: number, t: number): boolean {
+    if (this.mode !== 'swim' || this.mantle) return false;
+    const b = this.boat, sea = waveHeight(this.pos.x, this.pos.z, t);
+    if (b.mode === 'moored' && b.hasSail && Math.hypot(this.pos.x - b.position.x, this.pos.z - b.position.z) <= 4.6) { b.local(0, 0.7, -0.6, out); return true; }
+    for (const l of this.world.ladders) if (Math.hypot(this.pos.x - l.x, this.pos.z - l.z) < 1.7 && l.y0 < sea + 1.3) { out.set(l.x, sea + 1.2, l.z); return true; }
+    const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
+    for (const d of [0.6, 0.95, 1.3]) {
+      const x = this.pos.x + fx * d, z = this.pos.z + fz * d, g = this.world.groundAt(x, z, sea + 1.6);
+      if (g > sea - 0.5 && g < sea + 2.1) { out.set(x, g + 0.1, z); return true; }
+    }
+    return false;
   }
 
   private updateSail(dt: number, t: number, input: Input, wind: Wind, free: boolean) {
     const b = this.boat, s = b.state;
-    if (free && input.hit('KeyE')) { this.tryMoor(); if (this.mode !== 'sail') return; }
+    this.anchorHit = false;
+    if (free && input.hit('KeyF')) this.toggleAnchor();
+    if (free && input.hit('KeyE') && b.mode === 'moored') { this.leaveBoat(t); if (this.mode !== 'sail') return; }
 
     // sit on the windward side; change sides when the boom comes across
     if (Math.abs(s.boom) > 0.12) this.side = s.boom > 0 ? 1 : -1;

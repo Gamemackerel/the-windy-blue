@@ -17,7 +17,7 @@ import { buildWindmill, WINDMILL } from './windmill';
 import { buildLab, LAB } from './lab';
 import { buildAtoll, ATOLL, atollHeight } from './giant';
 import { buildTower, TOWER } from './tower';
-import { bumpHeight } from './waves';
+import { bumpHeight, waveHeight } from './waves';
 import { J } from './figure';
 import { Audio } from './audio';
 import { mergeStatic } from './build';
@@ -185,10 +185,12 @@ function wreckBoat() {
     const m = world.moorings.find((k) => k.name === sv.boat.mooring);
     if (state.flag('flooded')) {
       if (m) { boat.mode = 'moored'; boat.mooring = m; boat.state.x = m.x; boat.state.z = m.z; boat.state.psi = m.psi; }
+      else if (sv.boat.mooring === 'anchor') { boat.mode = 'moored'; boat.state.x = sv.boat.x; boat.state.z = sv.boat.z; boat.state.psi = sv.boat.psi; boat.mooring = { name: 'anchor', x: sv.boat.x, z: sv.boat.z, psi: sv.boat.psi, dock: new THREE.Vector3(sv.boat.x, 0, sv.boat.z) }; }
       else { boat.mode = 'sailing'; boat.state.x = sv.boat.x; boat.state.z = sv.boat.z; boat.state.psi = sv.boat.psi; }
     }
     player.place(sv.player.x, sv.player.y, sv.player.z, sv.player.yaw);
     if (boat.mode === 'sailing') player.mode = 'sail'; // never leave the boat adrift without its sailor
+    else if (sv.player.mode === 'sail' && boat.mode === 'moored') player.mode = 'sail';
   } else {
     player.place(island.start.x, island.start.y, island.start.z, 1.2);
   }
@@ -353,6 +355,7 @@ let last = performance.now();
 let fps = 60;
 let saveTimer = 0;
 let wakeT = 0, wakeI = 0;
+let wasPulledBack = false;
 const focus = new THREE.Vector3(), eyePos = new THREE.Vector3();
 const viewModel = new THREE.Group();
 camera.add(viewModel);
@@ -439,10 +442,19 @@ function frame() {
     wk[0].set(s.x + Math.sin(s.psi) * 1.9, s.z + Math.cos(s.psi) * 1.9, 1.5, moving * 0.6);
   }
   player.update(dt, t, input, rig.yaw, wind);
-  // safety net: nobody walks on the sea bed
-  if (player.mode === 'foot') {
-    if (player.pos.y > -0.6 || lab.inside()) safe.copy(player.pos);
-    else if (player.pos.y < -3) { player.pos.copy(safe); player.resetMotion(); }
+  // the anchor going down or coming up
+  if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
+  // gone under for good: wake where the boat was built, the boat left where it lay
+  if (player.drowned) {
+    player.drowned = false;
+    player.busy = 5;
+    ctx.fade(() => {
+      const m = island.mooring;
+      player.mode = 'foot'; player.swimT = 0; player.dip = 0;
+      player.place(m.dock.x, m.dock.y, m.dock.z, 0);
+      env.time = (env.time + 0.15) % 1;
+      state.touch(); state.flush(true);
+    }, 4);
   }
 
   // the view
@@ -450,8 +462,20 @@ function frame() {
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
   player.eye(eyePos);
   if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.85, scopeAt.z); // above the ring wall, so nothing near blocks the view
-  rig.update(dt, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0);
-  viewModel.visible = !rig.scope;
+  // sailing is seen from outside the boat; aiming brings the view back behind the eyes
+  const pulledBack = sailing && !aiming && !rig.scope;
+  if (pulledBack && !wasPulledBack && rig.pitch < 0.12) rig.pitch = 0.2;
+  wasPulledBack = pulledBack;
+  rig.update(dt, t, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0, pulledBack ? boat.position : null);
+  const outside = rig.third > 0.3;
+  player.figure.group.visible = outside && sailing;
+  viewModel.visible = !rig.scope && !outside;
+  // under the surface: the light goes green-blue and close
+  if (!lab.inside() && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.03) {
+    const un = env.under;
+    un.amount = 1; un.density = 0.11; un.intensity = 0.55 * (0.25 + env.daylight);
+    un.fog.set('#0b3442').multiplyScalar(0.15 + 0.85 * env.daylight); un.ambient.set('#3a7080');
+  }
   // what is being carried rides in front of the chest
   if (carry) {
     camera.getWorldDirection(_mk).setY(0).normalize();
@@ -469,7 +493,7 @@ function frame() {
     _g1.set(cl.l.x - sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6 + 0.5) * 0.6 - 0.3), cl.l.z - sz);
     grips = [_g0, _g1];
   }
-  arms.group.visible = !rig.scope;
+  arms.group.visible = !rig.scope && !outside;
   arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, player.held && !carry ? _held.copy(viewModel.position) : null, grips);
   // a small ring on whatever E would act on
   {
@@ -477,10 +501,7 @@ function frame() {
     if (player.busy <= 0 && !rig.scope && !satchel.open && !reading) {
       if (player.mode === 'foot' && player.target) { _mk.copy(player.target.pos); show = true; }
       else if (player.fallback(_mk)) show = true;
-      else if (sailing && Math.abs(boat.state.u) <= 4.5) {
-        let bd = 16;
-        for (const m of world.moorings) { const d = Math.hypot(m.x - boat.state.x, m.z - boat.state.z); if (d < bd) { bd = d; _mk.copy(m.dock).y += 0.9; show = true; } }
-      }
+      else if (player.swimExit(_mk, rig.yaw, t)) show = true;
     }
     if (show) {
       _mk.project(camera);

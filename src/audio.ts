@@ -210,6 +210,7 @@ const RECIPES: Record<string, Recipe> = {
   shot: (a, o, t) => { a.noise(o, t, 0.09, 'highpass', 900, 400, 0.5, 1.0, 0.001); a.sine(o, t, 0.35, 150, 40, 0.9, 'sine', 0.001); a.noise(o, t + 0.05, 1.8, 'lowpass', 1800, 250, 0.4, 0.35, 0.02); a.noise(o, t + 0.5, 2.6, 'lowpass', 700, 160, 0.4, 0.12, 0.3); },
   dry: (a, o, t) => { a.noise(o, t, 0.04, 'bandpass', 3200, 2000, 3, 0.25); a.sine(o, t, 0.08, 900, 700, 0.04, 'triangle'); },
   rogue: (a, o, t) => { a.noise(o, t, 34, 'lowpass', 60, 420, 0.6, 0.9, 22); a.sine(o, t, 34, 22, 34, 0.7, 'sine', 20); a.noise(o, t + 20, 16, 'highpass', 1400, 2400, 0.4, 0.25, 9); },
+  anchor: (a, o, t) => { for (let i = 0; i < 9; i++) a.noise(o, t + i * 0.07, 0.05, 'bandpass', 1700, 1000, 4, 0.12); a.noise(o, t + 0.5, 0.9, 'lowpass', 900, 200, 0.5, 0.4, 0.02); },
   hm: (a, o, t) => { const f = 105 + Math.random() * 30; a.sine(o, t, 0.32, f, f * 0.86, 0.16, 'sawtooth', 0.05, 7); a.noise(o, t, 0.3, 'bandpass', 420, 300, 2, 0.06, 0.05); },
   grunt: (a, o, t) => { a.sine(o, t, 0.35, 150, 95, 0.25, 'sawtooth', 0.02, 9); a.noise(o, t, 0.3, 'bandpass', 600, 400, 2, 0.2, 0.02); a.noise(o, t + 0.5, 0.25, 'lowpass', 500, 150, 0.7, 0.25); },
   bodyfall: (a, o, t) => { a.sine(o, t, 0.12, 140, 90, 0.2, 'sawtooth', 0.01); a.noise(o, t + 0.45, 0.3, 'lowpass', 600, 120, 0.7, 0.45); a.sine(o, t + 0.45, 0.4, 80, 35, 0.45); },

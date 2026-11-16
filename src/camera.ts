@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Input } from './input';
+import { waveHeight } from './waves';
 
 /**
  * First-person view. yaw/pitch describe where the eye looks:
@@ -19,16 +20,25 @@ export class ViewRig {
   private ready = false;
   private bobT = 0;
   private bobAmt = 0;
+  /** 0 behind the eyes, 1 pulled back behind the boat */
+  third = 0;
+  /** how far back the camera sits when pulled out (mouse wheel) */
+  dist = 11;
+  private tgt = new THREE.Vector3();
 
   constructor(readonly camera: THREE.PerspectiveCamera) {}
 
   snap() { this.ready = false; this.lastHeading = null; }
 
   /** eye: where the head is. heading: the boat's heading while sailing, else null. speed: walking speed, for head bob. */
-  update(dt: number, input: Input, eye: THREE.Vector3, heading: number | null, speed: number) {
+  /** follow: when given, the camera pulls back and orbits this point (the boat) instead of sitting at the eye */
+  update(dt: number, t: number, input: Input, eye: THREE.Vector3, heading: number | null, speed: number, follow: THREE.Vector3 | null = null) {
     const sens = this.scope ? 0.00022 : this.aim ? 0.0016 : 0.0026;
     this.yaw -= input.lookX * sens;
     this.pitch = THREE.MathUtils.clamp(this.pitch + input.lookY * sens, -1.45, 1.45);
+    if (follow) this.dist = THREE.MathUtils.clamp(this.dist * Math.exp(input.wheel * 0.001), 4.5, 45);
+    this.third += ((follow ? 1 : 0) - this.third) * Math.min(1, dt * 2.6);
+    if (this.third < 0.002) this.third = 0;
 
     if (heading !== null) {
       if (this.lastHeading !== null) this.yaw += Math.atan2(Math.sin(heading - this.lastHeading), Math.cos(heading - this.lastHeading));
@@ -36,7 +46,7 @@ export class ViewRig {
     } else this.lastHeading = null;
 
     this.aimK += ((this.aim ? 1 : 0) - this.aimK) * Math.min(1, dt * 9);
-    const fov = this.scope ? 4.2 : 62 - 24 * this.aimK;
+    const fov = this.scope ? 4.2 : 62 - 24 * this.aimK - 8 * this.third;
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
 
     // the head follows the body closely but not rigidly, which takes the edge off steps and swell
@@ -54,6 +64,14 @@ export class ViewRig {
     const dx = -Math.sin(this.yaw) * cp, dy = -Math.sin(this.pitch), dz = -Math.cos(this.yaw) * cp;
     const cam = this.camera;
     cam.position.set(this.eye.x + Math.cos(this.yaw) * bobX, this.eye.y + bobY, this.eye.z - Math.sin(this.yaw) * bobX);
+    if (this.third > 0) {
+      // out behind the boat, looking along the same line, so it stays in the middle of the view
+      if (follow) this.tgt.lerp(follow, this.third < 0.05 ? 1 : Math.min(1, dt * 9));
+      const k = this.third * this.third * (3 - 2 * this.third);
+      const px = this.tgt.x - dx * this.dist, pz = this.tgt.z - dz * this.dist;
+      const py = Math.max(this.tgt.y + 1.9 - dy * this.dist, waveHeight(px, pz, t) + 0.6);
+      cam.position.x += (px - cam.position.x) * k; cam.position.y += (py - cam.position.y) * k; cam.position.z += (pz - cam.position.z) * k;
+    }
     cam.lookAt(cam.position.x + dx, cam.position.y + dy, cam.position.z + dz);
   }
 }
