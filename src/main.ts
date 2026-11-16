@@ -166,7 +166,7 @@ const cullable: { o: THREE.Object3D; c: THREE.Vector3; r: number; moves: boolean
 {
   const box = new THREE.Box3(), sph = new THREE.Sphere();
   for (const o of scene.children) {
-    if (!((o as THREE.Mesh).isMesh || o.type === 'Group') || o === ocean.mesh || o === env.sky || o === boat.group || (o as any).isInstancedMesh) continue;
+    if (!((o as THREE.Mesh).isMesh || o.type === 'Group') || o === ocean.mesh || o === env.sky || o === boat.group || o === player.figure.group || (o as any).isInstancedMesh) continue;
     box.setFromObject(o);
     if (box.isEmpty()) continue;
     box.getBoundingSphere(sph);
