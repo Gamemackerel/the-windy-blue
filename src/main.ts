@@ -11,13 +11,14 @@ import { GameState } from './state';
 import { Player } from './player';
 import { Ctx } from './ctx';
 import { buildIsland, ISLAND, islandHeight } from './island';
-import { buildRigs, PLACES } from './rigs';
+import { buildRigs, PLACES, HOME } from './rigs';
 import { Satchel, ItemId } from './items';
 import { buildWindmill, WINDMILL } from './windmill';
 import { buildLab, LAB } from './lab';
 import { buildAtoll, ATOLL, atollHeight } from './giant';
 import { buildTower, TOWER } from './tower';
 import { buildFauna, FaunaKind } from './fauna';
+import { Floats } from './floats';
 import { bumpHeight, waveHeight } from './waves';
 import { J } from './figure';
 import { Audio } from './audio';
@@ -171,6 +172,15 @@ if (params.has('wake')) world.after(1, () => giant.wake());
 const satchel = new Satchel(ctx, (id) => player.setHeld(id), () => player.held);
 boat.setPatches(state.data.boat.patches);
 const junkCount = scatterJunk(ctx);
+// the things that float are gathered up so they can ride the swell (see floats.ts)
+const floats = new Floats(scene, [
+  { name: 'houseboat', x: PLACES.houseboat.x, z: PLACES.houseboat.z + 0.5, hx: 3.0, hz: 6.4, live: 0.8 },
+  { name: 'raft', x: PLACES.raft.x, z: PLACES.raft.z, hx: 3.3, hz: 3.3, live: 1.25 },
+  { name: 'barge', x: PLACES.barge.x, z: PLACES.barge.z, hx: 3.6, hz: 8.2, live: 0.5 },
+  { name: 'home', x: HOME.x, z: HOME.z, hx: 4.4, hz: 3.9, live: 0.7 },
+], new Set<THREE.Object3D>([ocean.mesh, env.sky, boat.group, player.figure.group, ...npcs.map((n) => n.figure.group)]));
+for (const n of npcs) floats.ride(n.figure.group, () => n.condition === 2);
+world.updaters.push((dt, t) => floats.update(dt, t));
 const merged = mergeStatic(scene);
 
 // ---- keeping the frame cheap ----
@@ -601,6 +611,7 @@ function frame() {
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
   player.eye(eyePos);
+  if (player.mode === 'foot' && player.pos.y < 8) eyePos.y += floats.lift(player.pos.x, player.pos.z);   // standing on something afloat
   if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.85, scopeAt.z); // above the ring wall, so nothing near blocks the view
   // sailing is seen from outside the boat; aiming brings the view back behind the eyes
   const pulledBack = sailing && !aiming && !rig.scope;
@@ -738,4 +749,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { fauna, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { fauna, floats, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

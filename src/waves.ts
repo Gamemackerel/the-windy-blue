@@ -87,6 +87,9 @@ function displace(x: number, z: number, t: number, out: { x: number; y: number; 
 
 const _d = { x: 0, y: 0, z: 0 };
 
+/** the open-sea swell at a point, ignoring any shelter: what a moored hull feels coming in under it */
+export function swell(x: number, z: number, t: number): number { displace(x, z, t, _d); return _d.y; }
+
 /** Height of the visible water surface at world position (x, z). */
 export function waveHeight(x: number, z: number, t: number): number {
   // Gerstner waves move points sideways, so invert with a few fixed-point steps.

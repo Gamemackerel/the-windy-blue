@@ -140,7 +140,7 @@ export class Builder {
  * Fold the thousands of small fixed parts (rails, rungs, bars, crates) into a
  * few meshes per material and neighbourhood. Call once, after everything is built.
  */
-export function mergeStatic(scene: THREE.Scene, cell = 120) {
+export function mergeStatic(scene: THREE.Object3D, cell = 120) {
   const groups = new Map<string, THREE.Mesh[]>();
   for (const o of scene.children) {
     const m = o as THREE.Mesh;
@@ -158,11 +158,11 @@ export function mergeStatic(scene: THREE.Scene, cell = 120) {
   for (const list of groups.values()) {
     if (list.length < 2) continue;
     const geos = list.map((m) => {
-      m.updateMatrixWorld();
+      m.updateMatrix();
       let g = m.geometry.clone();
       if (g.index) g = g.toNonIndexed();
       for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
-      g.applyMatrix4(m.matrixWorld);
+      g.applyMatrix4(m.matrix);          // relative to the container, which may itself be moving (a floating hull)
       return g;
     });
     const merged = concat(geos);
