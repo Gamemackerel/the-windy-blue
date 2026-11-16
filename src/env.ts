@@ -5,7 +5,7 @@ export const DAY_LENGTH = 20 * 60; // seconds for a full cycle
 const LATITUDE = 0.6, SIN_LAT = Math.sin(LATITUDE), COS_LAT = Math.cos(LATITUDE);   // about 34 degrees north
 const SUN_DECL = 0.2;      // late spring: days a little longer than nights
 const MOON_DAYS = 8;       // days from one new moon to the next
-const _rot = new THREE.Matrix4(), _pole = new THREE.Vector3(0, SIN_LAT, -COS_LAT), _grey = new THREE.Color();
+const _rot = new THREE.Matrix4(), _pole = new THREE.Vector3(0, SIN_LAT, -COS_LAT), _grey = new THREE.Color(), _snap = new THREE.Vector3();
 
 const C = (hex: string) => new THREE.Color(hex);
 
@@ -74,6 +74,7 @@ export class Environment {
   days = 0;
   /** how much of the moon's face is lit, 0..1 */
   moonLit = 0.5;
+  private frame = 0;
   /** 0 fair weather, 1 the worst storm: set by the weather */
   gloom = 0;
 
@@ -286,8 +287,14 @@ export class Environment {
 
     this.sun.color.copy(lc);
     this.sun.intensity = 1;
-    this.sun.target.position.copy(focus);
-    this.sun.position.copy(focus).addScaledVector(this.lightDir, 130);
+    // The shadow map follows the player in 3 m steps and is redrawn every other frame (and whenever it steps),
+    // which halves its cost without the shadows visibly lagging.
+    _snap.set(Math.round(focus.x / 3) * 3, Math.round(focus.y / 3) * 3, Math.round(focus.z / 3) * 3);
+    const stepped = !_snap.equals(this.sun.target.position);
+    this.sun.target.position.copy(_snap);
+    this.sun.position.copy(_snap).addScaledVector(this.lightDir, 130);
+    this.sun.shadow.autoUpdate = false;
+    if (stepped || (this.frame++ & 1) === 0) this.sun.shadow.needsUpdate = true;
     this.hemi.color.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.6);
     this.hemi.groundColor.copy(u.uDeep.value).lerp(u.uHorizon.value, 0.25);
     this.hemi.intensity = 0.8 + nightLift * 2.4 + gloom * 0.5;

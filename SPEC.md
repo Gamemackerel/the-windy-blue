@@ -159,6 +159,22 @@ In the demo the door **cannot be opened**. The pad accepts input and answers eve
 
 Pressing **R** takes a picture of the current view and asks for a note. Sending it writes a folder into `reports/` with the picture, the note (`note.md`), and the complete game state. Opening the game with `?report=<folder name>` restores that exact position, view, time and progress, without touching the real save. This only works while the game is run with `npm run dev`.
 
+### 4.10 Weather, the sea, and the sky
+
+- **Weather** is one slowly wandering value from glass calm to full storm. It sets wave height, whitecaps, wind strength and how dark the sky is. Most of the time it is fair; storms are uncommon and build over a few minutes.
+- **Sea states.** Glass (almost no swell, no foam), light airs, a sailing breeze, rough (whitecaps everywhere), and storm (high seas, spindrift, a lid of dark cloud, a dim flat light).
+- **Great waves.** In a storm, a single very large wave occasionally travels down the wind, 9-14 m high. Met bow-on or stern-on the boat rides over it; taken on the beam it rolls the boat over.
+- **Capsizing.** Ordinary weather cannot overturn the boat. In a storm, holding the sheet in hard across the wind can: left alone, the sheet eases itself and the boat survives. A capsize is treated like the giant wrecking the boat (wake on the slip, patched hull).
+- **Sun, moon and stars** follow a turning planet seen from about 34 degrees north. The moon rises about an eighth of a day later each day and shows its true phase (an eight-day month); nights with a full moon are noticeably brighter than moonless ones. The sun's light is gone before the moon's begins to count, so neither ever switches on.
+
+### 4.11 Moving about
+
+- **Jump** (Space): a short hop.
+- **Swimming.** Walking or falling into deep water starts a slow swim. E or Space at a low edge hauls out; E at a ladder climbs it; E beside the anchored boat gets back in. After about three and a half minutes the swimmer tires and the view begins to dip under, longer and deeper, until at about five and a half minutes they go under for good and wake on the slip. The swim clock recovers on land. Other islands are far out of range.
+- **Anchor** (F, when sailing): drops the anchor where the boat lies, or weighs it. Docks no longer snap the boat in. With the anchor down, E steps ashore if anything solid is within a few metres, and otherwise goes over the side into the water.
+- **Sailing is seen from outside the boat** (mouse wheel sets the distance); on foot, swimming and aiming the view is first person.
+- **Wind on cloth and rope.** The sail's free edge trembles and the whole sail breathes with gusts; three red telltale yarns on the sail stream aft when trim is right, flick when it luffs and droop when it stalls; the mainsheet hangs slack when the sail is not drawing; the sailor's scarf and coat hem stream downwind.
+
 ## 5. People and trading
 
 There are very few people. They are still and quiet. They look at the player, shift their weight, cough, hum, smoke. They never speak, gesture instructions, or follow.
@@ -339,9 +355,9 @@ Everything in this spec is implemented and playable from start to finish. An aut
 Known gaps against the spec, in rough order of how much they matter:
 
 - **Character fidelity.** People now have continuous limbs and trunks swept along their joints, sculpted heads with faces, fingered hands, boots, hoods, hats, hair and worn details. They are still stylised rather than photoreal, and there is no cloth simulation.
-- **Mooring and boarding are instant.** There is no stepping-aboard or tying-off animation; the boat glides to its berth and the sailor is placed on the dock.
+- **Boarding and stepping ashore are instant.** There is no stepping-aboard animation.
 - **The satchel** shows the carried items in an arc but the character does not physically open a bag.
 - **Water.** Opaque, with analytic sky reflection, sun glitter, foam, shallows, surf and a wake. No refraction or reflections of objects.
 - **Rendering.** In: surface relief on every material, wide sun and moon shadows, ambient occlusion, height-and-distance haze that glows toward the light, light shafts, bloom, filmic tone mapping with a grade, vignette and grain, eye adaptation at night and indoors. Not in: temporal anti-aliasing, reflections of objects in each other, global illumination.
 - **Sound** is fully synthesised and has not been mixed by ear on real speakers.
-- **Performance tiers** exist (Low / Medium / High, with automatic step-down on a first run). On the development machine at 1280x720, High measured roughly 40-50 frames a second and Medium about 95 with the frame cap removed; nothing else has been measured.
+- **Performance.** Low / Medium / High, automatic step-down on a first run, and dynamic resolution that trims pixels when frames run long. Only the four nearest lamps are lit, tiny distant objects are not drawn, grass is drawn in distance-culled patches, and shadows are redrawn every other frame. On the development machine at 1280x720 with the frame cap removed, High measured about 105-165 frames a second on land and 145 at sea. Nothing else has been measured.

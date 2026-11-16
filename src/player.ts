@@ -26,6 +26,8 @@ export class Player {
   /** how far the eyes are being pulled under by exhaustion (m) */
   dip = 0;
   drowned = false;
+  /** inside something watertight below the surface (the laboratory): no swimming here */
+  dry = false;
   private dipPhase = 0;
   private mantle: { from: THREE.Vector3; to: THREE.Vector3; k: number } | null = null;
   /** blocks input during scripted moments */
@@ -147,7 +149,7 @@ export class Player {
     if (free && input.hit('Space') && !this.encumbered && this.pos.y <= ground + 0.08) { this.velY = 5.3; this.pos.y = ground + 0.1; }
     // out of your depth: start swimming
     const sea = waveHeight(this.pos.x, this.pos.z, t);
-    if (ground < sea - 1.2 && this.pos.y < sea - 1.15) { this.mode = 'swim'; this.velY = 0; if (this.dropHook) this.dropHook(); return; }
+    if (!this.dry && ground < sea - 1.2 && this.pos.y < sea - 1.15) { this.mode = 'swim'; this.velY = 0; if (this.dropHook) this.dropHook(); return; }
     if (this.pos.y > ground + 0.08) {
       this.velY -= 20 * dt;
       this.pos.y += this.velY * dt;
@@ -168,6 +170,8 @@ export class Player {
       else if (!this.encumbered) this.tryBoard();
     }
 
+    this.poseHandsOnly(dt);
+    if (!this.figure.group.visible) return;   // first person: nobody can see the body, so do not pose it
     // animate
     const f = this.figure;
     f.skirtAmount = 1;
@@ -198,10 +202,10 @@ export class Player {
     f.headYaw += (Math.atan2(_w.x, _w.z) - f.headYaw) * 0.3;
   }
 
+  private poseHandsOnly(dt: number) { this.reach = Math.max(0, this.reach - dt * 2.2); }
   /** the hand lifts toward things that can be used, and reaches when using them */
   private poseHands(dt: number) {
     const f = this.figure, p = f.joints;
-    this.reach = Math.max(0, this.reach - dt * 2.2);
     const want = this.target ? 0.28 : 0;
     const amt = Math.max(want, Math.sin(Math.min(1, this.reach) * Math.PI) * 1.0);
     if (this.held) {

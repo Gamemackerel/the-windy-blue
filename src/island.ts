@@ -120,10 +120,12 @@ export function buildIsland(ctx: Ctx) {
     const tuft = new THREE.BufferGeometry();
     tuft.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
     tuft.setAttribute('normal', new THREE.Float32BufferAttribute(tn, 3));
-    const COUNT = 30000;
-    const inst = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide }), COUNT);
+    // Grown in patches of about 45 m. Each patch is one draw, and patches far from the player are not drawn at all.
+    const COUNT = 30000, CELL = 45;
+    const grassMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide });
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
     const colr = new THREE.Color();
+    const cells = new Map<string, { m: number[]; c: number[]; x: number; z: number }>();
     let n = 0;
     for (let tries = 0; tries < COUNT * 6 && n < COUNT; tries++) {
       const lx = (r() - 0.5) * 340, lz = (r() - 0.5) * 340;
@@ -137,12 +139,31 @@ export function buildIsland(ctx: Ctx) {
       q.setFromEuler(new THREE.Euler(0, r() * 6.283, 0));
       const s = 0.7 + r() * 1.1;
       sc.set(s, s * (0.7 + r() * 0.8), s);
-      inst.setMatrixAt(n, m4.compose(pv, q, sc));
-      inst.setColorAt(n, colr.setHSL(0.12 + r() * 0.02, 0.2 + r() * 0.12, 0.3 + r() * 0.16));
+      const cxi = Math.floor(lx / CELL), czi = Math.floor(lz / CELL), key = cxi + ',' + czi;
+      let cell = cells.get(key);
+      if (!cell) cells.set(key, (cell = { m: [], c: [], x: IX + (cxi + 0.5) * CELL, z: IZ + (czi + 0.5) * CELL }));
+      m4.compose(pv, q, sc);
+      for (let k = 0; k < 16; k++) cell.m.push(m4.elements[k]);
+      colr.setHSL(0.12 + r() * 0.02, 0.2 + r() * 0.12, 0.3 + r() * 0.16);
+      cell.c.push(colr.r, colr.g, colr.b);
       n++;
     }
-    inst.count = n;
-    scene.add(inst);
+    const patches: { mesh: THREE.InstancedMesh; x: number; z: number }[] = [];
+    for (const cell of cells.values()) {
+      const inst = new THREE.InstancedMesh(tuft, grassMat, cell.m.length / 16);
+      (inst.instanceMatrix.array as Float32Array).set(cell.m);
+      inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cell.c), 3);
+      inst.computeBoundingSphere();
+      scene.add(inst);
+      patches.push({ mesh: inst, x: cell.x, z: cell.z });
+    }
+    let grassT = 0;
+    world.updaters.push((dt) => {
+      if ((grassT -= dt) > 0) return;
+      grassT = 0.3;
+      const p = ctx.view.position;
+      for (const k of patches) k.mesh.visible = Math.hypot(p.x - k.x, p.z - k.z) < 230;
+    });
 
     // loose boulders along the shore and slopes
     const rockMat = patch(new THREE.MeshStandardMaterial({ color: '#2a2826', roughness: 0.9, flatShading: true }), /* glsl */ `

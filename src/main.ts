@@ -31,7 +31,7 @@ const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.toneMapping = THREE.AgXToneMapping;
 const baseExposure = num('exp', 1.0);
 renderer.toneMappingExposure = baseExposure;
@@ -155,6 +155,43 @@ const satchel = new Satchel(ctx, (id) => player.setHeld(id), () => player.held);
 boat.setPatches(state.data.boat.patches);
 const junkCount = scatterJunk(ctx);
 const merged = mergeStatic(scene);
+
+// ---- keeping the frame cheap ----
+// 1. Every lit surface pays for every point light, so only the four nearest lamps are ever switched on.
+//    (Always exactly four, so the shaders never need rebuilding.)
+const lamps: THREE.PointLight[] = [];
+scene.traverse((o) => { if ((o as THREE.PointLight).isPointLight) lamps.push(o as THREE.PointLight); });
+// 2. Anything that would cover only a few pixels is not drawn at all.
+const cullable: { o: THREE.Object3D; c: THREE.Vector3; r: number; moves: boolean }[] = [];
+{
+  const box = new THREE.Box3(), sph = new THREE.Sphere();
+  for (const o of scene.children) {
+    if (!((o as THREE.Mesh).isMesh || o.type === 'Group') || o === ocean.mesh || o === env.sky || o === boat.group || (o as any).isInstancedMesh) continue;
+    box.setFromObject(o);
+    if (box.isEmpty()) continue;
+    box.getBoundingSphere(sph);
+    cullable.push({ o, c: sph.center.clone(), r: Math.max(sph.radius, 0.3), moves: o.type === 'Group' && o.position.lengthSq() > 1 });
+  }
+}
+const culled = new Set<THREE.Object3D>();
+let cullT = 0;
+const _lampP = new THREE.Vector3();
+function cullPass(dt: number) {
+  if ((cullT -= dt) > 0) return;
+  cullT = 0.25;
+  const p = camera.position;
+  for (const l of lamps) l.userData.d = l.getWorldPosition(_lampP).distanceToSquared(p) / Math.max(l.distance * l.distance, 1);
+  lamps.sort((a, b) => a.userData.d - b.userData.d);
+  for (let i = 0; i < lamps.length; i++) lamps[i].visible = i < 4;
+  const k = rig.scope ? 0.0003 : 0.004;      // through the telescope, small things matter
+  for (const e of cullable) {
+    const d = (e.moves ? e.o.position : e.c).distanceTo(p);
+    const tiny = e.r / Math.max(d, 1) < k;
+    if (tiny && e.o.visible) { e.o.visible = false; culled.add(e.o); }
+    else if (!tiny && culled.has(e.o)) { e.o.visible = true; culled.delete(e.o); }
+  }
+}
+cullPass(1);
 if (params.has('debug')) console.log(`${junkCount} junk objects; merged ${merged.before} static parts into ${merged.after}`);
 
 /** the giant has broken the boat: wake on the slip beside a patched hull */
@@ -313,10 +350,14 @@ reportText.addEventListener('keydown', (e) => {
 const pauseEl = document.getElementById('pause')!;
 const hintEl = document.getElementById('hint')!;
 let paused = false;
+let baseRatio = 1, resScale = 1, slowT = 0, fastT = 0, frameMs = 16;
 let quality = params.has('q') ? num('q', 2) : Number(localStorage.getItem('ww-quality') ?? 2);
 function applyQuality(q: number, remember = true) {
   quality = q;
-  renderer.setPixelRatio([0.7, 1, Math.min(devicePixelRatio, 2)][q] * (q < 2 ? Math.min(devicePixelRatio, 1) : 1));
+  // drawing at a screen's full density costs four times the pixels for little gain: High stops at 1.5
+  baseRatio = [0.7 * Math.min(devicePixelRatio, 1), Math.min(devicePixelRatio, 1), Math.min(devicePixelRatio, 1.5)][q];
+  resScale = 1;
+  renderer.setPixelRatio(baseRatio);
   renderer.shadowMap.enabled = q > 0;
   post.setQuality(q);
   if (params.has('noao')) post.ao = false;
@@ -363,7 +404,7 @@ let viewHeld: string | null = null;
 const safe = new THREE.Vector3().copy(player.pos);
 // open on black and let the world come up slowly
 fadeEl.style.transition = 'none'; fadeEl.style.opacity = '1';
-setTimeout(() => { fadeEl.style.transition = 'opacity 3.5s ease'; fadeEl.style.opacity = '0'; setTimeout(() => { fadeEl.style.transition = ''; }, 3700); }, params.has('cam') || params.has('at') || params.has('boat') ? 0 : 600);
+let shownFrames = 0;
 
 function frame() {
   const now = performance.now();
@@ -377,6 +418,16 @@ function frame() {
   }
   if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
   if (paused || reporting) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
+  // Dynamic resolution: if frames are taking too long, draw slightly fewer pixels; when there is room, restore them.
+  frameMs += (dt * 1000 - frameMs) * 0.08;
+  if (!document.hidden && !params.has('fixedres')) {
+    slowT = frameMs > 19.5 ? slowT + dt : 0;
+    fastT = frameMs < 15.5 ? fastT + dt : 0;
+    let next = resScale;
+    if (slowT > 1.2 && resScale > 0.62) next = Math.max(0.62, resScale - 0.1);
+    else if (fastT > 6 && resScale < 1) next = Math.min(1, resScale + 0.1);
+    if (next !== resScale) { resScale = next; slowT = fastT = 0; renderer.setPixelRatio(baseRatio * resScale); resize(); }
+  }
   if (probe >= 0 && !document.hidden) {
     probe += dt; probeFrames++;
     if (probe > 6) {
@@ -441,6 +492,7 @@ function frame() {
     // the bow wave travels with the hull
     wk[0].set(s.x + Math.sin(s.psi) * 1.9, s.z + Math.cos(s.psi) * 1.9, 1.5, moving * 0.6);
   }
+  player.dry = lab.inside();
   player.update(dt, t, input, rig.yaw, wind);
   // the anchor going down or coming up
   if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
@@ -543,6 +595,7 @@ function frame() {
   const ext = quality >= 2 ? 46 : 30;
   if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
 
+  cullPass(dt);
   env.update(dt, camera.position, focus);
   ocean.update(focus, camera.position);
   const submerged = env.under.amount > 0.5;
@@ -586,10 +639,15 @@ function frame() {
       `items ${state.data.items.join(' ')}  ammo ${state.flag('ammo')}\n` +
       `calls ${renderer.info.render.calls}  tris ${renderer.info.render.triangles}`;
   }
+  // lift the opening black only once the world is really being drawn (the first frames compile every shader)
+  if (shownFrames < 4 && ++shownFrames === 4) {
+    fadeEl.style.transition = 'opacity 2.5s ease'; fadeEl.style.opacity = '0';
+    setTimeout(() => { fadeEl.style.transition = ''; }, 2700);
+  }
   input.endFrame();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

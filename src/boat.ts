@@ -288,6 +288,37 @@ export class Boat {
     wire(0, MAST_H - 1.2, MAST_Z, sx, sheer(0.6), stationZ(0.6) - 0.2);
     wire(0, MAST_H - 1.2, MAST_Z, -sx, sheer(0.6), stationZ(0.6) - 0.2);
 
+    // the hull's fixed parts (ribs, rails, thwarts, coils...) become one mesh per material
+    {
+      const keep = new Set<THREE.Object3D>([lid, this.sail, this.sheetLine, this.pennant, mast, ...this.mastParts]);
+      const byMat = new Map<THREE.Material, THREE.Mesh[]>();
+      for (const o of [...this.group.children]) {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || keep.has(m) || m.children.length || Array.isArray(m.material) || !m.geometry.attributes.normal) continue;
+        let l = byMat.get(m.material as THREE.Material);
+        if (!l) byMat.set(m.material as THREE.Material, (l = []));
+        l.push(m);
+      }
+      for (const [mat, list] of byMat) {
+        if (list.length < 2) continue;
+        const pos: number[] = [], nrm: number[] = [], col: number[] = [];
+        const hasCol = list.every((m) => !!m.geometry.attributes.color);
+        for (const m of list) {
+          m.updateMatrix();
+          const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix);
+          pos.push(...(g.attributes.position.array as Float32Array)); nrm.push(...(g.attributes.normal.array as Float32Array));
+          if (hasCol) col.push(...(g.attributes.color.array as Float32Array));
+          this.group.remove(m);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+        if (hasCol) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        const merged = new THREE.Mesh(g, mat);
+        merged.castShadow = merged.receiveShadow = true;
+        this.group.add(merged);
+      }
+    }
     scene.add(this.group);
     this.sync(0, 1);
   }

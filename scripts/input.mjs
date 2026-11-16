@@ -8,7 +8,7 @@ page.on('pageerror', (e) => errors.push('PAGE ' + e.message));
 const ev = (fn, a) => page.evaluate(fn, a);
 const pos = () => ev(() => { const p = window.__game.player.pos; return [p.x, p.y, p.z].map((v) => +v.toFixed(1)); });
 
-await page.goto('http://localhost:5173/?new&t=0.4&ts=0');
+await page.goto('http://localhost:5173/?new&t=0.4&ts=0&sea=0.3');
 await page.waitForTimeout(2500);
 await page.mouse.click(640, 360);
 console.log('start', await pos());
@@ -44,7 +44,7 @@ await page.keyboard.up('KeyW');
 console.log('top of ladder:', await ev(() => window.__game.player.mode), await pos());
 
 // sailing: steer and trim
-await page.goto('http://localhost:5173/?new&boat&t=0.4&ts=0');
+await page.goto('http://localhost:5173/?new&boat&t=0.4&ts=0&sea=0.35');
 await page.waitForTimeout(3000);
 await page.mouse.click(640, 360);
 const st = () => ev(() => { const s = window.__game.boat.state; return { psi: +s.psi.toFixed(2), u: +s.u.toFixed(1), sheet: +s.sheet.toFixed(2) }; });

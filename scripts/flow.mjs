@@ -8,7 +8,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push('PAGE ' + e.message));
-await page.goto('http://localhost:5173/?new&t=0.4&ts=0&debug');
+await page.goto('http://localhost:5173/?new&t=0.4&ts=0&sea=0.3&debug');
 await page.waitForTimeout(2500);
 const wait = (ms) => page.waitForTimeout(ms);
 const ev = (fn, arg) => page.evaluate(fn, arg);
@@ -57,7 +57,9 @@ log('island flags', await flags());
 await shot('launched');
 // ---- board the boat
 await ev(() => { const g = window.__game; g.player.pos.copy(g.boat.mooring.dock); g.input.press('KeyE'); });
-await wait(1500);
+await wait(1200);
+await ev(() => window.__game.input.press('KeyF'));   // weigh anchor
+await wait(900);
 log('mode', await ev(() => window.__game.player.mode + ' / boat ' + window.__game.boat.mode));
 
 // moor helper: put the boat beside a mooring and press E

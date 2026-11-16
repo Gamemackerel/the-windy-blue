@@ -279,6 +279,8 @@ export class Npc {
     if (this.reach > 0) { this.reach += dt * 1.1; if (this.reach >= 1) this.reach = 0; }
     this.lookAway = Math.max(0, this.lookAway - dt);
 
+    // too far away to make out: leave them as they are
+    if (this.playerPos().distanceTo(this.pos) > 170 && this.knock.lengthSq() < 1e-4) return;
     // the wind finds their coats too
     { const w = this.ctx.wind, a = w.dir - f.group.rotation.y; f.wind.set(Math.sin(a) * w.speed * 0.6, 0, Math.cos(a) * w.speed * 0.6); }
     this.computePose(dt);
