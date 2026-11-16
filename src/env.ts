@@ -2,6 +2,10 @@
 import * as THREE from 'three';
 
 export const DAY_LENGTH = 20 * 60; // seconds for a full cycle
+const LATITUDE = 0.6, SIN_LAT = Math.sin(LATITUDE), COS_LAT = Math.cos(LATITUDE);   // about 34 degrees north
+const SUN_DECL = 0.2;      // late spring: days a little longer than nights
+const MOON_DAYS = 8;       // days from one new moon to the next
+const _rot = new THREE.Matrix4(), _pole = new THREE.Vector3(0, SIN_LAT, -COS_LAT), _grey = new THREE.Color();
 
 const C = (hex: string) => new THREE.Color(hex);
 
@@ -66,6 +70,12 @@ export class Environment {
   readonly moonDir = new THREE.Vector3();
   readonly lightDir = new THREE.Vector3(); // toward the dominant light
   daylight = 1;
+  /** days since the game began, as a continuous number (drives the moon) */
+  days = 0;
+  /** how much of the moon's face is lit, 0..1 */
+  moonLit = 0.5;
+  /** 0 fair weather, 1 the worst storm: set by the weather */
+  gloom = 0;
 
   readonly uniforms = {
     uTime: { value: 0 },
@@ -79,6 +89,8 @@ export class Environment {
     uSunGlow: { value: 1 },
     uMoonGlow: { value: 0 },
     uStars: { value: 0 },
+    uMoonVis: { value: 0 },
+    uSkyRot: { value: new THREE.Matrix3() },
     uCloudLit: { value: new THREE.Color() },
     uCloudDark: { value: new THREE.Color() },
     uCloudCover: { value: 0.44 },
@@ -114,6 +126,8 @@ export class Environment {
         varying vec3 vDir;
         uniform float uTime;
         uniform float uStars;
+        uniform float uMoonVis;
+        uniform mat3 uSkyRot;
         uniform vec3 uCloudLit;
         uniform vec3 uCloudDark;
         uniform float uCloudCover;
@@ -125,7 +139,7 @@ export class Environment {
 
           // stars
           if (uStars > 0.01 && d.y > 0.0) {
-            vec3 q = d * 190.0;
+            vec3 q = (uSkyRot * d) * 190.0;
             vec3 id = floor(q);
             float h = hash31(id);
             float s = step(0.994, h) * smoothstep(0.42, 0.05, length(fract(q) - 0.5));
@@ -135,8 +149,18 @@ export class Environment {
           // sun and moon discs
           float sd = dot(d, uSunDir);
           c += uSunCol * smoothstep(0.99955, 0.99985, sd) * 14.0 * uSunGlow;
-          float md = dot(d, uMoonDir);
-          c += vec3(0.8, 0.86, 1.0) * smoothstep(0.99975, 0.9999, md) * 2.2 * uMoonGlow;
+          // the moon: a sphere lit from wherever the sun is, so it shows its true phase
+          if (uMoonVis > 0.01 && dot(d, uMoonDir) > 0.9993) {
+            vec3 mr = normalize(cross(vec3(0.0, 1.0, 0.0), uMoonDir)), mu = cross(uMoonDir, mr);
+            vec2 mq = vec2(dot(d, mr), dot(d, mu)) / 0.034;
+            float r2 = dot(mq, mq);
+            if (r2 < 1.0) {
+              vec3 mn = mr * mq.x + mu * mq.y - uMoonDir * sqrt(1.0 - r2);
+              float lit = smoothstep(-0.06, 0.14, dot(mn, uSunDir));
+              float mare = 0.72 + 0.28 * fbm(mq * 2.4 + 3.0);
+              c = mix(c, vec3(0.86, 0.9, 1.0) * (0.03 + lit * 2.4) * mare, smoothstep(1.0, 0.9, r2) * uMoonVis);
+            }
+          }
 
           // clouds: a broken low deck with lit tops and dark bases, and high streaks above it
           if (d.y > 0.0) {
@@ -194,19 +218,32 @@ export class Environment {
     const u = this.uniforms;
     u.uTime.value = this.elapsed;
 
-    const th = (this.time - 0.25) * Math.PI * 2;
-    this.sunDir.set(Math.cos(th), Math.sin(th) * 0.92, Math.cos(th) * 0.42 - 0.25).normalize();
-    this.moonDir.set(-Math.cos(th) * 0.8, -Math.sin(th) * 0.85 + 0.12, 0.45).normalize();
+    // ---- where the sun and moon are: a turning planet, seen from one latitude
+    this.days += (dt * this.timeScale) / DAY_LENGTH;
+    const H = (this.time - 0.5) * Math.PI * 2;                 // hour angle of the sun
+    const place = (out: THREE.Vector3, h: number, decl: number) => {
+      const cd = Math.cos(decl), sd = Math.sin(decl), ch = Math.cos(h);
+      return out.set(-cd * Math.sin(h), SIN_LAT * sd + COS_LAT * cd * ch, -(COS_LAT * sd - SIN_LAT * cd * ch));
+    };
+    place(this.sunDir, H, SUN_DECL);
+    // the moon falls a little further behind the sun each day, which is what gives it phases
+    const phase = (((this.days / MOON_DAYS + 0.44) % 1) + 1) % 1;      // 0 new, 0.5 full
+    place(this.moonDir, H - phase * Math.PI * 2, 0.3 * Math.sin(phase * 6.7 + 1));
+    this.moonLit = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+    // the stars turn about the pole once a day
+    _rot.makeRotationAxis(_pole, -H - this.days * 0.0172);
+    (u.uSkyRot.value as THREE.Matrix3).setFromMatrix4(_rot);
 
-    const sy = this.sunDir.y;
-    const day = THREE.MathUtils.smoothstep(sy, -0.06, 0.32);
+    const sy = this.sunDir.y, S = THREE.MathUtils.smoothstep;
+    const day = S(sy, -0.06, 0.32);
     const tw = Math.exp(-Math.pow((sy - 0.02) / 0.17, 2));
-    const night = 1 - THREE.MathUtils.smoothstep(sy, -0.22, 0.02);
+    const night = 1 - S(sy, -0.22, 0.02);
     const twPal = this.sunDir.x > 0 ? PAL.dawn : PAL.dusk;
-    this.daylight = day;
+    const gloom = this.gloom;
+    this.daylight = day * (1 - gloom * 0.45);
 
     const mix3 = (out: THREE.Color, key: keyof typeof PAL.day) => {
-      out.copy(PAL.night[key]).lerp(PAL.day[key], day).lerp(twPal[key], tw * 0.85);
+      out.copy(PAL.night[key]).lerp(PAL.day[key], day).lerp(twPal[key], tw * 0.85 * (1 - gloom * 0.7));
     };
     mix3(u.uZenith.value, 'zenith');
     mix3(u.uHorizon.value, 'horizon');
@@ -215,23 +252,37 @@ export class Environment {
     mix3(u.uCloudDark.value, 'cloudDark');
     mix3(u.uDeep.value, 'deep');
     mix3(u.uScatter.value, 'scatter');
+    // heavy weather: a lid of dark cloud, a dim flat light, a leaden sea
+    if (gloom > 0.001) {
+      _grey.copy(u.uCloudDark.value).multiplyScalar(0.8);
+      u.uZenith.value.lerp(_grey, gloom * 0.85);
+      u.uHorizon.value.lerp(_grey, gloom * 0.55).multiplyScalar(1 - gloom * 0.25);
+      u.uCloudLit.value.lerp(_grey, gloom * 0.75);
+      u.uCloudDark.value.multiplyScalar(1 - gloom * 0.45);
+      u.uScatter.value.multiplyScalar(1 - gloom * 0.5);
+    }
+    u.uCloudCover.value = 0.4 + gloom * 0.62;
 
-    u.uSunGlow.value = THREE.MathUtils.smoothstep(sy, -0.12, 0.05);
-    const moonUp = THREE.MathUtils.smoothstep(this.moonDir.y, -0.05, 0.15);
-    u.uMoonGlow.value = night * moonUp;
-    u.uStars.value = night;
+    const moonUp = S(this.moonDir.y, -0.04, 0.12);
+    u.uSunGlow.value = S(sy, -0.12, 0.05) * (1 - gloom * 0.8);
+    u.uMoonGlow.value = night * moonUp * (0.12 + 0.88 * this.moonLit) * (1 - gloom * 0.8);
+    u.uMoonVis.value = moonUp * (0.3 + 0.7 * night) * (1 - gloom);
+    u.uStars.value = night * (1 - 0.45 * this.moonLit * moonUp) * (1 - gloom);
 
-    // dominant light: sun by day, moon by night
-    const useSun = sy > -0.04;
+    // One light does for both. Each fades to nothing before the other takes over, so nothing ever pops:
+    // the sun is gone by the time it is 7 degrees under; the moon only begins to count once it is properly dark.
+    const sunI = (S(sy, -0.06, 0.25) * 5.2 + tw * 0.9 * S(sy, -0.12, -0.02)) * (1 - gloom * 0.72);
+    const moonI = (0.1 + 1.0 * this.moonLit) * moonUp * (1 - S(sy, -0.22, -0.1)) * (1 - gloom * 0.8);
+    const useSun = sunI >= moonI;
     this.lightDir.copy(useSun ? this.sunDir : this.moonDir);
     if (this.lightDir.y < 0.06) { this.lightDir.y = 0.06; this.lightDir.normalize(); }
-    const sunI = THREE.MathUtils.smoothstep(sy, -0.04, 0.25) * 5.2 + tw * 0.9;
-    const moonI = 0.25 + 0.9 * moonUp;
     const lc = u.uLightCol.value;
-    if (useSun) lc.copy(u.uSunCol.value).multiplyScalar(Math.max(sunI, 0.02));
+    if (useSun) lc.copy(u.uSunCol.value).multiplyScalar(sunI);
     else lc.set(0.55, 0.68, 0.9).multiplyScalar(moonI);
 
-    u.uAmbient.value.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.5).multiplyScalar(0.9 + night * 1.2);
+    // night is never pitch black (starlight), and a bright moon lifts it further
+    const nightLift = night * (0.55 + 1.3 * this.moonLit * moonUp) * (1 - gloom * 0.4);
+    u.uAmbient.value.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.5).multiplyScalar(0.9 + nightLift);
 
     this.sun.color.copy(lc);
     this.sun.intensity = 1;
@@ -239,7 +290,7 @@ export class Environment {
     this.sun.position.copy(focus).addScaledVector(this.lightDir, 130);
     this.hemi.color.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.6);
     this.hemi.groundColor.copy(u.uDeep.value).lerp(u.uHorizon.value, 0.25);
-    this.hemi.intensity = 0.8 + night * 3.2;
+    this.hemi.intensity = 0.8 + nightLift * 2.4 + gloom * 0.5;
 
     this.fog.color.copy(u.uHorizon.value);
     this.fog.density = u.uFogDensity.value;
@@ -250,9 +301,9 @@ export class Environment {
     a.fog.copy(u.uHorizon.value).multiplyScalar(0.92);
     a.sunDir.copy(this.lightDir);
     a.sun.copy(useSun ? u.uSunCol.value : lc).multiplyScalar(useSun ? 1 : 2.5);
-    a.glow = useSun ? u.uSunGlow.value : 0.5 * moonUp;
-    a.rays = useSun ? (0.28 + tw * 0.5) * u.uSunGlow.value : 0.1 * moonUp;
-    a.density = u.uFogDensity.value * (1 + tw * 0.5 + night * 0.2);
+    a.glow = useSun ? u.uSunGlow.value * Math.min(1, sunI / 0.5) : 0.5 * moonUp * this.moonLit * Math.min(1, moonI / 0.3);
+    a.rays = useSun ? (0.28 + tw * 0.5) * u.uSunGlow.value * Math.min(1, sunI / 0.6) : 0.1 * moonUp * this.moonLit * Math.min(1, moonI / 0.3);
+    a.density = u.uFogDensity.value * (1 + tw * 0.5 + night * 0.2 + gloom * 2.2);
     a.height = 170;
     a.daylight = day;
     a.enclosed = this.under.amount;

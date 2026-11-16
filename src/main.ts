@@ -78,6 +78,7 @@ if (params.has('day')) state.data.day = num('day', 0);
 const env = new Environment(scene);
 env.time = num('t', state.loaded ? state.data.time : 0.3);
 env.timeScale = num('ts', 1);
+env.days = num('days', state.data.day + env.time);
 const ocean = new Ocean(scene, env);
 const wind = new Wind();
 const world = new World();
