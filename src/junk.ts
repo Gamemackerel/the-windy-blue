@@ -325,10 +325,10 @@ export function scatterJunk(ctx: Ctx) {
   put('bust', IX + 50.4, IZ + 10.2, { hint: D, yaw: 1.2 });                           // under the gap in the roof
   for (const [k, z, y] of [['bookstack', -2.2, 0.53], ['clock', -1.2, 0.53], ['radio', 0.4, 1.23], ['bottle', 1.5, 1.23], ['monitor', 2.3, 0.53], ['typewriter', -0.7, 1.23], ['can', 2.0, 1.93], ['kettle', -1.8, 1.93], ['telephone', 1.0, 0.53]] as const)
     put(k, IX + 46.15, IZ + 10.5 + z, { y: 1.6 + y, yaw: Math.PI / 2 + (z % 1) });
-  for (const [k, x] of [['lampdesk', -1.4], ['board', -0.6], ['board', 0.1], ['keyboard', 0.9], ['bookopen', 1.9], ['tower', 2.6]] as const) put(k, IX + 50.6 + x, IZ + 13.25, { y: 1.6 + 0.84, yaw: Math.PI + x * 0.2 });
+  for (const [k, x] of [['lampdesk', -1.4], ['board', -0.6], ['board', 0.1], ['keyboard', 0.9], ['bookopen', 1.9], ['tower', 2.15]] as const) put(k, IX + 50.6 + x, IZ + 13.25, { y: 1.6 + 0.84, yaw: Math.PI + x * 0.2 });
   // ---- the sail loft
   strew(21, 9, [...SMALL, ...MEDIUM], IX + 59.6, IX + 68.4, IZ - 18.2, IZ - 12.4, D, (x, z) => (Math.abs(x - IX - 64) < 1.8 && z < IZ - 15.8) || (Math.abs(x - IX - 64) < 1.2 && z > IZ - 13.4) || x < IX + 60.3 || x > IX + 67.3);
-  put('mannequin', IX + 66.6, IZ - 17.6, { hint: D, yaw: -0.6 });
+  put('mannequin', IX + 65.3, IZ - 16.3, { hint: D, yaw: -0.6 });
   // ---- the boat shed and the yard
   strew(31, 9, [...MACHINE, 'chair', 'tyre', 'lampfloor'], IX + 78.5, IX + 89.5, IZ + 30.5, IZ + 37.5, D, (x, z) => Math.hypot(x - IX - 82, z - IZ - 33) < 3.6);
   put('engine', IX + 87.5, IZ + 31.6, { hint: D, yaw: 0.4 });
@@ -337,7 +337,7 @@ export function scatterJunk(ctx: Ctx) {
   // ---- the porch of the house
   for (const [k, x, z] of [['bottle', 6.6, 2.6], ['bottle', 6.3, 3.0], ['kettle', 3.9, 0.2], ['bookopen', 4.4, 3.4], ['radio', 3.7, 2.6]] as const) put(k, IX + 26 + x, IZ - 51 + z, { hint: 9.9 });
   // ---- inside the house: a lived-in table, and the stove still warm
-  for (const [k, x, z, y] of [['kettle', -2.2, 1.75, 0.87], ['bookopen', 1.25, -1.7, 0.77], ['can', 1.95, -1.9, 0.77], ['lampdesk', 2.0, -1.55, 0.77], ['bookstack', 0.9, 2.12, 1.57], ['bottle', 0.2, 2.12, 1.57], ['clock', -0.3, 2.12, 1.57], ['radio', 1.3, 2.1, 1.57], ['suitcase', -2.2, 0.4, 0.07], ['bottle', -1.5, -2.2, 0.07]] as const)
+  for (const [k, x, z, y] of [['kettle', -2.08, 1.63, 0.88], ['bookopen', 1.25, -1.7, 0.77], ['can', 1.95, -1.9, 0.77], ['lampdesk', 2.0, -1.55, 0.77], ['bookstack', 0.9, 2.12, 1.57], ['bottle', 0.2, 2.12, 1.57], ['clock', -0.3, 2.12, 1.57], ['radio', 1.3, 2.1, 1.57], ['suitcase', -2.2, 0.4, 0.07], ['bottle', -1.5, -2.2, 0.07]] as const)
     put(k, IX + 26 + x, IZ - 51 + z, { y: 9.5 + y });
   // ---- washed up round the island: stone and rubbish at the tide line
   {

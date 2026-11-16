@@ -52,6 +52,8 @@ export function buildIsland(ctx: Ctx) {
   world.addTerrain(islandHeight, IX, IZ, 240);
   calmZones.push({ x: IX, z: IZ, r0: 150, r1: 380 });
 
+  // walls throw their shadow from the sunlit face, so no sliver of light creeps in along the foot of a wall indoors
+  MAT.concrete.shadowSide = THREE.DoubleSide;
   // ---------- terrain ----------
   {
     const N = 240, SIZE = 460;
@@ -460,7 +462,13 @@ export function buildIsland(ctx: Ctx) {
   eye.rotation.x = Math.PI / 2;
   const eyeRing = b.mesh(new THREE.TorusGeometry(0.26, 0.04, 8, 24), MAT.brass, LF.x, DECK + 3.2, LF.z + LF.d / 2 + 0.03, false);
   // sail bundle on a trestle inside
-  b.box(LF.x, DECK + 0.4, LF.z - 2.4, 2.6, 0.8, 0.7, MAT.wood);
+  b.box(LF.x, DECK + 0.77, LF.z - 2.4, 2.6, 0.06, 0.7, MAT.wood, 0, false);
+  for (const tx of [-1.05, 1.05]) {
+    for (const tz of [-1, 1]) b.box(LF.x + tx, DECK + 0.37, LF.z - 2.4 + tz * 0.22, 0.07, 0.78, 0.07, MAT.wood, 0, false).rotation.x = tz * 0.26;
+    b.box(LF.x + tx, DECK + 0.3, LF.z - 2.4, 0.05, 0.05, 0.5, MAT.paleWood, 0, false);
+  }
+  b.box(LF.x, DECK + 0.3, LF.z - 2.4, 2.1, 0.05, 0.05, MAT.paleWood, 0, false);
+  world.addBox(IX + LF.x, DECK + 0.4, IZ + LF.z - 2.4, 1.3, 0.4, 0.35);
   const bundle = b.mesh(new THREE.CapsuleGeometry(0.22, 2.2, 6, 12), new THREE.MeshStandardMaterial({ color: '#c9c0aa', roughness: 0.95 }), LF.x, DECK + 1.0, LF.z - 2.4);
   bundle.rotation.z = Math.PI / 2;
   bundle.userData.static = false;
@@ -474,10 +482,11 @@ export function buildIsland(ctx: Ctx) {
     enabled: () => !state.flag('sailTaken'),
     use: () => { state.set('sailTaken'); state.give('sail'); bundle.visible = false; ctx.sfx('cloth', bundle.position); },
   });
-  // shelves and clutter so the loft reads as a loft
-  b.box(LF.x - 4.6, DECK + 1.0, LF.z - 1, 1.2, 2.0, 4.5, MAT.wood);
-  b.box(LF.x + 4.4, DECK + 0.45, LF.z - 2.2, 1.6, 0.9, 1.6, MAT.paleWood);
-  b.box(LF.x + 4.4, DECK + 0.3, LF.z + 0.6, 1.2, 0.6, 1.2, MAT.wood);
+  // crates left where they were dropped, some stacked, none square to the walls
+  for (const [x, z, sz, yaw, y] of [
+    [-4.75, -2.6, 1.1, 0.22, 0], [-4.7, -2.5, 0.7, 0.75, 1.1], [-4.55, -1.15, 0.9, -0.38, 0], [-4.85, 0.25, 0.7, 0.95, 0], [-4.3, 1.5, 0.55, 0.3, 0],
+    [4.5, -2.45, 1.2, 0.16, 0], [4.6, -2.35, 0.75, 0.85, 1.2], [4.35, -0.85, 0.8, -0.5, 0], [4.75, 0.75, 1.0, 0.33, 0], [3.55, -2.95, 0.6, 1.1, 0], [4.7, 0.7, 0.5, -0.2, 1.0],
+  ] as const) b.crate(LF.x + x, DECK + y, LF.z + z, sz, MAT.wood, MAT.paleWood, yaw);
 
   // the mirror on a post in the yard
   const MR = { x: 64, z: 4, y: DECK + 1.7 };
@@ -497,6 +506,26 @@ export function buildIsland(ctx: Ctx) {
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.04, 0.04), MAT.dark);
     handle.position.set(0, -0.5, -0.05);
     mirror.add(handle);
+    // the collector: a brass dish open to the sky that gathers the sun and drops it down a tube onto the mirror
+    const dishPts = [[0.02, 0], [0.16, 0.03], [0.32, 0.11], [0.46, 0.24], [0.52, 0.33]].map(([r, y]) => new THREE.Vector2(r, y));
+    const dishMat = MAT.brass.clone(); dishMat.side = THREE.DoubleSide;
+    const dish = new THREE.Mesh(new THREE.LatheGeometry(dishPts, 28), dishMat);
+    dish.position.set(0, 1.0, -0.12); dish.castShadow = true;
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 10), glassMat);
+    lens.position.set(0, 1.07, -0.12); lens.scale.y = 0.5;
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.56, 10), MAT.brass);
+    tube.position.set(0, 0.72, -0.12); tube.castShadow = true;
+    const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.14), MAT.brass);
+    yoke.position.set(0, 0.45, -0.07);
+    for (let i = 0; i < 3; i++) {
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 5), MAT.dark);
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      strut.position.set(Math.cos(a) * 0.2, 1.2, -0.12 + Math.sin(a) * 0.2); strut.rotation.set(Math.sin(a) * 0.55, 0, -Math.cos(a) * 0.55);
+      mirror.add(strut);
+    }
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), MAT.dark);
+    cap.position.set(0, 1.36, -0.12);
+    mirror.add(dish, lens, tube, yoke, cap);
   }
   const beamMat = new THREE.MeshBasicMaterial({ color: '#ffe6b8', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const ray = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 1, 12, 1, true), beamMat);
@@ -520,7 +549,6 @@ export function buildIsland(ctx: Ctx) {
   });
   const openLoft = (instant: boolean) => {
     world.remove(doorCol);
-    eyeMat.emissiveIntensity = 3;
     if (instant) { door.position.y = DECK + 3.9; return; }
     ctx.sfx('door', door.position);
     world.tween(4, (k) => { door.position.y = DECK + 1.25 + 2.65 * k; });
@@ -530,7 +558,7 @@ export function buildIsland(ctx: Ctx) {
     let d = target - mYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     mYaw += d * Math.min(1, dt * 6);
     mirror.rotation.y = mYaw;
-    const lit = ctx.env.daylight > 0.25 ? 1 : 0;
+    const lit = smooth(0.12, 0.3, ctx.env.daylight);
     glassMat.emissiveIntensity = lit * 2.5;
     // where does the thrown light land?
     const dx = Math.sin(mYaw), dz = Math.cos(mYaw);
@@ -541,13 +569,17 @@ export function buildIsland(ctx: Ctx) {
       const hx = MR.x + dx * k;
       if (Math.abs(hx - LF.x) < LF.w / 2) { len = k; onWall = true; spot.position.set(IX + hx, DECK + 3.2, IZ + wallZ + 0.02); }
     }
-    ray.scale.set(1, 1, len);
-    ray.rotation.x = -Math.atan2(DECK + 3.2 - MR.y, 19);
+    // the beam climbs from the mirror to the height of the receiver, so it meets the wall exactly where the spot is
+    const rise = onWall ? DECK + 3.2 - MR.y : 1.5 * (len / 15);
+    ray.scale.set(1, 1, Math.hypot(len, rise));
+    ray.rotation.x = -Math.atan2(rise, len);
     beamMat.opacity = lit * 0.05;
-    spot.visible = onWall && lit > 0;
-    const aligned = mStep === STEPS / 2 && Math.abs(d) < 0.05 && lit > 0;
+    spot.visible = onWall && lit > 0.02;
+    const onEye = mStep === STEPS / 2 && Math.abs(d) < 0.05;
+    const aligned = onEye && lit > 0.5;
     if (aligned && !state.flag('loft')) { state.set('loft'); openLoft(false); }
-    if (!state.flag('loft')) eyeMat.emissiveIntensity = aligned ? 3 : 0;
+    // the receiver only shines while light is actually falling on it: dark at night, dark when the mirror is turned away
+    eyeMat.emissiveIntensity += ((onEye ? 3 * lit : 0) - eyeMat.emissiveIntensity) * Math.min(1, dt * 6);
   });
 
   // ---------- sluice valves ----------
@@ -659,7 +691,17 @@ export function buildIsland(ctx: Ctx) {
     for (const y of [0.5, 1.2, 1.9]) b.box(X - W / 2 + T + 0.3, DECK + y, Z, 0.55, 0.05, D - 1.2, MAT.paleWood, 0, false);
     for (const z of [-2.7, 0, 2.7]) b.box(X - W / 2 + T + 0.3, DECK + 1.0, Z + z, 0.6, 2.0, 0.07, MAT.wood, 0, false);
     world.addBox(IX + X - W / 2 + T + 0.3, DECK + 1, IZ + Z, 0.32, 1, D / 2 - 0.6);
-    b.box(X + 0.6, DECK + 0.42, Z + D / 2 - T - 0.4, 4.6, 0.84, 0.75, MAT.wood);
+    {
+      // a long work table on the north wall: top, apron, six legs and a low stretcher shelf
+      const tx = X + 0.6, tz = Z + D / 2 - T - 0.4, L = 5.0, Wd = 0.75;
+      b.box(tx, DECK + 0.805, tz, L, 0.07, Wd, MAT.wood, 0, false);
+      b.box(tx, DECK + 0.72, tz - Wd / 2 + 0.05, L - 0.16, 0.1, 0.03, MAT.paleWood, 0, false);
+      b.box(tx, DECK + 0.72, tz + Wd / 2 - 0.05, L - 0.16, 0.1, 0.03, MAT.paleWood, 0, false);
+      for (const lx of [-L / 2 + 0.1, 0, L / 2 - 0.1]) for (const lz of [-Wd / 2 + 0.07, Wd / 2 - 0.07]) b.box(tx + lx, DECK + 0.385, tz + lz, 0.08, 0.77, 0.08, MAT.wood, 0, false);
+      for (const lx of [-L / 2 + 0.1, 0, L / 2 - 0.1]) b.box(tx + lx, DECK + 0.2, tz, 0.05, 0.05, Wd - 0.14, MAT.wood, 0, false);
+      b.box(tx, DECK + 0.24, tz, L - 0.2, 0.03, 0.34, MAT.paleWood, 0, false);
+      world.addBox(IX + tx, DECK + 0.42, IZ + tz, L / 2, 0.42, Wd / 2);
+    }
   }
 
   // ---------- the yard: sheds, wrecks and clutter ----------
@@ -724,7 +766,9 @@ export function buildIsland(ctx: Ctx) {
     for (const [x, z] of [[1.32, -1.13], [1.68, -1.13], [1.32, -0.77], [1.68, -0.77]] as const) b.box(HX + x, HY + 0.22, HZ + z, 0.04, 0.44, 0.04, MAT.wood, 0, false);
     // stove in the corner, its pipe going up through the roof
     b.cyl(HX - 2.2, HZ + 1.75, 0.34, HY, HY + 0.85, MAT.dark, true, 0.34, 14);
-    b.cyl(HX - 2.2, HZ + 1.75, 0.08, HY + 0.85, HY + 3.9, MAT.dark, false, 0.08, 8);
+    b.cyl(HX - 2.36, HZ + 1.91, 0.07, HY + 0.85, HY + 3.9, MAT.dark, false, 0.07, 10);
+    b.cyl(HX - 2.36, HZ + 1.91, 0.1, HY + 0.85, HY + 0.9, MAT.dark, false, 0.1, 10);
+    b.cyl(HX - 2.2, HZ + 1.75, 0.36, HY + 0.85, HY + 0.88, MAT.dark, false, 0.36, 18);      // hob plate
     const coal = new THREE.MeshStandardMaterial({ color: '#1a0a04', emissive: '#ff5a1a', emissiveIntensity: 2.5 });
     b.box(HX - 1.86, HY + 0.4, HZ + 1.75, 0.02, 0.18, 0.26, coal, 0, false);
     // shelf, rug, coat on a peg
