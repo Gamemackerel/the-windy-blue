@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { Ctx } from './ctx';
 import { Builder } from './build';
-import { MAT, patch } from './materials';
+import { localOf, MAT, patch } from './materials';
 import { fbm, ridge, smooth, rng } from './noise';
 import { calmZones } from './waves';
 import { makeItem, addPickup } from './items';
@@ -30,6 +30,8 @@ function localHeight(lx: number, lz: number) {
   // the cove bites into the east shore
   const c = Math.exp(-(((lx - 128) ** 2) / (40 * 40) + ((lz - 10) ** 2) / (27 * 27)));
   h -= c * 17;
+  // hummocks and hollows: the land is not a smooth sheet
+  h += ((fbm(lx * 0.085 + 11, lz * 0.085 + 5) - 0.5) * 1.1 + (fbm(lx * 0.23 + 3, lz * 0.23 + 17) - 0.5) * 0.35) * smooth(1.5, 5, h);
   // flat yard cut into the slope
   const ym = smooth(46, 30, Math.hypot(lx - 70, lz - 10));
   h += (DECK - h) * ym;
@@ -105,15 +107,69 @@ export function buildIsland(ctx: Ctx) {
       float low = smoothstep(3.0, 1.3, wp.y + n) * smoothstep(0.4, 0.12, slope);
       float soft = smoothstep(0.34, 0.12, slope);
       col = mix(rock, mix(soil, shingle, low), max(soft * smoothstep(1.2, 2.2, wp.y + n * 2.0), low));
+      // paths worn by years of the same few journeys: paler, packed ground with a darker edge
+      float pd = 1e3; vec2 lp = wp.xz - vec2(IXF, IZF);
+      pd = min(pd, segd(lp, vec2(98.0, 10.0), vec2(74.0, 20.0)));
+      pd = min(pd, segd(lp, vec2(74.0, 20.0), vec2(54.6, 10.5)));
+      pd = min(pd, segd(lp, vec2(74.0, 20.0), vec2(82.0, 31.0)));
+      pd = min(pd, segd(lp, vec2(98.0, 10.0), vec2(64.0, 5.0)));
+      pd = min(pd, segd(lp, vec2(64.0, 5.0), vec2(64.0, -10.5)));
+      pd = min(pd, segd(lp, vec2(64.0, 5.0), vec2(54.6, 10.5)));
+      pd = min(pd, segd(lp, vec2(58.0, -4.0), vec2(46.0, -26.0)));
+      pd = min(pd, segd(lp, vec2(46.0, -26.0), vec2(33.0, -47.0)));
+      pd = min(pd, segd(lp, vec2(22.0, -46.0), vec2(-8.0, -28.0)));
+      pd = min(pd, segd(lp, vec2(-8.0, -28.0), vec2(-40.0, -9.0)));
+      pd += (fbm(wp.xz * 0.55) - 0.5) * 1.6;
+      float path = smoothstep(1.5, 0.5, pd), verge = smoothstep(2.4, 1.5, pd) * (1.0 - path);
+      col = mix(col, col * vec3(1.26, 1.2, 1.1) + 0.012, path * 0.6 * soft); col *= 1.0 - verge * 0.16 * soft;
       float wet = smoothstep(0.9, -0.1, wp.y);
       col *= mix(1.0, 0.4, wet);
       rough = mix(0.96, 0.35, wet);
-      bump = mix(tri3(wp, wn, 2.2) * 0.09 - joints * smoothstep(0.25, 0.6, slope) * 0.05, db, soft);`, 'terrain');
+      bump = mix(tri3(wp, wn, 2.2) * 0.09 - joints * smoothstep(0.25, 0.6, slope) * 0.05, db * (1.0 - path * 0.6) - path * 0.012, soft);`.replace('IXF', IX.toFixed(1)).replace('IZF', IZ.toFixed(1)), 'terrain');
     const mesh = new THREE.Mesh(g, mat);
     mesh.receiveShadow = true;
     mesh.castShadow = true;
     scene.add(mesh);
 
+    // stones: lying everywhere in drifts, from pebbles you would kick to boulders you walk round
+    {
+      const sg = new THREE.IcosahedronGeometry(1, 1), sp = sg.attributes.position, sr = rng(97);
+      const seen = new Map<string, number>();
+      for (let i = 0; i < sp.count; i++) {
+        const key = sp.getX(i).toFixed(3) + sp.getY(i).toFixed(3) + sp.getZ(i).toFixed(3);
+        let k = seen.get(key); if (k === undefined) { k = 0.72 + sr() * 0.5; seen.set(key, k); }
+        sp.setXYZ(i, sp.getX(i) * k, sp.getY(i) * k * 0.62, sp.getZ(i) * k);
+      }
+      sg.computeVertexNormals();
+      const COUNT = 1700;
+      const stoneMat = patch(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.93 }), /* glsl */ `
+        col *= 0.6 + 0.7 * tri(wp, wn, 3.0); col = mix(col, col * vec3(0.55, 0.5, 0.45), smoothstep(0.5, 0.75, tri(wp, wn, 9.0)) * 0.6);
+        bump = tri3(wp, wn, 11.0) * 0.012;`, 'stone');
+      const stones = new THREE.InstancedMesh(sg, stoneMat, COUNT);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), cl = new THREE.Color();
+      let n = 0;
+      for (let tries = 0; tries < COUNT * 12 && n < COUNT; tries++) {
+        const lx = (sr() - 0.5) * 380, lz = (sr() - 0.5) * 380, h = localHeight(lx, lz);
+        if (h < 0.6) continue;
+        if (Math.hypot(lx - 28, lz + 50) < 12 || Math.hypot(lx + 44, lz + 6) < 5 || (lx > 96 && Math.abs(lz - 10) < 13)) continue;
+        const yard = Math.hypot(lx - 70, lz - 10) < 47;
+        // nothing inside a building in the yard
+        if (yard && ((Math.abs(lx - 64) < 6.6 && Math.abs(lz + 15) < 4.6) || (Math.abs(lx - 50) < 5 && Math.abs(lz - 10.5) < 4) || (Math.abs(lx - 84) < 7.5 && Math.abs(lz - 34) < 5.5))) continue;
+        if (fbm(lx * 0.06 + 40, lz * 0.06 + 9) < (yard ? 0.52 : 0.47)) continue;        // in drifts, with bare ground between
+        const u = sr(), s = yard ? 0.03 + u * u * 0.09 : 0.05 + u * u * u * 0.6;         // mostly small; only pebbles where people work
+        pv.set(IX + lx, h + s * 0.12, IZ + lz);
+        q.setFromEuler(new THREE.Euler((sr() - 0.5) * 0.7, sr() * 6.283, (sr() - 0.5) * 0.7));
+        sc.set(s * (0.8 + sr() * 0.5), s * (0.7 + sr() * 0.5), s * (0.8 + sr() * 0.5));
+        stones.setMatrixAt(n, m4.compose(pv, q, sc));
+        const g = yard ? 0.16 + sr() * 0.14 : 0.07 + sr() * 0.09;                       // dark basalt on the hills, so they sit in the land instead of speckling it
+        stones.setColorAt(n, cl.setRGB(g * 1.04, g, g * 0.94));
+        if (s > 0.36) world.addCyl(IX + lx, IZ + lz, s * 0.75, h - 0.3, h + s * 0.5);
+        n++;
+      }
+      stones.count = n;
+      stones.castShadow = stones.receiveShadow = true;
+      scene.add(stones);
+    }
     // dry grass: each tuft is a spray of thin blades, lit like the ground it grows from
     const r = rng(7);
     const tp: number[] = [], tn: number[] = [];
@@ -236,7 +292,7 @@ export function buildIsland(ctx: Ctx) {
   b.box(104, SLAB_Y, 10, 12, SLAB_H, 20, MAT.concrete);         // west apron
   b.box(120, SLAB_Y, 16.5, 20, SLAB_H, 7, MAT.concrete);        // north arm
   b.box(120, SLAB_Y, 3.5, 20, SLAB_H, 7, MAT.concrete);         // south arm
-  b.box(119, -2.0, 10, 18, 1.4, 6, MAT.concrete);               // basin floor (top at -1.3)
+  b.box(120.2, -2.0, 10, 20.4, 1.4, 6, MAT.concrete);           // basin floor (top at -1.3), running right out under the gate
   // kerbs so nobody walks into the basin
   b.rail(110, 13, 118.2, 13, DECK, MAT.rust, 0.9);
   b.rail(119.8, 13, 130, 13, DECK, MAT.rust, 0.9);
@@ -417,6 +473,8 @@ export function buildIsland(ctx: Ctx) {
   const weights: { units: number; mesh: THREE.Mesh; home: THREE.Vector3; on: boolean; it: any }[] = [];
   const load = () => weights.reduce((s, w) => s + (w.on ? w.units : 0), 0);
   const panWorld = new THREE.Vector3();
+  const panCol = world.addCyl(IX + CR.x + CR.counter, IZ + CR.z, 0.62, DECK, DECK + 1.9);
+  let swinging = false;
 
   function layoutCrane() {
     crane.rotation.y = craneYaw;
@@ -427,7 +485,8 @@ export function buildIsland(ctx: Ctx) {
     cable.scale.y = drop;
     hungMast.position.set(0, tipY - drop, tipZ);
     const cy = CR.h + Math.sin(tilt) * CR.counter, cz = -Math.cos(tilt) * CR.counter;
-    const panY = 1.0;
+    // the pan hangs on a fixed length of chain, so it rides up and down with its end of the beam: too much on it and it sits on the ground
+    const panY = Math.max(0.05, 1.0 + Math.sin(tilt) * CR.counter);
     pan.position.set(0, panY, cz);
     for (const ch of pan.children) {
       if (!ch.name.startsWith('chain')) continue;
@@ -438,6 +497,7 @@ export function buildIsland(ctx: Ctx) {
       ch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.sub(from).normalize());
     }
     pan.getWorldPosition(panWorld);
+    if (Math.hypot(panCol.x - panWorld.x, panCol.z - panWorld.z) > 0.2) { panCol.x = panWorld.x; panCol.z = panWorld.z; }   // nobody stands where the pan hangs
     // stack the loaded weights on the pan
     let y = 0.03;
     for (const w of weights) {
@@ -452,7 +512,7 @@ export function buildIsland(ctx: Ctx) {
   const spots: [number, number, number][] = [[1, 93, 13], [2, 85, 25], [3, 101, 2.5], [1, 77, 3], [3, 96, 27.5], [2, 71, 20]];
   spots.forEach(([units, lx, lz], i) => {
     const size = 0.24 + units * 0.08;
-    const mesh = b.box(lx, DECK + size / 2, lz, size, size, size, MAT.steel, i * 0.7, false);
+    const mesh = b.box(lx, DECK + size / 2, lz, size, size, size, localOf(MAT.steel), i * 0.7, false);   // its markings travel with it
     mesh.userData.size = size;
     mesh.userData.static = false;
     for (let k = 0; k < units; k++) {
@@ -526,13 +586,26 @@ export function buildIsland(ctx: Ctx) {
     pos: P(WX, DECK + 1.0, WZ), radius: 1.9,
     enabled: () => !state.flag('mast') && !carried,
     use: () => {
+      if (swinging) return;
       if (load() === 4) { state.set('mast'); stepMast(false); }
-      else { tiltVel += load() < 4 ? 0.5 : -0.5; ctx.sfx('groan', crane.position); }
+      else if (load() > 4) { tiltVel -= 0.35; ctx.sfx('groan', crane.position); }      // the pan is on the ground: nothing will move
+      else {
+        // too little on the pan: the mast hangs low, swings round, fetches up against the dock rail and comes back
+        swinging = true;
+        ctx.sfx('winch', crane.position);
+        const stop = -2.02;
+        world.tween(2.6, (k) => { craneYaw = -Math.PI / 2 + (stop + Math.PI / 2) * k * k * (3 - 2 * k); winch.rotation.x = k * 9; }, () => {
+          ctx.sfx('clank', crane.position, 1.4); tiltVel += 0.25;
+          world.tween(2.4, (k) => { craneYaw = stop + (-Math.PI / 2 - stop) * (1 - Math.pow(1 - k, 2)) + Math.sin(k * 9) * 0.03 * (1 - k); winch.rotation.x = 9 - k * 9; }, () => { craneYaw = -Math.PI / 2; swinging = false; });
+        });
+      }
     },
   });
   world.updaters.push((dt) => {
     // the beam settles toward balance like a scale
-    const target = state.flag('mast') ? 0 : THREE.MathUtils.clamp((4 - load()) * 0.045, -0.2, 0.2);
+    // balanced: level. Too light: the mast's end sags until its foot is near the ground. Too heavy: the pan goes all the way down.
+    const L = load();
+    const target = state.flag('mast') || L === 4 ? 0 : L > 4 ? -0.34 : Math.min(0.14, (4 - L) * 0.04);
     tiltVel += ((target - tilt) * 14 - tiltVel * 3.2) * dt;
     tilt += tiltVel * dt;
     layoutCrane();
@@ -651,9 +724,10 @@ export function buildIsland(ctx: Ctx) {
   });
   const openLoft = (instant: boolean) => {
     world.remove(doorCol);
-    if (instant) { door.position.y = DECK + 3.9; return; }
+    // it runs up inside the wall above the opening, and stops while its foot still shows: it never comes out of the roof
+    if (instant) { door.position.y = DECK + 1.25 + 2.05; return; }
     ctx.sfx('door', door.position);
-    world.tween(4, (k) => { door.position.y = DECK + 1.25 + 2.65 * k; });
+    world.tween(4, (k) => { door.position.y = DECK + 1.25 + 2.05 * k; });
   };
   world.updaters.push((dt) => {
     const target = (mStep / STEPS) * Math.PI * 2;

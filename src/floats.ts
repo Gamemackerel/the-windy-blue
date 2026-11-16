@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { swell } from './waves';
 import { mergeStatic } from './build';
+import { localOf } from './materials';
 
 export interface FloatDef { name: string; x: number; z: number; hx: number; hz: number; /** how lively: 1 for a raft, less for something heavy */ live: number }
 interface Float extends FloatDef { group: THREE.Group; y: number; vy: number; rx: number; rz: number; riders: { o: THREE.Object3D; base: number; skip?: () => boolean }[] }
@@ -39,7 +40,11 @@ export class Floats {
       const f = this.list.find((k) => Math.abs(_c.x - k.x) < k.hx && Math.abs(_c.z - k.z) < k.hz && _c.y > -3 && _c.y < 9);
       if (f && o !== f.group) f.group.attach(o);
     }
-    for (const f of this.list) mergeStatic(f.group, 1e6);
+    for (const f of this.list) {
+      mergeStatic(f.group, 1e6);
+      // surface patterns travel with the hull instead of staying put in the world while it moves through them
+      f.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !Array.isArray(m.material)) m.material = localOf(m.material); });
+    }
   }
 
   /** something that stands on a float but keeps its own place in the world (a person): it is lifted with the deck */

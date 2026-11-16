@@ -65,7 +65,7 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
   };
 
   // ------------------------------------------------------------ the cast
-  const hide = (o: THREE.Object3D) => { o.visible = false; scene.add(o); return o; };
+  const hide = (o: THREE.Object3D) => { o.visible = false; o.userData.noCull = true; scene.add(o); return o; };
   // fish: slim, bright, a forked tail
   const fishMat = skin('#aeb9bd', 0.25, 0.7);
   const fish = Array.from({ length: 7 }, () => {

@@ -62,8 +62,8 @@ export function buildHull() {
     }
   // transom
   const centre = pos.length / 3;
-  pos.push(0, 0.1, stationZ(0));
-  col.push(tar.r, tar.g, tar.b);
+  pos.push(0, sheer(0), stationZ(0));     // fan from the top centre, so the whole of the stern is closed
+  col.push(bone.r, bone.g, bone.b);
   for (let j = 0; j < NU - 1; j++) idx.push(centre, j, j + 1);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -122,7 +122,10 @@ export class Boat {
   private sheetLine!: THREE.Mesh;
   private sheet!: Tube;
   private yarns: THREE.Mesh[] = [];
-  private sheetPts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  private sheetPts = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  /** where the helm's hand holds the sheet, in the boat's own frame (null when nobody is aboard) */
+  sheetHand: THREE.Vector3 | null = null;
+  private tail = new THREE.Vector3(0.2, 0.05, -0.95);
   private boomPivot = new THREE.Group();
   private rudderPivot = new THREE.Group();
   private pennant: THREE.Mesh;
@@ -180,7 +183,7 @@ export class Boat {
     // the mainsheet, from the boom down to a block on the floor
     {
       const c = new THREE.Color('#fff');
-      this.sheet = new Tube(this.group, MAT.rope, [{ t: 0, rx: 0.008, rz: 0.008, c }, { t: 1, rx: 0.008, rz: 0.008, c }], 14, 5, 2);
+      this.sheet = new Tube(this.group, MAT.rope, [{ t: 0, rx: 0.008, rz: 0.008, c }, { t: 1, rx: 0.008, rz: 0.008, c }], 26, 5, 2);
       this.sheetLine = this.sheet.mesh;
     }
     // telltales: three lengths of red yarn on the sail that show how the air is flowing over it
@@ -229,6 +232,18 @@ export class Boat {
     mast.castShadow = true;
     this.group.add(mast);
     this.mastParts.push(mast, this.boomPivot, this.sheetLine);
+    // the four pale bands it was weighed by, still on it
+    for (let i = 0; i < 4; i++) {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.068, 0.09, 10), MAT.bone);
+      band.position.set(0, 0.48 + i * 0.18, MAST_Z);   // below the boom
+      this.group.add(band); this.mastParts.push(band);
+    }
+    // the sheet's turning block, on a short post between the thwarts
+    {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.034, 0.44, 8), wood); post.position.set(0, 0.16, -0.72);
+      const blk = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), metal); blk.position.set(0, 0.4, -0.72); blk.scale.set(0.6, 1, 1);
+      this.group.add(post, blk);
+    }
 
     this.boomPivot.position.set(0, BOOM_Y, MAST_Z);
     this.group.add(this.boomPivot);
@@ -512,10 +527,14 @@ export class Boat {
     // mainsheet: from the boom to its block, taut when the sail is drawing, hanging in a slack curve when it is not
     const P = this.sheetPts, slack = 0.06 + (1 - this.sailFill) * 0.3 * Math.min(1, s.sheet);
     P[0].set(Math.sin(s.boom) * 1.7, BOOM_Y - 0.03, MAST_Z - Math.cos(s.boom) * 1.7);
-    P[3].set(0, -0.06, -1.05);
+    // boom -> block on its post (high enough that the line clears the gunwale) -> the hand that holds it
+    P[3].set(0, 0.41, -0.72);
     const sway = Math.sin(t * 2.7) * slack * 0.35;
-    P[1].copy(P[0]).lerp(P[3], 0.33); P[1].y -= slack * 0.9; P[1].x += sway;
-    P[2].copy(P[0]).lerp(P[3], 0.66); P[2].y -= slack; P[2].x += sway * 0.7;
+    P[1].copy(P[0]).lerp(P[3], 0.33); P[1].y -= slack * 0.5; P[1].x += sway;
+    P[2].copy(P[0]).lerp(P[3], 0.66); P[2].y -= slack * 0.55; P[2].x += sway * 0.7;
+    this.tail.lerp(this.sheetHand ?? _v.set(0.2, 0.05, -0.95), Math.min(1, dt * 14));      // let go, the end lies on the boards
+    P[5].copy(this.tail);
+    P[4].copy(P[3]).lerp(P[5], 0.5); P[4].y -= 0.04;
     this.sheet.update(P, _xAxis, _xAxis);
   }
 

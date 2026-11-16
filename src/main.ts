@@ -195,11 +195,11 @@ const cullable: { o: THREE.Object3D; c: THREE.Vector3; r: number; moves: boolean
 {
   const box = new THREE.Box3(), sph = new THREE.Sphere();
   for (const o of scene.children) {
-    if (!((o as THREE.Mesh).isMesh || o.type === 'Group') || o === ocean.mesh || o === env.sky || o === boat.group || o === player.figure.group || (o as any).isInstancedMesh) continue;
+    if (!((o as THREE.Mesh).isMesh || o.type === 'Group') || o === ocean.mesh || o === env.sky || o === boat.group || o === player.figure.group || (o as any).isInstancedMesh || o.userData.noCull) continue;
     box.setFromObject(o);
     if (box.isEmpty()) continue;
     box.getBoundingSphere(sph);
-    cullable.push({ o, c: sph.center.clone(), r: Math.max(sph.radius, 0.3), moves: o.type === 'Group' && o.position.lengthSq() > 1 });
+    cullable.push({ o, c: sph.center.clone(), r: Math.max(sph.radius, 0.3), moves: o.position.lengthSq() > 1 });   // anything with a place of its own may be moved (a carried weight); merged scenery sits at the origin
   }
 }
 const culled = new Set<THREE.Object3D>();
@@ -502,7 +502,16 @@ document.getElementById('resume')!.addEventListener('click', () => setPaused(fal
 document.getElementById('newgame')!.addEventListener('click', () => { GameState.wipe(); sessionStorage.setItem('ww-skip-title', '1'); if (location.search) location.search = ''; else location.reload(); });
 applyQuality(quality, false);
 setSound(localStorage.getItem('ww-sound') !== '0');
-if (!state.loaded && !fixedCam && !title) { setTimeout(() => { hintEl.style.opacity = '0.55'; }, 5000); setTimeout(() => { hintEl.style.opacity = '0'; }, 14000); }
+// ---- the few words the game ever says about its controls ----
+const keysEl = document.getElementById('keys')!;
+const hints = location.search === '';                 // never in test or report views
+let keysT = 0, sailSlow = 0, nagT = 0;
+const WALK_KEYS = '<b>W A S D</b>move<i>·</i><b>Mouse</b>look<i>·</i><b>E</b>use';
+const SAIL_KEYS = '<b>A D</b>tiller<i>·</i><b>W S</b>haul in, let out<br><b>F</b>anchor<i>·</i><b>E</b>ashore<i>·</i><b>Wheel</b>view<i>·</i><b>H</b>this';
+function showKeys(html: string, secs: number) { keysEl.innerHTML = html; keysEl.style.opacity = '0.9'; keysT = secs; }
+function hideKeys() { keysEl.style.opacity = '0'; keysT = 0; }
+function nag(text: string, secs: number) { hintEl.textContent = text; hintEl.style.opacity = '0.6'; nagT = secs; }
+let walkHint = hints && !state.loaded ? 2.5 : -1;     // seconds until the first words appear, once the game is under way
 // on a first run, step the quality down if the machine is struggling
 let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 0;
 
@@ -607,7 +616,7 @@ function frame() {
     if (wakeT > 0.22) { wakeT = 0; wakeI = 1 + (wakeI % (wk.length - 1)); wk[wakeI].set(s.x - Math.sin(s.psi) * 2.5, s.z - Math.cos(s.psi) * 2.5, 0.9, moving); }
     for (let i = 1; i < wk.length; i++) { wk[i].z += dt * 0.45; wk[i].w = Math.max(0, wk[i].w - dt * 0.26); }
     // the bow wave travels with the hull
-    wk[0].set(s.x + Math.sin(s.psi) * 1.9, s.z + Math.cos(s.psi) * 1.9, 1.5, moving * 0.6);
+    wk[0].set(s.x + Math.sin(s.psi) * 0.9, s.z + Math.cos(s.psi) * 0.9, 0.85, moving * 0.3);   // small, and tucked under the forefoot: never out ahead of the stem
   }
   player.dry = lab.inside() || island.dockDry(player.pos);
   player.update(dt, t, input, rig.yaw, wind);
@@ -645,6 +654,21 @@ function frame() {
     rig.yaw += Math.atan2(Math.sin(want - rig.yaw), Math.cos(want - rig.yaw)) * Math.min(1, dt * 3);
     rig.pitch += (0.12 - rig.pitch) * Math.min(1, dt * 3);
   }
+  // ---- hints ----
+  if (hints && !title) {
+    if (walkHint > 0 && (walkHint -= dt) <= 0) { showKeys(WALK_KEYS, 10); nag('ESC', 10); }
+    const helm = player.mode === 'sail';
+    if (helm && !state.flag('sailHint')) { state.set('sailHint'); showKeys(SAIL_KEYS, 16); }
+    if (helm && input.hit('KeyH')) { if (keysT > 0) hideKeys(); else showKeys(SAIL_KEYS, 14); }
+    // making no way for a while (pinned head to wind, sheet hauled in hard, sail flogging): offer the reminder, quietly
+    if (helm && boat.mode === 'sailing' && keysT <= 0) {
+      sailSlow = Math.abs(boat.state.u) < 1.3 ? sailSlow + dt : Math.max(0, sailSlow - dt * 3);
+      if (sailSlow > 12) { sailSlow = -45; nag('H · controls', 9); }
+    } else if (!helm) sailSlow = 0;
+    if (keysT > 0 && (keysT -= dt) <= 0) hideKeys();
+    if (nagT > 0 && (nagT -= dt) <= 0) hintEl.style.opacity = '0';
+  }
+  if (player.mode !== 'sail') boat.sheetHand = null;
   // the view
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
@@ -667,9 +691,11 @@ function frame() {
   }
   // what is being carried rides in front of the chest
   if (carry) {
-    camera.getWorldDirection(_mk).setY(0).normalize();
-    carry.obj.position.set(camera.position.x + _mk.x * 0.66, camera.position.y - 0.6, camera.position.z + _mk.z * 0.66);
-    carry.obj.rotation.set(0, rig.yaw, 0);
+    // held like anything else in a first-person game: fixed in the view, turning and tilting with it, with a little weight in the step
+    camera.updateMatrixWorld();
+    const sw = player.mode === 'foot' ? Math.min(1, player.speed / 3) : 0;
+    carry.obj.position.copy(_mk.set(Math.sin(t * 4.4) * 0.012 * sw, -0.4 - carry.size * 0.25 + Math.abs(Math.sin(t * 4.4)) * 0.014 * sw, -0.72).applyMatrix4(camera.matrixWorld));
+    carry.obj.quaternion.copy(camera.quaternion);
   }
   // hands: out to whatever was just used, on the tiller and sheet, on the rungs
   if (player.used) { arms.reach(player.used.pos, !!player.held); player.used = null; }

@@ -108,7 +108,8 @@ export function buildRigs(ctx: Ctx) {
     }
     // frame
     for (let x = X0; x <= X1 + 0.01; x += 1.25) {
-      b.bar(x, DY, Z0, x, DY + WH, Z0, 0.03, frame); b.bar(x, DY, Z1, x, DY + WH, Z1, 0.03, frame);
+      if (Math.abs(x) > 0.75) b.bar(x, DY, Z0, x, DY + WH, Z0, 0.03, frame); else b.bar(x, DY + 2.1, Z0, x, DY + WH, Z0, 0.03, frame);   // nothing stands in the doorway
+      b.bar(x, DY, Z1, x, DY + WH, Z1, 0.03, frame);
       b.bar(x, DY + WH, Z0, x, DY + RIDGE, zm, 0.025, frame); b.bar(x, DY + WH, Z1, x, DY + RIDGE, zm, 0.025, frame);
     }
     for (let z = Z0; z <= Z1 + 0.01; z += 1.32) { b.bar(X0, DY, z, X0, DY + WH, z, 0.03, frame); b.bar(X1, DY, z, X1, DY + WH, z, 0.03, frame); }
@@ -403,27 +404,90 @@ export function buildRigs(ctx: Ctx) {
     b.box(0, DY + 0.02, -1.2, 4.3, 0.04, 7.6, MAT.paleWood, 0, false);
     // cabin
     const CX0 = -1.8, CX1 = 1.8, CZ0 = -4.4, CZ1 = 1.0, CH = 2.25;
-    const wall = MAT.wood, inner = new THREE.MeshStandardMaterial({ color: '#2b241d', roughness: 0.95 });
+    const inner = new THREE.MeshStandardMaterial({ color: '#2b241d', roughness: 0.95 });
+    // boarded walls that were painted once: chalky paint flaking off the planks, grime rising from the deck, rust weeping under the eaves
+    const wall = patch(new THREE.MeshStandardMaterial({ color: '#6b5a48', roughness: 0.9 }), /* glsl */ `
+      vec2 q = faceUV(wp, wn);
+      float plank = seam(q.x + 0.02 * vnoise(vec2(q.y * 0.6, 4.0)), 0.19, 0.007);
+      float board = hash21(vec2(floor(q.x / 0.19), 5.0));
+      float g = fbm(vec2(q.x * 15.0, q.y * 1.1));
+      vec3 woodC = mix(vec3(0.2, 0.15, 0.11), vec3(0.34, 0.27, 0.2), g) * (0.8 + 0.35 * board);
+      float side = 1.0 - step(0.7, abs(wn.y));
+      float keep = smoothstep(0.4, 0.6, fbm(q * vec2(2.6, 1.0) + 11.0 + board * 3.0) + (fbm3(q * vec2(16.0, 7.0)) - 0.5) * 0.4 - smoothstep(1.5, 0.75, wp.y) * 0.3);
+      vec3 paint = vec3(0.5, 0.53, 0.52) * (0.8 + 0.3 * fbm3(q * 4.0)) * (0.9 + 0.2 * board);
+      col = mix(woodC, paint, keep * side);
+      col *= 1.0 - plank * 0.65;
+      col = mix(col, vec3(0.045, 0.04, 0.035), smoothstep(1.25, 0.72, wp.y) * 0.55 * side);                   // tar and grime at the foot
+      col = mix(col, vec3(0.3, 0.14, 0.07), smoothstep(0.6, 0.85, streaks(wp, wn, 2.2)) * smoothstep(1.9, 3.0, wp.y) * 0.5);   // rust from the roof
+      rough = mix(0.92, 0.7, keep * side);
+      bump = -plank * 0.012 + keep * side * 0.004 + g * 0.003;`, 'cabinwall');
+    const trimM = MAT.paleWood;
     b.box(0, DY + CH / 2, CZ0, CX1 - CX0, CH, 0.12, wall);
-    b.box(CX0, DY + CH / 2, (CZ0 + CZ1) / 2, 0.12, CH, CZ1 - CZ0, wall);
-    b.box(CX1, DY + CH / 2, (CZ0 + CZ1) / 2, 0.12, CH, CZ1 - CZ0, wall);
-    b.box(-1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall); b.box(1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall);
-    b.box(0, DY + CH - 0.15, CZ1, 1.0, 0.3, 0.12, wall, 0, false);
-    b.box(0, DY + CH + 0.06, (CZ0 + CZ1) / 2, CX1 - CX0 + 0.5, 0.12, CZ1 - CZ0 + 0.5, MAT.corrugated);
-    b.box(0, DY + 0.05, (CZ0 + CZ1) / 2, CX1 - CX0 - 0.1, 0.03, CZ1 - CZ0 - 0.1, inner, 0, false);
+    // side walls, built round two window openings each
+    const WZ = [-3.2, -0.6], WY0 = 1.2, WY1 = 1.72, mid = (CZ0 + CZ1) / 2, len = CZ1 - CZ0;
+    const paneM = new THREE.MeshStandardMaterial({ color: '#1c1610', roughness: 0.1, transparent: true, opacity: 0.3, emissive: '#ff9440', emissiveIntensity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+    for (const [x, out] of [[CX0, -1], [CX1, 1]] as const) {
+      b.box(x, DY + WY0 / 2, mid, 0.12, WY0, len, wall, 0, false);
+      b.box(x, DY + (WY1 + CH) / 2, mid, 0.12, CH - WY1, len, wall, 0, false);
+      for (const [z0, z1] of [[CZ0, WZ[0] - 0.4], [WZ[0] + 0.4, WZ[1] - 0.4], [WZ[1] + 0.4, CZ1]]) b.box(x, DY + (WY0 + WY1) / 2, (z0 + z1) / 2, 0.12, WY1 - WY0, z1 - z0, wall, 0, false);
+      world.addBox(cx + x, DY + CH / 2, cz + mid, 0.06, CH / 2, len / 2);
+      for (const z of WZ) {
+        const pane = b.mesh(new THREE.BoxGeometry(0.01, WY1 - WY0, 0.8), paneM, x, DY + (WY0 + WY1) / 2, z, false);
+        pane.userData.static = false; pane.renderOrder = 5;
+        // frame, sill and one glazing bar
+        for (const dz of [-0.42, 0.42]) b.box(x + out * 0.02, DY + (WY0 + WY1) / 2, z + dz, 0.17, WY1 - WY0 + 0.1, 0.05, trimM, 0, false);
+        for (const y of [WY0 - 0.025, WY1 + 0.025]) b.box(x + out * 0.02, DY + y, z, 0.17, 0.05, 0.89, trimM, 0, false);
+        b.box(x + out * 0.05, DY + WY0 - 0.06, z, 0.2, 0.03, 0.98, trimM, 0, false);
+        b.box(x, DY + (WY0 + WY1) / 2, z, 0.03, WY1 - WY0, 0.025, trimM, 0, false);
+        // a shutter folded back against the wall beside it (one has dropped a hinge)
+        const sh = b.box(x + out * 0.085, DY + (WY0 + WY1) / 2 - (z < -2 && out > 0 ? 0.06 : 0), z + 0.86, 0.03, WY1 - WY0 + 0.08, 0.72, MAT.wood, 0, false);
+        if (z < -2 && out > 0) sh.rotation.x = 0.09;
+      }
+      // corner boards, a skirting board and the fascia under the roof
+      for (const z of [CZ0, CZ1]) b.box(x + out * 0.02, DY + CH / 2, z, 0.2, CH, 0.2, trimM, 0, false);
+      b.box(x + out * 0.075, DY + 0.09, mid, 0.03, 0.18, len, trimM, 0, false);
+      b.box(x + out * 0.075, DY + CH - 0.07, mid, 0.04, 0.14, len + 0.1, MAT.wood, 0, false);
+      // old tyres hung over the side as fenders
+      for (const z of [-3.6, -1.2, 1.3]) {
+        const tyre = b.mesh(new THREE.TorusGeometry(0.24, 0.085, 8, 18), MAT.black, out * 2.26, DY - 0.38, z, true);
+        tyre.rotation.y = Math.PI / 2;
+        b.bar(out * 2.2, DY + 0.02, z, out * 2.25, DY - 0.16, z, 0.012, MAT.rope, 4);
+      }
+    }
+    // the doorway is wide enough to walk through without lining up on it
+    b.box(-1.225, DY + CH / 2, CZ1, 1.15, CH, 0.12, wall); b.box(1.225, DY + CH / 2, CZ1, 1.15, CH, 0.12, wall);
+    b.box(0, DY + CH - 0.15, CZ1, 1.3, 0.3, 0.12, wall, 0, false);
+    for (const dx of [-0.68, 0.68]) b.box(dx, DY + 0.98, CZ1 + 0.02, 0.07, 1.96, 0.17, trimM, 0, false);
+    b.box(0, DY + 1.98, CZ1 + 0.02, 1.43, 0.07, 0.17, trimM, 0, false);
+    b.box(0, DY + CH - 0.07, CZ1 + 0.075, CX1 - CX0 + 0.1, 0.14, 0.04, MAT.wood, 0, false);
+    b.box(0, DY + CH + 0.06, mid, CX1 - CX0 + 0.5, 0.12, len + 0.5, MAT.corrugated);
+    b.box(0, DY + 0.05, mid, CX1 - CX0 - 0.1, 0.03, len - 0.1, inner, 0, false);
     b.cyl(1.2, -3.6, 0.08, DY + CH, DY + CH + 0.9, MAT.dark, false, 0.08, 8);
-    const door = b.box(0.45, DY + 1.0, CZ1 + 0.42, 0.06, 2.0, 0.95, MAT.paleWood, 0.25, false); // hanging open
-    void door;
-    for (const z of [-3.2, -0.6]) for (const x of [CX0 - 0.07, CX1 + 0.07]) b.box(x, DY + 1.45, z, 0.03, 0.5, 0.8, MAT.black, 0, false);
+    b.cyl(1.2, -3.6, 0.13, DY + CH + 0.1, DY + CH + 0.16, MAT.dark, false, 0.13, 10);       // the flashing round the stove pipe
+    b.cyl(1.2, -3.6, 0.12, DY + CH + 0.9, DY + CH + 0.96, MAT.dark, false, 0.04, 8);        // its cowl
+    b.box(0.72, DY + 1.0, CZ1 + 0.46, 0.06, 2.0, 0.95, MAT.paleWood, 0.22, false);          // the door, hanging open
+    // what gathers on a foredeck: a bench, a water butt, a coil of line, a ring that was never thrown
+    b.box(-1.4, DY + 0.42, 1.75, 0.4, 0.05, 1.3, MAT.wood, 0, false);
+    for (const dz of [-0.55, 0.55]) b.box(-1.4, DY + 0.2, 1.75 + dz, 0.36, 0.4, 0.05, MAT.wood, 0, false);
+    world.addBox(cx - 1.4, DY + 0.22, cz + 1.75, 0.2, 0.22, 0.65);
+    b.drum(1.55, 1.55, DY, MAT.rust, MAT.dark, 0.27, 0.8, true, 0);
+    for (let i = 0; i < 4; i++) { const coil = b.mesh(new THREE.TorusGeometry(0.2 - i * 0.012, 0.02, 5, 18), MAT.rope, 0.5, DY + 0.06 + i * 0.036, 3.6, false); coil.rotation.x = Math.PI / 2; coil.rotation.z = i * 0.7; }
+    {
+      const ring = b.mesh(new THREE.TorusGeometry(0.27, 0.06, 8, 22), new THREE.MeshStandardMaterial({ color: '#a8a290', roughness: 0.9 }), -1.25, DY + 1.35, CZ1 + 0.1, false);
+      void ring;
+      for (let i = 0; i < 4; i++) { const band = b.mesh(new THREE.TorusGeometry(0.27, 0.063, 6, 5, 0.42), MAT.red, -1.25, DY + 1.35, CZ1 + 0.1, false); band.rotation.z = i * Math.PI / 2 + 0.2; }
+    }
     // a storm lantern turned right down in the far corner: just enough to make out the room at night
     {
       const lx = CX1 - 0.32, lz = CZ0 + 0.34;
       b.cyl(lx, lz, 0.06, DY + 0.06, DY + 0.1, MAT.dark, false, 0.06, 10);
       b.mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.12, 10), new THREE.MeshStandardMaterial({ color: '#3a2412', emissive: '#ff8a3a', emissiveIntensity: 1.6, transparent: true, opacity: 0.85 }), lx, DY + 0.16, lz, false);
       b.cyl(lx, lz, 0.04, DY + 0.22, DY + 0.26, MAT.dark, false, 0.02, 10);
-      const glim = new THREE.PointLight('#ff8a3a', 0.9, 6, 1.6);
-      glim.position.set(cx + lx - 0.1, DY + 0.3, cz + lz + 0.1);
+      // the glow is kept well inside the walls, since nothing stops a lamp's light going through them; the windows carry it out instead
+      const glim = new THREE.PointLight('#ff8a3a', 1.5, 2.6, 1.4);
+      glim.position.set(cx + 0.3, DY + 0.9, cz - 2.6);
       scene.add(glim);
+      world.updaters.push(() => { paneM.emissiveIntensity = 0.04 + night() * 0.5; });
     }
     // inside: bunk, strongbox, drawers, the overturned table, the man in the chair
     b.box(-1.25, DY + 0.28, -3.0, 0.9, 0.5, 2.4, MAT.paleWood);

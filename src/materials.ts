@@ -55,9 +55,15 @@ vec3 dirt(vec2 q, float vd, vec3 dry, vec3 damp, out float bump) {
   // cracks where the ground has dried hard
   float crack = (1.0 - smoothstep(0.0, 0.06, abs(fbm3(q * 1.25 + 5.0) - 0.5))) * smoothstep(0.45, 0.25, big) * near;
   c *= 1.0 - crack * 0.55;
-  bump = (clod * 0.06 + grit * 0.008 * near + peb * 0.014 - crack * 0.02) * mid;
+  // wind-laid ripples on open ground, and deeper clods: enough relief for a low sun to pick out
+  float rip = sin(dot(q0, vec2(0.33, 0.94)) * 5.2 + fbm3(q0 * 0.5) * 7.0) * 0.5 + 0.5;
+  rip *= smoothstep(0.42, 0.62, fbm3(q0 * 0.12 + 21.0)) * smoothstep(60.0, 12.0, vd);
+  c *= 1.0 - rip * 0.07;
+  bump = (clod * 0.1 + rip * 0.02 + grit * 0.008 * near + peb * 0.014 - crack * 0.02) * mid;
   return c;
 }
+// distance from p to the segment a-b
+float segd(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
 // 1 on a thin line every 'period', 0 elsewhere
 float seam(float x, float period, float width) {
   float f = abs(fract(x / period) - 0.5) * period;
@@ -108,7 +114,18 @@ export function patch<T extends THREE.MeshStandardMaterial>(mat: T, colour: stri
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${BUMP_GLSL}`);
   };
   mat.customProgramCacheKey = () => key + (local ? '-local' : '');
+  mat.userData.ww = { colour, key, local };
   return mat;
+}
+
+const locals = new Map<THREE.Material, THREE.Material>();
+/** the same material with its pattern fixed to the object instead of the world, for anything that moves */
+export function localOf<T extends THREE.Material>(mat: T): T {
+  const ww = mat.userData.ww as { colour: string; key: string; local: boolean } | undefined;
+  if (!ww || ww.local) return mat;
+  let out = locals.get(mat);
+  if (!out) { out = patch((mat as unknown as THREE.MeshStandardMaterial).clone(), ww.colour, ww.key, true); locals.set(mat, out); }
+  return out as T;
 }
 
 const std = (color: string, roughness: number, metalness = 0, extra: THREE.MeshStandardMaterialParameters = {}) =>

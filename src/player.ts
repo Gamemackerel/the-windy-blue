@@ -139,7 +139,7 @@ export class Player {
     let speed = 0;
     if (ml > 0.01) {
       mx /= ml; mz /= ml;
-      speed = this.encumbered ? WALK * 0.8 : input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
+      speed = input.down('ShiftLeft') || input.down('ShiftRight') ? RUN : WALK;
       if (this.pos.y < -0.25) speed *= 0.55;   // wading
       const step = speed * dt;
       const tryMove = (dx: number, dz: number) => {
@@ -147,7 +147,7 @@ export class Player {
         w.resolve(_v, RADIUS);
         const g = w.groundAt(_v.x, _v.z, this.pos.y);
         // too steep to climb
-        const ahead = w.groundAt(_v.x + dx * 4, _v.z + dz * 4, this.pos.y + 2);
+        const ahead = w.groundAt(_v.x + dx * 4, _v.z + dz * 4, this.pos.y + 1.0);   // only what could be climbed: a roof overhead is not a slope
         const run = Math.hypot(dx, dz) * 4;
         if (ahead - g > run * 1.25 && ahead - this.pos.y > 0.5) return false;
         this.pos.x = _v.x; this.pos.z = _v.z;
@@ -182,6 +182,7 @@ export class Player {
 
     // what is within reach?
     this.target = free ? w.nearestInteractable(this.pos, this.yaw) : null;
+    if (free && input.hit('KeyQ') && this.dropHook?.()) this.busy = 0.35;     // put down what is being carried
     if (free && input.hit('KeyE')) {
       const lad = w.nearestLadder(this.pos);
       if (this.target) { this.used = this.target; this.target.use(); this.busy = 0.45; this.reach = 1; }
@@ -464,7 +465,7 @@ export class Player {
     p[J.head].set(hike * 0.62, 0.1 + 0.68 - duck * 1.5 + breathe, 0.1 + duck);
     // the tiller must never pass through the helm: when it swings in close, the body sways clear of it
     // and the shoulders turn so the aft arm reaches back to it rather than through the ribs
-    const aftIsLeft = this.sideSmooth < 0; // sitting to starboard faces port: left hand is aft
+    const aftIsLeft = this.sideSmooth > 0; // the hand nearer the middle of the boat takes the tiller; the outboard hand has the sheet
     f.group.worldToLocal(b.tillerGrip(_t));
     {
       const gx = _t.x - p[J.chest].x, gz = _t.z - p[J.chest].z, d = Math.hypot(gx, gz), clear = 0.34;
@@ -488,12 +489,13 @@ export class Player {
     // aft hand on the tiller, forward hand on the sheet
     const aSh = aftIsLeft ? J.shL : J.shR, aEl = aftIsLeft ? J.elL : J.elR, aHa = aftIsLeft ? J.haL : J.haR;
     solveIK(p[aSh], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[aEl], p[aHa]);
-    f.group.worldToLocal(b.sheetPoint(_w));
     const fSh = aftIsLeft ? J.shR : J.shL, fEl = aftIsLeft ? J.elR : J.elL, fHa = aftIsLeft ? J.haR : J.haL;
-    // the hand holds the sheet a forearm's length toward the boom, hauling as it is trimmed
-    _u.copy(p[fSh]).lerp(_w, 0.34);
-    _u.y = Math.min(_u.y, p[fSh].y - 0.12) - (1.5 - s.sheet) * 0.06;
+    // the sheet comes back from its block to the outboard hand, held in front of the body and hauled in as it is trimmed
+    f.group.worldToLocal(b.local(-0.3 * this.sideSmooth, 0.74 + (1.5 - s.sheet) * 0.05, -0.86 - (1.5 - s.sheet) * 0.06, _u));
     solveIK(p[fSh], _u, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[fEl], p[fHa]);
+    f.group.updateMatrixWorld();
+    b.group.worldToLocal(f.group.localToWorld(_w.copy(p[fHa])));
+    (b.sheetHand ??= new THREE.Vector3()).copy(_w);
 
     f.skirtAmount = 0.55;
     // eyes forward, glancing up at the sail now and then

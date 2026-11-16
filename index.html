@@ -52,6 +52,12 @@
         cursor: pointer; letter-spacing: 0.34em; text-transform: uppercase; text-shadow: inherit;
       }
       #title button:hover { border-color: #fff; background: rgba(4, 14, 22, 0.5); }
+      #keys {
+        position: fixed; left: 50%; bottom: 9%; transform: translateX(-50%); color: #e6e0d0; opacity: 0; transition: opacity 1.6s; pointer-events: none;
+        font: 11px/2.5 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.3em; text-transform: uppercase; text-align: center; white-space: nowrap; text-shadow: 0 1px 6px #000;
+      }
+      #keys b { font-weight: 400; color: #fff; border-bottom: 1px solid rgba(230, 224, 208, 0.35); padding-bottom: 2px; margin-right: 0.7em; }
+      #keys i { font-style: normal; opacity: 0.4; margin: 0 1.1em; }
       #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
       #scope { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s;
         background: radial-gradient(circle at 50% 50%, transparent 0, transparent 38vh, rgba(0,0,0,0.55) 40vh, #000 43vh); }
@@ -82,6 +88,7 @@
     <div id="scope"></div>
     <div id="dot"></div>
     <div id="hint">ESC</div>
+    <div id="keys"></div>
     <div id="pause"><div class="box">
       <h1>Paused</h1>
       <table>
@@ -96,6 +103,8 @@
         <tr><td>Sheet in / ease out (sailing)</td><td><kbd>W</kbd> / <kbd>S</kbd></td></tr>
         <tr><td>Satchel: choose what to hold</td><td><kbd>Tab</kbd>, then <kbd>A</kbd> <kbd>D</kbd> and <kbd>E</kbd></td></tr>
         <tr><td>Offer what you hold</td><td><kbd>E</kbd> facing someone</td></tr>
+        <tr><td>Put down what you are carrying</td><td><kbd>Q</kbd></td></tr>
+        <tr><td>Show the sailing controls</td><td><kbd>H</kbd></td></tr>
         <tr><td>Report something that looks wrong</td><td><kbd>R</kbd></td></tr>
         <tr><td>Aim / fire (revolver in hand)</td><td><kbd>Right mouse</kbd> / <kbd>Left mouse</kbd></td></tr>
       </table>

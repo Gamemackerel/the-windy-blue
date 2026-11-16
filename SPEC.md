@@ -12,7 +12,7 @@ This spec describes a **demo**: a compact, complete slice of the game, about 60â
 
 ## 1. Pillars
 
-1. **Silence.** No dialogue, no quest log, no HUD, and no text except the laboratory journals. Everything is communicated by staging, light, sound and the character's body language.
+1. **Silence.** No dialogue, no quest log, no HUD, and no text except the laboratory journals and a few words about the controls (4.15). Everything is communicated by staging, light, sound and the character's body language.
 2. **Scale and dread.** Small boat, big sea, bigger things. The windmill, the tower and the giant should each make the player feel tiny in a different way.
 3. **A curated palette.** Slate, bone, rust, black and deep blue. Green is almost absent, so that when it appears it is an event.
 4. **Sailing that feels right.** Real points of sail and real wind, but forgiving. Trimming well should feel good within five minutes.
@@ -369,6 +369,20 @@ The giant is one continuous skin (head, neck, torso, arms, hands, fingers), gene
 - **Plants are grown, not scattered.** Tree crowns are boughs that sag under their leaves; the jungle floor has ferns (fronds of leaflets from a crown), broad-leaved plants (long arching blades from a short stalk) and bushes; vines trail over the rig's edges. The greenhouse has tomato vines tied up stakes with side shoots of leaflets, squash with round lobed leaves on stalks, heads of salad, and a small tree. Leaves have a midrib and veins, a duller underside, let sunlight through from behind, and move in the wind. All instanced.
 - **Floating structures ride the swell.** The houseboat, the Fisher's raft, the Smoker's barge and the floating home heave, pitch and roll with the open-sea swell under them (the raft most, the barge least), with everything aboard, including their people and the view of anyone standing on them. Rigs on legs and the laboratory's pontoon stay fixed.
 - **The boat is never lost.** If its sailor is ashore on the starting island and the boat lies far off, it is back in its dock the next time they look.
+
+### 4.15 The few words about controls
+
+Shown only in ordinary play, small and letter-spaced at the foot of the screen, fading by themselves:
+- at the very start: move, look, use;
+- the first time aboard the boat: tiller, haul in and let out, anchor, ashore, view, and that H shows this again;
+- **H** while sailing shows or hides the sailing controls;
+- if the boat makes no way for a dozen seconds, a faint "H Â· controls" in the corner.
+
+**Q** puts down whatever is being carried. A carried weight is held fixed in the view and costs no speed.
+
+### 4.16 The crane, read at a glance
+
+The pan hangs on a fixed chain from its end of the beam. Overloaded, it goes down to the ground. Underloaded, the mast hangs low; the winch swings it toward the dock, it strikes the rail and swings back. Only in balance does it clear the rail and step. The stepped mast keeps its four bands.
 
 ## 14. Build status
 

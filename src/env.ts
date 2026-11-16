@@ -311,7 +311,7 @@ export class Environment {
 
     // air
     const a = this.air;
-    a.fog.copy(u.uHorizon.value).multiplyScalar(0.92);
+    a.fog.copy(u.uHorizon.value).multiplyScalar(0.92 - 0.42 * night);
     a.sunDir.copy(this.lightDir);
     a.sun.copy(useSun ? u.uSunCol.value : lc).multiplyScalar(useSun ? 1 : 2.5);
     a.glow = useSun ? u.uSunGlow.value * Math.min(1, sunI / 0.5) : 0.5 * moonUp * this.moonLit * Math.min(1, moonI / 0.3);
