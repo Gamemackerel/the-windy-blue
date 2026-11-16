@@ -442,9 +442,23 @@ export class Player {
     p[J.hips].set(0, 0.1, 0);
     p[J.chest].set(hike * 0.5, 0.1 + 0.46 - duck + breathe, 0.06 + duck * 0.6);
     p[J.head].set(hike * 0.62, 0.1 + 0.68 - duck * 1.5 + breathe, 0.1 + duck);
-    p[J.shL].set(p[J.chest].x + LIMB.SH_W, p[J.chest].y - 0.03, p[J.chest].z);
-    p[J.shR].set(p[J.chest].x - LIMB.SH_W, p[J.chest].y - 0.03, p[J.chest].z);
-    p[J.hipL].set(LIMB.HIP_W, 0.08, 0); p[J.hipR].set(-LIMB.HIP_W, 0.08, 0);
+    // the tiller must never pass through the helm: when it swings in close, the body sways clear of it
+    // and the shoulders turn so the aft arm reaches back to it rather than through the ribs
+    const aftIsLeft = this.sideSmooth < 0; // sitting to starboard faces port: left hand is aft
+    f.group.worldToLocal(b.tillerGrip(_t));
+    {
+      const gx = _t.x - p[J.chest].x, gz = _t.z - p[J.chest].z, d = Math.hypot(gx, gz), clear = 0.34;
+      if (d < clear) {
+        const k = clear - d, ux = d > 1e-3 ? -gx / d : (aftIsLeft ? -1 : 1), uz = d > 1e-3 ? -gz / d : 0;
+        p[J.chest].x += ux * k; p[J.chest].z += Math.max(0, uz) * k * 0.7;
+        p[J.head].x += ux * k * 1.15; p[J.head].z += Math.max(0, uz) * k * 0.8;
+        p[J.hips].x += ux * k * 0.35;
+      }
+    }
+    const tw = (aftIsLeft ? 1 : -1) * 0.5 * Math.min(1, Math.abs(this.sideSmooth) * 1.5), twc = Math.cos(tw), tws = Math.sin(tw);
+    p[J.shL].set(p[J.chest].x + LIMB.SH_W * twc, p[J.chest].y - 0.03, p[J.chest].z - LIMB.SH_W * tws);
+    p[J.shR].set(p[J.chest].x - LIMB.SH_W * twc, p[J.chest].y - 0.03, p[J.chest].z + LIMB.SH_W * tws);
+    p[J.hipL].set(p[J.hips].x + LIMB.HIP_W, 0.08, 0); p[J.hipR].set(p[J.hips].x - LIMB.HIP_W, 0.08, 0);
     // feet braced on the floor boards, toward the low side
     for (let k = 0; k < 2; k++) {
       const sgn = k === 0 ? 1 : -1;
@@ -452,8 +466,6 @@ export class Player {
       solveIK(k === 0 ? p[J.hipL] : p[J.hipR], _t, LIMB.THIGH, LIMB.SHIN, POLE_KNEE, p[k === 0 ? J.knL : J.knR], p[k === 0 ? J.ftL : J.ftR]);
     }
     // aft hand on the tiller, forward hand on the sheet
-    const aftIsLeft = this.sideSmooth < 0; // sitting to starboard faces port: left hand is aft
-    f.group.worldToLocal(b.tillerGrip(_t));
     const aSh = aftIsLeft ? J.shL : J.shR, aEl = aftIsLeft ? J.elL : J.elR, aHa = aftIsLeft ? J.haL : J.haR;
     solveIK(p[aSh], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[aEl], p[aHa]);
     f.group.worldToLocal(b.sheetPoint(_w));

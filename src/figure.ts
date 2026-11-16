@@ -217,7 +217,7 @@ export function fillHand(hand: THREE.Group, s: number, skinMat: THREE.Material, 
       hand.add(fg);
     }
     const th = new THREE.Group();
-    th.position.set(s * 0.036, 0.03, 0.01); th.rotation.set(0.5, 0, s * -0.9);
+    th.position.set(s * -0.036, 0.03, 0.01); th.rotation.set(0.5, 0, s * 0.9);   // thumb on the forward edge when the palm faces the body
     th.add(part(new THREE.CapsuleGeometry(0.0105, 0.035, 3, 8), skinMat, skin, 0, 0.02, 0));
     hand.add(th);
 }
@@ -366,8 +366,12 @@ export class Figure {
       heel.scale.set(0.98, 1.1, 1.15);
       foot.add(toe, heel);
       if (!bare) {
-        foot.add(part(new THREE.BoxGeometry(0.104, 0.022, 0.285, 1, 1, 3), leather, new THREE.Color('#0d0c0b'), 0, 0.011, 0.06));
-        foot.add(part(new THREE.BoxGeometry(0.108, 0.03, 0.08), leather, new THREE.Color('#0d0c0b'), 0, 0.015, -0.035));
+        // a thin welt that follows the outline of the boot, and a low heel
+        const sole = part(new THREE.CylinderGeometry(0.049, 0.051, 0.012, 18), leather, new THREE.Color('#0d0c0b'), 0, 0.006, 0.062);
+        sole.scale.set(1, 1, 2.7);
+        const heelBlock = part(new THREE.CylinderGeometry(0.047, 0.049, 0.02, 14), leather, new THREE.Color('#0d0c0b'), 0, 0.01, -0.02);
+        heelBlock.scale.set(1, 1, 1.15);
+        foot.add(sole, heelBlock);
       }
       g.add(foot);
     }

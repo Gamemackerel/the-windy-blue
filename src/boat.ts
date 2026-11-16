@@ -418,7 +418,7 @@ export class Boat {
     return this.group.localToWorld(out.set(x, y, z));
   }
   /** where the helm sits: on the windward side, aft */
-  seat(out: THREE.Vector3, side: number) { return this.local(-0.42 * side, 0.36, -1.5, out); }
+  seat(out: THREE.Vector3, side: number) { return this.local(-0.42 * side, 0.36, -1.22, out); }   // forward of the tiller's sweep
   tillerGrip(out: THREE.Vector3) {
     const a = -this.state.rudder * 0.5;
     return this.local(Math.sin(a) * 1.05, 0.66, -LEN / 2 - 0.03 + Math.cos(a) * 1.05, out);

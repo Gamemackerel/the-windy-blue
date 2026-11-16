@@ -74,7 +74,7 @@ export class Npc {
     ctx.scene.add(this.figure.group);
     this.figure.group.position.copy(this.pos);
     this.figure.group.rotation.y = spec.yaw;
-    if (spec.pose === 'sit') this.figure.skirtAmount = 0.4;
+    if (spec.pose === 'sit') this.figure.skirtAmount = 0;   // seated, the coat is gathered under them rather than hanging through the chair
 
     if (spec.smokes) {
       // held between the first two fingers, lit end away from the face
@@ -286,7 +286,7 @@ export class Npc {
     this.computePose(dt);
     const rate = Math.min(1, dt * (this.condition === 1 ? 5 : 9));
     for (let i = 0; i < J.COUNT; i++) f.joints[i].lerp(this.target[i], rate);
-    f.skirtAmount += ((this.condition === 1 ? 0.45 : this.spec.pose === 'sit' ? 0.4 : 1) - f.skirtAmount) * rate;
+    f.skirtAmount += ((this.condition === 1 ? 0.45 : this.spec.pose === 'sit' ? 0 : 1) - f.skirtAmount) * rate;
 
     // eyes follow the player when they are near
     let wantYaw = 0, wantPitch = this.condition === 1 ? 0.5 : 0.03;
@@ -299,6 +299,7 @@ export class Npc {
       wantPitch = THREE.MathUtils.clamp(-Math.atan2(_t.y - f.joints[J.head].y, Math.hypot(_t.x, _t.z)), -0.5, 0.6);
       if (this.lookAway > 0) { wantYaw = -Math.sign(wantYaw || 1) * 0.9; wantPitch = 0.15; }
     } else wantYaw = Math.sin(this.t * 0.13) * 0.35;
+    wantPitch += this.drag * 0.12;                       // the head dips a little to meet the hand
     f.headYaw += (wantYaw - f.headYaw) * Math.min(1, dt * 2.2);
     f.headPitch += (wantPitch - f.headPitch) * Math.min(1, dt * 2.2);
     f.refresh(0);
@@ -308,8 +309,6 @@ export class Npc {
       f.rightHandSlot.getWorldQuaternion(_hq).invert();
       this.cig.quaternion.copy(_hq).multiply(_fq);
     }
-    // the head dips a little to meet the hand
-    f.headPitch += this.drag * 0.12;
     f.group.localToWorld(this.chest.copy(f.joints[J.chest]));
   }
 }
