@@ -153,6 +153,8 @@ export class Player {
     if (this.pos.y > ground + 0.08) {
       this.velY -= 20 * dt;
       this.pos.y += this.velY * dt;
+      // a roof stops a jump: the head never goes through what is overhead
+      if (this.velY > 0) { const lid = w.ceilingAt(this.pos.x, this.pos.z, this.pos.y - this.velY * dt) - 1.78; if (this.pos.y > lid) { this.pos.y = Math.max(ground, lid); this.velY = 0; } }
       if (this.pos.y < ground) { this.pos.y = ground; this.velY = 0; }
     } else {
       this.velY = 0;

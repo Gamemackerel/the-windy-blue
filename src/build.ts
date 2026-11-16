@@ -33,6 +33,8 @@ export class Builder {
     const a = new THREE.Vector3(ax, ay, az), b = new THREE.Vector3(bx, by, bz);
     const m = this.mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), seg), mat, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.sub(a).normalize());
+    // pipework: a rounded knuckle at each end, so runs that meet at a corner join as elbows instead of open cut ends
+    if (r >= 0.05) for (const [x, y, z] of [[ax, ay, az], [bx, by, bz]]) this.mesh(new THREE.SphereGeometry(r * 1.02, Math.max(seg, 8), 6), mat, x, y, z);
     return m;
   }
   /** wooden crate: a box with battens along every edge and a brace across each side */

@@ -231,7 +231,7 @@ export const JUNK: Record<string, Maker> = {
     cyl(g, MAT.brass, 0.012, 0.012, 1.45, 0, 0.74, 0, 0, 0, 0, 6);
     cyl(g, JM.shade, 0.2, 0.09, 0.24, 0.02, 1.52, 0, 0.25, 0, 0.2, 16, true).material = JM.shade;
     if (r() < 0.4) { g.rotation.z = Math.PI / 2 - 0.12; g.position.y += 0.14; return; }
-    return { big: 0.18, tall: 1.6 };
+    return;
   },
   lampdesk: (g) => {
     cyl(g, MAT.dark, 0.08, 0.075, 0.025, 0, 0.012, 0);
@@ -275,9 +275,9 @@ export const JUNK: Record<string, Maker> = {
 };
 
 const SMALL = ['can', 'can', 'bottle', 'bottle', 'book', 'bookopen', 'pages', 'kettle', 'board', 'gear', 'spring', 'piston', 'valve', 'clock', 'telephone'];
-const MEDIUM = ['monitor', 'tower', 'keyboard', 'bookstack', 'radio', 'suitcase', 'typewriter', 'lampdesk', 'chair', 'tyre', 'pipe', 'stonehand', 'capital'];
-const LARGE = ['fridge', 'engine', 'mannequin', 'lampfloor', 'bust', 'torso', 'column', 'stonehead'];
-const STONE = ['bust', 'torso', 'column', 'capital', 'stonehand', 'stonehead', 'column'];
+const MEDIUM = ['monitor', 'tower', 'keyboard', 'bookstack', 'radio', 'suitcase', 'typewriter', 'lampdesk', 'chair', 'tyre', 'pipe', 'capital'];
+const LARGE = ['fridge', 'engine', 'mannequin', 'lampfloor', 'bust', 'column', 'stonehead', 'tyre', 'chair', 'suitcase'];
+const STONE = ['bust', 'column', 'capital', 'stonehead', 'column'];
 const MACHINE = ['gear', 'gear', 'piston', 'spring', 'pipe', 'valve', 'engine', 'tyre', 'can'];
 
 export function scatterJunk(ctx: Ctx) {
@@ -285,6 +285,7 @@ export function scatterJunk(ctx: Ctx) {
   let count = 0;
   /** put one object down. y: explicit height, or omitted to rest on whatever is under it near yHint */
   const put = (kind: string, x: number, z: number, o: { y?: number; hint?: number; yaw?: number; sink?: number; tip?: number; scale?: number; r?: () => number } = {}) => {
+    taken.push({ x, z, r: LARGE.includes(kind) ? 0.5 : SMALL.includes(kind) ? 0.22 : 0.38 });
     const g = new THREE.Group(), r = o.r ?? rng(count * 7919 + 13);
     const info = JUNK[kind](g, r) || {};
     const inner = new THREE.Group();          // keeps the object's own pose separate from where it is put
@@ -308,31 +309,36 @@ export function scatterJunk(ctx: Ctx) {
     count++;
   };
   /** n objects from a list at random spots inside a rectangle, skipping anywhere `skip` says is taken */
-  const strew = (seed: number, n: number, kinds: string[], x0: number, x1: number, z0: number, z1: number, hint: number, skip?: (x: number, z: number) => boolean) => {
+  // Things are never dropped on top of one another: each takes up a patch of floor of its own.
+  const taken: { x: number; z: number; r: number }[] = [];
+  const room = (k: string) => (LARGE.includes(k) ? 0.5 : SMALL.includes(k) ? 0.22 : 0.38);
+  const strew = (seed: number, n: number, kinds: string[], x0: number, x1: number, z0: number, z1: number, hint: number, skip?: (x: number, z: number) => boolean, lift = 0) => {
     const r = rng(seed);
-    for (let i = 0, tries = 0; i < n && tries < n * 12; tries++) {
+    for (let i = 0, tries = 0; i < n && tries < n * 30; tries++) {
       const x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0);
+      const kind = kinds[(r() * kinds.length) | 0], rad = room(kind);
       if (skip?.(x, z)) continue;
-      put(kinds[(r() * kinds.length) | 0], x, z, { hint, r });
+      if (taken.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + rad)) continue;
+      put(kind, x, z, { y: world.groundAt(x, z, hint) + lift, r });
       i++;
     }
   };
   const IX = ISLAND.x, IZ = ISLAND.z, D = 1.7;
 
   // ---- the storehouse: the densest pile, with the museum pieces
-  strew(11, 18, [...STONE, ...MEDIUM, 'fridge', 'mannequin', 'lampfloor'], IX + 47.6, IX + 53.4, IZ + 7.8, IZ + 12.4, D, (x, z) => x > IX + 52.2 && Math.abs(z - IZ - 10.5) < 1.3);
-  strew(12, 14, SMALL, IX + 47.4, IX + 53.6, IZ + 7.6, IZ + 13.2, D);
-  put('bust', IX + 50.4, IZ + 10.2, { hint: D, yaw: 1.2 });                           // under the gap in the roof
+  strew(11, 18, [...STONE, ...MEDIUM, 'fridge', 'mannequin', 'lampfloor'], IX + 47.6, IX + 53.4, IZ + 7.8, IZ + 12.4, D, (x, z) => x > IX + 52.2 && Math.abs(z - IZ - 10.5) < 1.3, 0.035);
+  strew(12, 14, SMALL, IX + 47.4, IX + 53.6, IZ + 7.6, IZ + 12.6, D, undefined, 0.035);
+  put('bust', IX + 50.4, IZ + 10.2, { y: D + 0.035, yaw: 1.2 });                           // under the gap in the roof
   for (const [k, z, y] of [['bookstack', -2.2, 0.53], ['clock', -1.2, 0.53], ['radio', 0.4, 1.23], ['bottle', 1.5, 1.23], ['monitor', 2.3, 0.53], ['typewriter', -0.7, 1.23], ['can', 2.0, 1.93], ['kettle', -1.8, 1.93], ['telephone', 1.0, 0.53]] as const)
     put(k, IX + 46.15, IZ + 10.5 + z, { y: 1.6 + y, yaw: Math.PI / 2 + (z % 1) });
   for (const [k, x] of [['lampdesk', -1.4], ['board', -0.6], ['board', 0.1], ['keyboard', 0.9], ['bookopen', 1.9], ['tower', 2.15]] as const) put(k, IX + 50.6 + x, IZ + 13.25, { y: 1.6 + 0.84, yaw: Math.PI + x * 0.2 });
   // ---- the sail loft
-  strew(21, 9, [...SMALL, ...MEDIUM], IX + 59.6, IX + 68.4, IZ - 18.2, IZ - 12.4, D, (x, z) => (Math.abs(x - IX - 64) < 1.8 && z < IZ - 15.8) || (Math.abs(x - IX - 64) < 1.2 && z > IZ - 13.4) || x < IX + 60.3 || x > IX + 67.3);
-  put('mannequin', IX + 65.3, IZ - 16.3, { hint: D, yaw: -0.6 });
+  strew(21, 9, [...SMALL, ...MEDIUM], IX + 59.6, IX + 68.4, IZ - 18.2, IZ - 12.4, D, (x, z) => (Math.abs(x - IX - 64) < 1.8 && z < IZ - 15.8) || (Math.abs(x - IX - 64) < 1.2 && z > IZ - 13.4) || x < IX + 60.6 || x > IX + 66.9, 0.035);
+  put('mannequin', IX + 65.3, IZ - 16.3, { y: D + 0.035, yaw: -0.6 });
   // ---- the boat shed and the yard
   strew(31, 9, [...MACHINE, 'chair', 'tyre', 'lampfloor'], IX + 78.5, IX + 89.5, IZ + 30.5, IZ + 37.5, D, (x, z) => Math.hypot(x - IX - 82, z - IZ - 33) < 3.6);
   put('engine', IX + 87.5, IZ + 31.6, { hint: D, yaw: 0.4 });
-  strew(32, 12, [...SMALL, 'tyre', 'pipe', 'column', 'stonehand', 'chair'], IX + 58, IX + 100, IZ - 8, IZ + 30, D,
+  strew(32, 12, [...SMALL, 'tyre', 'pipe', 'column', 'chair'], IX + 58, IX + 100, IZ - 8, IZ + 30, D,
     (x, z) => Math.hypot(x - IX - 64, z - IZ - 4) < 2 || (Math.abs(x - IX - 50) < 6 && Math.abs(z - IZ - 10.5) < 5) || (Math.abs(x - IX - 64) < 7.5 && Math.abs(z - IZ + 15) < 5.5) || Math.hypot(x - IX - 74, z - IZ - 20) < 3 || (x > IX + 108 && Math.abs(z - IZ - 10) < 4));
   // ---- the porch of the house
   for (const [k, x, z] of [['bottle', 6.6, 2.6], ['bottle', 6.3, 3.0], ['kettle', 3.9, 0.2], ['bookopen', 4.4, 3.4], ['radio', 3.7, 2.6]] as const) put(k, IX + 26 + x, IZ - 51 + z, { hint: 9.9 });
@@ -377,7 +383,7 @@ export function scatterJunk(ctx: Ctx) {
   }
   // ---- the floating home: someone's whole life, left mid-meal
   strew(61, 12, [...SMALL, 'bookstack', 'chair', 'suitcase', 'radio', 'lampfloor'], HOME.x - 1.4, HOME.x + 3.2, HOME.z - 1.7, HOME.z + 1.7, 0.7,
-    (x, z) => (x > HOME.x + 2.0 && z > HOME.z + 0.3) || (Math.abs(x - HOME.x - 1.1) < 1 && z < HOME.z - 0.9) || Math.hypot(x - HOME.x - 2.7, z - HOME.z + 1.2) < 0.6);
+    (x, z) => (x > HOME.x + 2.0 && z > HOME.z + 0.3) || (Math.abs(x - HOME.x - 1.1) < 1 && z < HOME.z - 0.9) || Math.hypot(x - HOME.x - 2.7, z - HOME.z + 1.2) < 0.6 || (x < HOME.x - 0.2 && Math.abs(z - HOME.z) < 1.0), 0.03);
   for (const [k, x] of [['kettle', -0.5], ['can', -0.1], ['bookopen', 0.3], ['bottle', 0.62]] as const) put(k, HOME.x + 1.1 + x, HOME.z - 1.45, { y: 0.55 + 0.75 });
   put('typewriter', HOME.x + 2.8, HOME.z + 1.2, { y: 0.55 + 0.53 });
   for (const [k, x, z] of [['tyre', -3.2, 2.6], ['can', -3.0, -2.2], ['bottle', -3.4, -1.2], ['pipe', 0.5, 3.0]] as const) put(k, HOME.x + x, HOME.z + z, { y: 0.55 });

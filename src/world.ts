@@ -115,6 +115,20 @@ export class World {
     return g;
   }
 
+  /** the underside of the lowest solid thing over this spot that is above chest height (Infinity under open sky) */
+  ceilingAt(x: number, z: number, feetY: number): number {
+    let low = Infinity;
+    for (const c of this.colliders) {
+      if (c.kind !== 'box' || c.rise) continue;
+      const dx = x - c.x, dz = z - c.z;
+      const lx = dx * c.cos - dz * c.sin, lz = dx * c.sin + dz * c.cos;
+      if (Math.abs(lx) > c.hx + 0.15 || Math.abs(lz) > c.hz + 0.15) continue;
+      const bottom = c.y - c.hy;
+      if (bottom > feetY + 1.2 && bottom < low) low = bottom;
+    }
+    return low;
+  }
+
   /** Push a circle of radius r at height feetY out of anything that blocks it. Mutates p. */
   resolve(p: THREE.Vector3, r: number, height = 1.7) {
     const feet = p.y, head = p.y + height;

@@ -33,6 +33,8 @@ function localHeight(lx: number, lz: number) {
   // flat yard cut into the slope
   const ym = smooth(46, 30, Math.hypot(lx - 70, lz - 10));
   h += (DECK - h) * ym;
+  // the ground stops just short of the dock's concrete, so the two surfaces never lie in the same plane
+  h -= 0.09 * smooth(96.8, 98.2, lx) * smooth(22.5, 20.5, Math.abs(lz - 10));
   // a levelled crown on the summit, where the telescope stands
   const sm = smooth(11, 4.5, Math.hypot(lx + 44, lz + 6));
   h += (40.6 - h) * sm;
@@ -137,10 +139,11 @@ export function buildIsland(ctx: Ctx) {
       const h = localHeight(lx, lz);
       if (h < 5.2) continue;
       if (Math.hypot(lx - 28, lz + 50) < 16) continue; // the terrace round the house is bare
+      if (Math.hypot(lx + 44, lz + 6) < 4.4) continue;  // nothing grows through the summit's concrete
       const sl = Math.abs(localHeight(lx + 1, lz) - h) + Math.abs(localHeight(lx, lz + 1) - h);
       if (sl > 0.45) continue;
       if (fbm(lx * 0.05 + 3, lz * 0.05) < 0.4) continue;
-      pv.set(IX + lx, h - 0.03, IZ + lz);
+      pv.set(IX + lx, h - 0.04 - sl * 0.3, IZ + lz);   // set into the slope, so no tuft hangs in the air on its downhill side
       q.setFromEuler(new THREE.Euler(0, r() * 6.283, 0));
       const s = 0.7 + r() * 1.1;
       sc.set(s, s * (0.7 + r() * 0.8), s);
@@ -235,7 +238,20 @@ export function buildIsland(ctx: Ctx) {
   b.box(120, SLAB_Y, 3.5, 20, SLAB_H, 7, MAT.concrete);         // south arm
   b.box(119, -2.0, 10, 18, 1.4, 6, MAT.concrete);               // basin floor (top at -1.3)
   // kerbs so nobody walks into the basin
-  b.rail(110, 13, 130, 13, DECK, MAT.rust, 0.9);
+  b.rail(110, 13, 118.2, 13, DECK, MAT.rust, 0.9);
+  b.rail(119.8, 13, 130, 13, DECK, MAT.rust, 0.9);
+  world.addBox(IX + 119, DECK + 0.45, IZ + 13, 0.8, 0.45, 0.06);                        // the gap is for the gangway, not for walking off the edge
+  {
+    // gangway: a boarded ramp with rope rails from the dock side down toward the boat
+    const g0 = new THREE.Vector3(119, DECK + 0.03, 13.25), g1 = new THREE.Vector3(119, DECK - 0.75, 11.5);
+    const plank = b.box(119, (g0.y + g1.y) / 2, (g0.z + g1.z) / 2, 0.8, 0.05, g0.distanceTo(g1), MAT.paleWood, 0, false);
+    plank.rotation.x = -Math.atan2(g0.y - g1.y, g0.z - g1.z);
+    for (let i = 1; i < 6; i++) { const c = b.box(119, g0.y + (g1.y - g0.y) * (i / 6) + 0.035, g0.z + (g1.z - g0.z) * (i / 6), 0.8, 0.025, 0.05, MAT.wood, 0, false); c.rotation.x = plank.rotation.x; }
+    for (const sx of [-0.4, 0.4]) {
+      b.bar(119 + sx, DECK, 13.1, 119 + sx, DECK + 0.9, 13.1, 0.03, MAT.rust, 6);
+      b.bar(119 + sx, DECK + 0.85, 13.1, 119 + sx, DECK + 0.05, 11.5, 0.012, MAT.rope, 4);
+    }
+  }
   b.rail(110, 7, 130, 7, DECK, MAT.rust, 0.9);
   b.rail(110, 7, 110, 13, DECK, MAT.rust, 0.9);
   // bollards and fenders
@@ -246,7 +262,7 @@ export function buildIsland(ctx: Ctx) {
   // sea gate
   const gate = b.box(130.2, -0.6, 10, 0.45, 4.4, 6.6, MAT.rust, 0, false);
   gate.userData.static = false;
-  const gateCol = world.addBox(IX + 130.2, -0.6, IZ + 10, 0.3, 2.2, 3.3);
+  let gateCol = world.addBox(IX + 130.2, -0.6, IZ + 10, 0.3, 2.2, 3.3);
   for (const z of [6.6, 13.4]) b.box(130.2, 0.6, z, 0.9, 3.4, 0.5, MAT.steel, 0, false);
 
   // depth mask that keeps the sea out of the dry basin, and the water that fills it
@@ -282,10 +298,30 @@ export function buildIsland(ctx: Ctx) {
   bb.bar(0, 0.9, 0, 0, 0.1, CR.arm - 0.3, 0.02, MAT.dark);
   bb.bar(0, 0.9, 0, 0, 0.1, -CR.counter + 0.2, 0.02, MAT.dark);
   cb.bar(0, CR.h, 0, 0, CR.h + 0.9, 0, 0.06, MAT.rust);
-  // winch drum on the post
-  const winch = cb.mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), MAT.steel, 0.3, 1.1, 0);
-  winch.rotation.z = Math.PI / 2;
-  const crank = cb.box(0.55, 1.1, 0.14, 0.04, 0.04, 0.3, MAT.dark, 0, false);
+  // the hand winch: on its own stand beside the crane's foot, so it stays put while the jib swings
+  const WX = CR.x + 0.75, WZ = CR.z + 0.55;
+  b.box(WX, DECK + 0.05, WZ, 0.9, 0.1, 0.6, MAT.steel, 0, false);
+  for (const sx of [-0.3, 0.3]) {
+    for (const sz of [-1, 1]) b.bar(WX + sx, DECK + 0.1, WZ + sz * 0.22, WX + sx, DECK + 0.95, WZ, 0.028, MAT.rust, 6);   // A-frame cheeks
+    b.mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 12), MAT.dark, WX + sx, DECK + 0.95, WZ, false).rotation.z = Math.PI / 2;
+  }
+  world.addBox(IX + WX, DECK + 0.5, IZ + WZ, 0.42, 0.5, 0.28);
+  const winch = new THREE.Group();
+  winch.position.set(IX + WX, DECK + 0.95, IZ + WZ);
+  scene.add(winch);
+  {
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.46, 16), MAT.rope);
+    drum.rotation.z = Math.PI / 2;
+    winch.add(drum);
+    for (const sx of [-0.25, 0.25]) { const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.025, 20), MAT.steel); fl.rotation.z = Math.PI / 2; fl.position.x = sx; winch.add(fl); }
+    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.96, 8), MAT.dark); axle.rotation.z = Math.PI / 2; axle.position.x = 0.06; winch.add(axle);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.34, 0.05), MAT.dark); arm.position.set(0.5, 0.15, 0); winch.add(arm);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.2, 8), MAT.wood); grip.rotation.z = Math.PI / 2; grip.position.set(0.6, 0.31, 0); winch.add(grip);
+    winch.traverse((m) => { m.castShadow = true; });
+  }
+  // its line runs to a block at the head of the post
+  b.bar(WX - 0.1, DECK + 1.05, WZ - 0.05, CR.x + 0.1, DECK + CR.h - 0.3, CR.z, 0.012, MAT.dark, 4);
+  const crank = new THREE.Object3D();
   // hook cable and the mast hanging from it
   const cable = cb.bar(0, 0, 0, 0, 1, 0, 0.012, MAT.dark);
   const hungMast = new THREE.Group();
@@ -430,7 +466,7 @@ export function buildIsland(ctx: Ctx) {
     });
   }
   world.interactables.push({
-    pos: P(CR.x + 0.4, DECK + 1.1, CR.z + 0.5), radius: 2.0,
+    pos: P(WX, DECK + 1.0, WZ), radius: 1.9,
     enabled: () => !state.flag('mast') && !carried,
     use: () => {
       if (load() === 4) { state.set('mast'); stepMast(false); }
@@ -454,7 +490,7 @@ export function buildIsland(ctx: Ctx) {
   b.box(LF.x - 3.5, wy, LF.z + LF.d / 2 - 0.2, 5, LF.h, 0.4, MAT.concrete);                 // front left
   b.box(LF.x + 3.5, wy, LF.z + LF.d / 2 - 0.2, 5, LF.h, 0.4, MAT.concrete);                 // front right
   b.box(LF.x, DECK + 2.5 + (LF.h - 2.5) / 2, LF.z + LF.d / 2 - 0.2, 2, LF.h - 2.5, 0.4, MAT.concrete, 0, false); // lintel
-  b.box(LF.x, DECK + LF.h + 0.15, LF.z, LF.w + 0.8, 0.3, LF.d + 0.8, MAT.concrete, 0, false);                     // roof
+  b.box(LF.x, DECK + LF.h + 0.15, LF.z, LF.w + 0.8, 0.3, LF.d + 0.8, MAT.concrete);                     // roof
   b.box(LF.x, DECK - 0.02, LF.z, LF.w, 0.1, LF.d, MAT.concrete, 0, false);                                         // floor
   b.trim(LF.x, DECK, LF.z, LF.w, LF.h, LF.d, MAT.dark, 0.2);
   const door = b.box(LF.x, DECK + 1.25, LF.z + LF.d / 2 - 0.2, 2, 2.5, 0.16, MAT.rust, 0, false);
@@ -655,6 +691,52 @@ export function buildIsland(ctx: Ctx) {
     });
   }
 
+  // ---------- the pump: a long lever by the valve wall that shuts the gate and empties the dock again ----------
+  {
+    const LX = 128.2, LZ = 1.9;
+    b.box(LX, DECK + 0.25, LZ, 0.5, 0.5, 0.5, MAT.rust);
+    b.bar(LX, DECK + 0.3, LZ, 126.4, DECK + 0.45, 1.35, 0.07, MAT.rust, 8);
+    const lever = new THREE.Group();
+    lever.position.set(IX + LX, DECK + 0.5, IZ + LZ);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.3, 8), MAT.dark); rod.position.y = 0.65; rod.castShadow = true;
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), MAT.red); knob.position.y = 1.32;
+    lever.add(rod, knob);
+    lever.rotation.x = -0.45;
+    scene.add(lever);
+    let draining = false;
+    world.interactables.push({
+      pos: P(LX, DECK + 1.0, LZ + 0.4), radius: 1.5,
+      enabled: () => !!state.flag('flooded') && !draining && boat.mode !== 'sailing',
+      use: () => {
+        // only with the boat on its blocks in the dock, or away from the dock altogether
+        const inDock = boat.mode === 'moored' && boat.mooring === mooring;
+        const near = Math.hypot(boat.position.x - IX - 119, boat.position.z - IZ - 10) < 14;
+        if (!inDock && near) { ctx.sfx('clank', lever.position); return; }
+        draining = true;
+        ctx.sfx('ratchet', lever.position);
+        world.tween(0.8, (k) => { lever.rotation.x = -0.45 + 0.9 * k; });
+        ctx.sfx('gate', gate.position);
+        world.tween(6, (k) => { gate.position.y = -5.2 + 4.6 * k; }, () => {
+          gateCol = world.addBox(IX + 130.2, -0.6, IZ + 10, 0.3, 2.2, 3.3);
+          lid.visible = true; fill.visible = true; fill.position.y = 0.02;
+          if (inDock) { boat.mode = 'cradle'; boat.mooring = null; boat.cradle.y = 0.034; }
+          ctx.sfx('flood', fill.position);
+          world.tween(14, (k) => {
+            fill.position.y = 0.02 - 1.3 * k;
+            if (inDock) boat.cradle.y = Math.max(-0.72, 0.034 - 1.3 * k);
+          }, () => {
+            fill.visible = false;
+            state.set('flooded', 0);
+            opened = 0;
+            for (const o of wheels) { o.userData.open = false; o.rotation.z = 0; }
+            world.tween(0.8, (k) => { lever.rotation.x = 0.45 - 0.9 * k; });
+            draining = false;
+          });
+        });
+      },
+    });
+  }
+
   // rigging the sail onto the stepped mast
   world.interactables.push({
     pos: P(119, DECK + 0.6, 13.6), radius: 2.2,
@@ -684,8 +766,8 @@ export function buildIsland(ctx: Ctx) {
     b.box(X + W / 2 - T / 2, DECK + 2.3 + (H - 2.3) / 2, Z, T, H - 2.3, 2.0, MAT.concrete, 0, false);
     b.box(X, DECK - 0.02, Z, W, 0.1, D, MAT.concrete, 0, false);
     // the roof has lost a strip of sheeting: daylight falls in through the gap
-    b.box(X - 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated, 0, false);
-    b.box(X + 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated, 0, false);
+    b.box(X - 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated);
+    b.box(X + 2.9, DECK + H + 0.1, Z, 3.6, 0.16, D + 0.8, MAT.corrugated);
     for (const z of [-2.6, 0, 2.6]) b.box(X, DECK + H - 0.1, Z + z, W - 0.4, 0.14, 0.14, MAT.rust, 0, false);
     b.trim(X, DECK, Z, W, H, D, MAT.dark, 0.2);
     // a door hanging off one hinge
@@ -730,7 +812,13 @@ export function buildIsland(ctx: Ctx) {
     if (rr() < 0.5) b.drum(x, z, DECK, rr() < 0.5 ? MAT.rust : MAT.red, MAT.dark, 0.29, 0.88, true, rr() < 0.2 ? rr() * 3 : 0);
     else { const s = 0.6 + rr() * 0.6; b.crate(x, DECK, z, s, MAT.wood, MAT.paleWood, rr() * 3); }
   }
-  for (const z of [8.6, 11.4]) b.box(102, DECK + 0.05, z, 12, 0.1, 0.12, MAT.steel, 0, false);
+  // the slip: rails from the yard to the dock head, and on along the dock floor under the cradle
+  for (const z of [8.6, 11.4]) {
+    b.box(103, DECK + 0.05, z, 14, 0.1, 0.12, MAT.steel, 0, false);
+    b.box(119.6, -1.25, z, 19, 0.1, 0.12, MAT.steel, 0, false);
+    b.box(95.8, DECK + 0.2, z, 0.25, 0.4, 0.3, MAT.rust, 0, false);                     // buffer stop
+  }
+  for (let x = 96.6; x < 110; x += 1.1) b.box(x, DECK + 0.02, 10, 0.22, 0.05, 3.4, MAT.wood, 0, false);   // sleepers
 
   // dock lamp
   b.cyl(129.2, 18.8, 0.07, DECK, DECK + 3.4, MAT.dark, false, 0.05, 8);
@@ -748,19 +836,56 @@ export function buildIsland(ctx: Ctx) {
     b.box(HX - 3 + T / 2, wy, HZ, T, H, 5, MAT.concrete);                                   // west
     b.box(HX, wy, HZ - 2.5 + T / 2, 6, H, T, MAT.concrete);                                 // south
     b.box(HX, wy, HZ + 2.5 - T / 2, 6, H, T, MAT.concrete);                                 // north
-    b.box(HX + 3 - T / 2, wy, HZ - 1.0, T, H, 3.0, MAT.concrete);                           // east, south of the door
+    // east wall south of the door, built round a window opening (z -2.2..-1.3, y 1.2..1.95)
+    b.box(HX + 3 - T / 2, HY + 0.6, HZ - 1.0, T, 1.2, 3.0, MAT.concrete);
+    b.box(HX + 3 - T / 2, HY + 1.95 + (H - 1.95) / 2, HZ - 1.0, T, H - 1.95, 3.0, MAT.concrete);
+    b.box(HX + 3 - T / 2, HY + 1.575, HZ - 2.35, T, 0.75, 0.3, MAT.concrete);
+    b.box(HX + 3 - T / 2, HY + 1.575, HZ - 0.4, T, 0.75, 1.8, MAT.concrete);
+    {
+      const wx = HX + 3 - T / 2, wz = HZ - 1.75;
+      const paneMat = new THREE.MeshPhysicalMaterial({ color: '#c9d6d2', roughness: 0.08, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide });
+      const pane = b.mesh(new THREE.BoxGeometry(0.012, 0.75, 0.9), paneMat, wx, HY + 1.575, wz, false);
+      pane.userData.static = false; pane.renderOrder = 5;
+      for (const dz of [-0.45, 0.45]) b.box(wx, HY + 1.575, wz + dz, T + 0.04, 0.79, 0.045, MAT.wood, 0, false);
+      for (const dy of [-0.375, 0.375]) b.box(wx, HY + 1.575 + dy, wz, T + 0.04, 0.045, 0.94, MAT.wood, 0, false);
+      b.box(wx, HY + 1.575, wz, 0.03, 0.75, 0.025, MAT.wood, 0, false); b.box(wx, HY + 1.575, wz, 0.03, 0.025, 0.9, MAT.wood, 0, false);   // glazing bars
+      b.box(wx + 0.02, HY + 1.19, wz, T + 0.14, 0.04, 1.0, MAT.wood, 0, false);                                                             // sill
+      world.addBox(IX + wx, HY + 1.575, IZ + wz, T / 2, 0.4, 0.45);
+    }
     b.box(HX + 3 - T / 2, wy, HZ + 2.0, T, H, 1.0, MAT.concrete);                           // east, north of the door
     b.box(HX + 3 - T / 2, HY + 2.1 + (H - 2.1) / 2, HZ + 1.0, T, H - 2.1, 1.0, MAT.concrete, 0, false);
+    for (const ax of [-1, 1]) for (const az of [-1, 1]) b.box(HX + ax * 3, HY + H / 2, HZ + az * 2.5, 0.2, H + 0.02, 0.2, MAT.dark, 0, false);
+    for (const az of [-1, 1]) b.box(HX, HY + H - 0.09, HZ + az * 2.5, 6.2, 0.18, 0.15, MAT.dark, 0, false);
+    for (const ax of [-1, 1]) b.box(HX + ax * 3, HY + H - 0.09, HZ, 0.15, 0.18, 5.2, MAT.dark, 0, false);
+    b.box(HX - 3, HY + 0.11, HZ, 0.15, 0.22, 5.2, MAT.dark, 0, false);
+    for (const az of [-1, 1]) b.box(HX, HY + 0.11, HZ + az * 2.5, 6.2, 0.22, 0.15, MAT.dark, 0, false);
     b.box(HX, HY + 0.035, HZ, 5.5, 0.07, 4.5, MAT.wood, 0, false);                          // floor boards
-    b.box(HX, HY + H - 0.06, HZ, 5.5, 0.06, 4.5, MAT.paleWood, 0, false);                   // ceiling
+    b.box(HX, HY + H - 0.06, HZ, 5.5, 0.06, 4.5, MAT.paleWood);                             // ceiling
     b.box(HX + 2.55, HY + 1.05, HZ + 0.42, 0.9, 2.0, 0.05, MAT.wood, 0, false);             // the door, standing open inward
-    // bed
-    b.box(HX - 2.15, HY + 0.25, HZ - 1.25, 1.0, 0.36, 2.05, MAT.wood);
-    b.box(HX - 2.15, HY + 0.5, HZ - 1.25, 0.94, 0.16, 1.98, MAT.bone, 0, false);
-    b.box(HX - 2.15, HY + 0.6, HZ - 0.85, 0.98, 0.07, 1.25, MAT.red, 0, false);             // blanket
-    b.box(HX - 2.15, HY + 0.62, HZ - 2.0, 0.6, 0.1, 0.34, MAT.bone, 0, false);              // pillow
-    b.box(HX - 2.62, HY + 0.65, HZ - 2.2, 0.06, 0.9, 0.12, MAT.wood, 0, false); b.box(HX - 1.68, HY + 0.65, HZ - 2.2, 0.06, 0.9, 0.12, MAT.wood, 0, false);
-    b.box(HX - 2.15, HY + 1.0, HZ - 2.2, 1.0, 0.1, 0.1, MAT.wood, 0, false);
+    // bed: turned posts, a slatted head and foot, side rails, a mattress and bedding with some give in it
+    {
+      const BX = HX - 2.15, BZ = HZ - 1.25, quilt = new THREE.MeshStandardMaterial({ color: '#7d2a22', roughness: 0.95 }), linen = new THREE.MeshStandardMaterial({ color: '#cfc7b3', roughness: 0.95 });
+      for (const sx of [-0.47, 0.47]) {
+        b.bar(BX + sx, HY + 0.07, BZ - 0.98, BX + sx, HY + 1.12, BZ - 0.98, 0.035, MAT.wood, 8);     // head posts
+        b.bar(BX + sx, HY + 0.07, BZ + 0.98, BX + sx, HY + 0.72, BZ + 0.98, 0.035, MAT.wood, 8);     // foot posts
+        b.mesh(new THREE.SphereGeometry(0.05, 10, 8), MAT.wood, BX + sx, HY + 1.15, BZ - 0.98, false);
+        b.mesh(new THREE.SphereGeometry(0.05, 10, 8), MAT.wood, BX + sx, HY + 0.75, BZ + 0.98, false);
+        b.box(BX + sx, HY + 0.36, BZ, 0.035, 0.14, 1.96, MAT.wood, 0, false);                        // side rails
+      }
+      for (const y of [0.55, 0.78, 1.0]) b.box(BX, HY + y, BZ - 0.98, 0.9, 0.11, 0.028, MAT.wood, 0, false);
+      for (const y of [0.4, 0.6]) b.box(BX, HY + y, BZ + 0.98, 0.9, 0.1, 0.028, MAT.wood, 0, false);
+      for (let i = 0; i < 7; i++) b.box(BX, HY + 0.33, BZ - 0.84 + i * 0.28, 0.9, 0.022, 0.1, MAT.paleWood, 0, false);
+      // mattress with softened edges: a slab, and a slightly smaller, slightly higher crown on it
+      b.box(BX, HY + 0.43, BZ, 0.9, 0.14, 1.9, linen, 0, false);
+      const crown = b.mesh(new THREE.SphereGeometry(0.5, 16, 10), linen, BX, HY + 0.47, BZ, false); crown.scale.set(0.9, 0.09, 1.9);
+      // quilt: over the lower two thirds, hanging down both sides, turned back at the top
+      b.box(BX, HY + 0.515, BZ + 0.33, 0.95, 0.04, 1.24, quilt, 0, false);
+      for (let i = 0; i < 4; i++) b.box(BX, HY + 0.54, BZ - 0.1 + i * 0.3, 0.93, 0.012, 0.012, new THREE.MeshStandardMaterial({ color: '#5e1f19', roughness: 1 }), 0, false);   // quilting lines
+      for (const sx of [-0.465, 0.465]) b.box(BX + sx, HY + 0.4, BZ + 0.33, 0.02, 0.22, 1.24, quilt, 0, false);
+      b.box(BX, HY + 0.535, BZ - 0.28, 0.9, 0.035, 0.16, linen, 0, false);
+      const pillow = b.mesh(new THREE.SphereGeometry(0.5, 14, 10), linen, BX, HY + 0.56, BZ - 0.72, false); pillow.scale.set(0.62, 0.11, 0.36); pillow.rotation.y = 0.08;
+      world.addBox(IX + BX, HY + 0.3, IZ + BZ, 0.5, 0.3, 1.02);
+    }
     // table and chair under the window
     b.box(HX + 1.6, HY + 0.74, HZ - 1.75, 1.2, 0.05, 0.75, MAT.wood, 0, false);
     for (const [x, z] of [[1.08, -2.05], [2.12, -2.05], [1.08, -1.45], [2.12, -1.45]] as const) b.box(HX + x, HY + 0.37, HZ + z, 0.06, 0.72, 0.06, MAT.wood, 0, false);
@@ -777,8 +902,14 @@ export function buildIsland(ctx: Ctx) {
     // shelf, rug, coat on a peg
     b.box(HX + 0.4, HY + 1.55, HZ + 2.12, 2.2, 0.04, 0.26, MAT.wood, 0, false);
     b.box(HX - 0.3, HY + 0.075, HZ + 0.2, 2.0, 0.012, 1.3, MAT.red, 0.15, false);
-    b.box(HX + 2.72, HY + 1.75, HZ - 2.1, 0.06, 0.06, 0.06, MAT.dark, 0, false);
-    b.box(HX + 2.66, HY + 1.2, HZ - 2.1, 0.1, 1.1, 0.42, MAT.wood, 0, false);
+    {
+      // an oilskin on a peg by the door: shoulders, a hanging body that widens to the hem, and sleeves
+      const oil = new THREE.MeshStandardMaterial({ color: '#4a4226', roughness: 0.7 }), cx = HX + 2.64, cz = HZ - 0.25;
+      b.box(HX + 2.72, HY + 1.78, cz, 0.08, 0.04, 0.04, MAT.dark, 0, false);
+      const coatBody = b.mesh(new THREE.CylinderGeometry(0.17, 0.26, 1.0, 14, 4), oil, cx, HY + 1.2, cz, false); coatBody.scale.set(0.3, 1, 1);
+      const yoke = b.mesh(new THREE.SphereGeometry(0.2, 12, 8), oil, cx, HY + 1.68, cz, false); yoke.scale.set(0.3, 0.45, 1.05);
+      for (const dz of [-0.24, 0.24]) { const sl = b.mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.75, 8), oil, cx, HY + 1.3, cz + dz, false); sl.scale.x = 0.6; sl.rotation.x = dz * 0.35; }
+    }
     // the lamp
     const shade = new THREE.MeshStandardMaterial({ color: '#3a2a18', emissive: '#ffb46a', emissiveIntensity: 3, side: THREE.DoubleSide });
     b.bar(HX, HY + H - 0.06, HZ - 0.2, HX, HY + 2.35, HZ - 0.2, 0.008, MAT.dark, 4);
@@ -798,8 +929,6 @@ export function buildIsland(ctx: Ctx) {
   b.box(HX + 5.2, HY + 0.1, HZ + 1.5, 4.6, 0.2, 6, MAT.paleWood);           // porch
   b.box(HX + 5.2, HY + 2.9, HZ + 1.5, 4.8, 0.12, 6.2, MAT.corrugated, 0, false);  // porch roof
   for (const [x, z] of [[7.3, -1.3], [7.3, 4.3]] as const) b.bar(HX + x, HY + 0.2, HZ + z, HX + x, HY + 2.9, HZ + z, 0.05, MAT.wood);
-  const winMat = new THREE.MeshStandardMaterial({ color: '#191510', emissive: '#ff9c4a', emissiveIntensity: 0.8 });
-  b.box(HX + 2.875, HY + 1.6, HZ - 1.75, 0.27, 0.7, 0.9, winMat, 0, false);
   // chair
   b.box(HX + 7.2, HY + 0.42, HZ + 3.8, 0.5, 0.06, 0.5, MAT.wood, 0, false);
   b.box(HX + 6.95, HY + 0.75, HZ + 3.8, 0.06, 0.7, 0.5, MAT.wood, 0, false);
@@ -813,7 +942,6 @@ export function buildIsland(ctx: Ctx) {
     const night = 1 - ctx.env.daylight;
     lampMat.emissiveIntensity = night * 4;
     lamp.intensity = night * 60;
-    winMat.emissiveIntensity = 0.8 + night * 2.2;
     houseLight.intensity = night * 18;
   });
 
@@ -840,11 +968,13 @@ export function buildIsland(ctx: Ctx) {
     tube.position.y = 0.16;
     mount.add(tube);
     {
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 2.3, 20, 1, true), MAT.brass);
+      const brass2 = MAT.brass.clone(); brass2.side = THREE.DoubleSide;
+      const dark2 = MAT.dark.clone(); dark2.side = THREE.DoubleSide;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 2.3, 20, 1, true), brass2);
       body.rotation.x = Math.PI / 2; body.position.z = -0.45;                 // looks along -Z
-      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 20, 1, true), MAT.dark);
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 20, 1, true), dark2);
       hood.rotation.x = Math.PI / 2; hood.position.z = -1.72;
-      const draw = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 14, 1, true), MAT.brass);
+      const draw = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 14, 1, true), brass2);
       draw.rotation.x = Math.PI / 2; draw.position.z = 0.86;
       const glassM = new THREE.MeshStandardMaterial({ color: '#0b1014', roughness: 0.05, metalness: 0.6 });
       const front = new THREE.Mesh(new THREE.CircleGeometry(0.145, 20), glassM);

@@ -287,7 +287,7 @@ export function buildRigs(ctx: Ctx) {
       b.box(cxh + CW / 2, wy, hz, T, CH, CD, MAT.wood);
       b.box(cxh - CW / 2, wy, hz - 1.3, T, CH, 1.6, MAT.wood); b.box(cxh - CW / 2, wy, hz + 1.3, T, CH, 1.6, MAT.wood);
       b.box(cxh - CW / 2, FY + 2.05 + (CH - 2.05) / 2, hz, T, CH - 2.05, 1.0, MAT.wood, 0, false);
-      b.box(cxh, FY + CH + 0.07, hz, CW + 0.7, 0.12, CD + 0.7, MAT.corrugated, 0, false);
+      b.box(cxh, FY + CH + 0.07, hz, CW + 0.7, 0.12, CD + 0.7, MAT.corrugated);
       b.box(cxh, FY + 0.03, hz, CW - 0.2, 0.03, CD - 0.2, MAT.wood, 0, false);
       b.trim(cxh, FY, hz, CW, CH, CD, MAT.dark, 0.13);
       for (const z of [hz - 1.3, hz + 1.3]) b.box(cxh + CW / 2 + 0.07, FY + 1.4, z, 0.03, 0.6, 0.8, MAT.black, 0, false);  // shuttered windows
@@ -347,15 +347,6 @@ export function buildRigs(ctx: Ctx) {
       grass.receiveShadow = true;
       scene.add(grass);
     }
-    // dripping water
-    const drops = new THREE.InstancedMesh(new THREE.SphereGeometry(0.02, 5, 4), new THREE.MeshBasicMaterial({ color: '#b8c8cc' }), 40);
-    const dp = Array.from({ length: 40 }, () => ({ x: cx + (r() - 0.5) * 21, z: cz + (r() - 0.5) * 17, y: r() * DY, v: 3 + r() * 2 }));
-    scene.add(drops);
-    const m4 = new THREE.Matrix4();
-    world.updaters.push((dt) => {
-      dp.forEach((d, i) => { d.y -= d.v * dt; if (d.y < 0) d.y = DY - 0.4; m4.makeTranslation(d.x, d.y, d.z); drops.setMatrixAt(i, m4); });
-      drops.instanceMatrix.needsUpdate = true;
-    });
   }
 
   // ========================================================== fisher's raft
@@ -429,7 +420,7 @@ export function buildRigs(ctx: Ctx) {
     b.box(CX1, DY + CH / 2, (CZ0 + CZ1) / 2, 0.12, CH, CZ1 - CZ0, wall);
     b.box(-1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall); b.box(1.15, DY + CH / 2, CZ1, 1.3, CH, 0.12, wall);
     b.box(0, DY + CH - 0.15, CZ1, 1.0, 0.3, 0.12, wall, 0, false);
-    b.box(0, DY + CH + 0.06, (CZ0 + CZ1) / 2, CX1 - CX0 + 0.5, 0.12, CZ1 - CZ0 + 0.5, MAT.corrugated, 0, false);
+    b.box(0, DY + CH + 0.06, (CZ0 + CZ1) / 2, CX1 - CX0 + 0.5, 0.12, CZ1 - CZ0 + 0.5, MAT.corrugated);
     b.box(0, DY + 0.05, (CZ0 + CZ1) / 2, CX1 - CX0 - 0.1, 0.03, CZ1 - CZ0 - 0.1, inner, 0, false);
     b.cyl(1.2, -3.6, 0.08, DY + CH, DY + CH + 0.9, MAT.dark, false, 0.08, 8);
     const door = b.box(0.45, DY + 1.0, CZ1 + 0.42, 0.06, 2.0, 0.95, MAT.paleWood, 0.25, false); // hanging open
