@@ -41,7 +41,7 @@ function profile(pts: [number, number][]) {
 /** the face: applied to the finished surface, fading out below the jaw so the neck runs on unbroken */
 function shapeHead(v: THREE.Vector3) {
   const px = (v.x - G_HEAD.x) / HR, py = (v.y - G_HEAD.y) / HR, pz = (v.z - G_HEAD.z) / HR;
-  const w = smooth(-1.22, -0.9, py) * smooth(1.9, 1.4, Math.hypot(px, pz));
+  const w = smooth(-1.3, -1.0, py) * smooth(1.9, 1.4, Math.hypot(px, pz));
   if (w <= 0) return;
   const G = (a: number, s: number) => Math.exp(-(a * a) / s);
   let x = px, y = py, z = pz;
@@ -120,7 +120,7 @@ export function buildGiantBody(material: THREE.Material) {
     torsoP.at(y, o);
     return Math.max(((rho - o.r) * 0.6) / Math.sqrt(1 + o.d * o.d), torsoP.y0 - y);
   } });
-  const neckP = profile([[0.046, 0.21], [0.047, 0.13], [0.051, 0.09], [0.064, 0.062], [0.095, 0.04], [0.14, 0.018], [0.17, 0.0]]);
+  const neckP = profile([[0.064, 0.21], [0.064, 0.13], [0.067, 0.09], [0.076, 0.062], [0.095, 0.04], [0.14, 0.018], [0.17, 0.0]]);
   prims.push({ bone: idx(body), k: 0.025, cx: 0, cy: 0.1, cz: 0, br: 0.25, f: (x, y, z) => {
     neckP.at(y, o);
     const rho = Math.hypot(x, (z - 0.005) / 0.8);

@@ -235,7 +235,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     col *= 0.45 + 0.9 * vnoise(vec2(a * 14.0, r * 3.0)); col = mix(col, vec3(0.02, 0.015, 0.01), smoothstep(0.72, 1.0, r) * 0.8);`, 'iris', true);
   for (const s of [-1, 1]) {
     const eye = new THREE.Group();
-    eye.position.set(s * 0.0415, 0.006, 0.082);
+    eye.position.set(s * 0.0415, 0.006, 0.076);
     eye.add(new THREE.Mesh(new THREE.SphereGeometry(EYE_R, 24, 18), sclera));
     const ir = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.66, 20, 14), iris); ir.position.z = EYE_R * 0.58; ir.scale.z = 0.7; eye.add(ir);
     const pu = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.4, 16, 10), new THREE.MeshStandardMaterial({ color: '#000', roughness: 0.05 })); pu.position.z = EYE_R * 0.93; pu.scale.z = 0.36; eye.add(pu);
@@ -334,7 +334,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
   const pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
   const pGeo = new THREE.BufferGeometry();
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ map: softDot(), color: '#dfe6e6', size: 1.1, transparent: true, opacity: 0.5, depthWrite: false, sizeAttenuation: true }));
+  const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ map: softDot(), color: '#dfe6e6', size: 0.42, transparent: true, opacity: 0.32, depthWrite: false, sizeAttenuation: true }));
   spray.frustumCulled = false;
   scene.add(spray);
   let pNext = 0;
@@ -342,7 +342,7 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
     const i = pNext++ % NP;
     pPos[i * 3] = x; pPos[i * 3 + 1] = y; pPos[i * 3 + 2] = z;
     pVel[i * 3] = vx; pVel[i * 3 + 1] = vy; pVel[i * 3 + 2] = vz;
-    pLife[i] = 5;
+    pLife[i] = 3.5;
   };
 
   // ----------------------------------------------------------- behaviour
@@ -511,13 +511,13 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
         b.x = cx; b.z = cz;
         if (k < 0.45) { b.r = 0; b.w = 70; b.a = 13 * Math.sin((k / 0.45) * Math.PI * 0.5); }
         else { b.r = (k - 0.45) * 420; b.w = 60; b.a = 13 * Math.max(0, 1 - (k - 0.45) / 0.55); }
-        if (k > 0.3) for (let i = 0; i < 40; i++) { const a = Math.random() * 6.283, r = 20 + Math.random() * 45; emit(cx + Math.cos(a) * r, 2 + Math.random() * 50 * e, cz + Math.sin(a) * r, Math.cos(a) * 6, 4 + Math.random() * 8, Math.sin(a) * 6); }
-        if (k >= 1) { setPhase(nightSky ? 'stargaze' : 'watch'); idle = 4; sheet = 22; sfx('giant-hum'); }
+        if (k > 0.2) for (let i = 0; i < 26; i++) { const a = Math.random() * 6.283, r = 22 + 44 * e + Math.random() * 6; emit(cx + Math.cos(a) * r, 0.5 + Math.random() * 2, cz + Math.sin(a) * r, Math.cos(a) * (5 + Math.random() * 9), 3 + Math.random() * 9, Math.sin(a) * (5 + Math.random() * 9)); }
+        if (k >= 1) { setPhase(nightSky && bd > 150 ? 'stargaze' : 'watch'); idle = 4; sheet = 12; sfx('giant-hum'); }
         break;
       }
       case 'watch': {
         leanT = 0; sinkT = 0;
-        if (nightSky && provoked <= 0 && tau > 6) { setPhase('stargaze'); break; }
+        if (nightSky && provoked <= 0 && tau > 8 && bd > 170) { setPhase('stargaze'); break; }   // it only goes back to the stars once the boat has drawn off
         idle -= dt;
         if (idle <= 0 && sailing && bd < 215) {
           const r = Math.random();
@@ -532,8 +532,8 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       }
       case 'stargaze': {
         leanT = -0.06; sinkT = -0.02;
-        attention = bd < 110 && sailing ? attention + dt : Math.max(0, attention - dt);
-        if (!nightSky || attention > 26 || provoked > 0) { setPhase('watch'); idle = 5; attention = 0; }
+        attention = bd < 150 && sailing ? attention + dt : Math.max(0, attention - dt);
+        if (!nightSky || attention > 2.5 || provoked > 0) { setPhase('watch'); idle = 5; attention = 0; }
         break;
       }
       case 'peer': {
@@ -628,7 +628,13 @@ export function buildAtoll(ctx: Ctx, hooks: { wreck: () => void; push: (ax: numb
       if (phase !== 'emerge') { const b = bumps[0]; b.x = cx; b.z = cz; b.r = 50 + leanA * 20; b.w = 7; b.a = 0.7 + Math.sin(t * 0.55) * 0.35; }
       // water keeps pouring off for a while after it surfaces
       sheet = Math.max(0, sheet - dt);
-      if (sheet > 0) for (let i = 0; i < 16; i++) { const a = Math.random() * 6.283; emit(cx + Math.cos(a) * (18 + Math.random() * 34), 20 + Math.random() * 55, cz + Math.sin(a) * (10 + Math.random() * 20), 0, -2, 0); }
+      if (sheet > 0) {
+        const cy = Math.cos(yaw), sy = Math.sin(yaw), n = Math.ceil(7 * Math.min(1, sheet / 6));
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * 6.283, X = Math.cos(a) * 64, Zl = Math.sin(a) * 39;
+          emit(cx + X * cy + Zl * sy, root.position.y - 6 - Math.random() * 8, cz - X * sy + Zl * cy, Math.cos(a) * 1.5, -3, Math.sin(a) * 1.5);
+        }
+      }
 
       // head and eyes
       const up = phase === 'stargaze';
