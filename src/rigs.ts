@@ -40,10 +40,27 @@ function ladder(b: Builder, x: number, z: number, y0: number, y1: number, face: 
 }
 
 /** steel deck on legs with a floating landing, a ladder up, and a berth */
-function platform(ctx: Ctx, name: string, cx: number, cz: number, w: number, d: number, deckY: number, deckMat: THREE.Material) {
+function platform(ctx: Ctx, name: string, cx: number, cz: number, w: number, d: number, deckY: number, deckMat: THREE.Material, holes: [number, number, number, number][] = []) {
   const b = new Builder(ctx.scene, ctx.world, cx, 0, cz);
   calmZones.push({ x: cx, z: cz, r0: 14, r1: 70 });
-  b.box(0, deckY - 0.2, 0, w, 0.4, d, deckMat);
+  if (!holes.length) b.box(0, deckY - 0.2, 0, w, 0.4, d, deckMat);
+  else {
+    // the deck is laid in plates round the places where it has rusted through and fallen into the sea
+    const xs = [...new Set([-w / 2, w / 2, ...holes.flatMap((h) => [h[0], h[1]])])].sort((p, q) => p - q);
+    const zs = [...new Set([-d / 2, d / 2, ...holes.flatMap((h) => [h[2], h[3]])])].sort((p, q) => p - q);
+    for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+      const x = (xs[i] + xs[i + 1]) / 2, z = (zs[j] + zs[j + 1]) / 2;
+      if (holes.some((h) => x > h[0] && x < h[1] && z > h[2] && z < h[3])) continue;
+      b.box(x, deckY - 0.2, z, xs[i + 1] - xs[i], 0.4, zs[j + 1] - zs[j], deckMat);
+    }
+    for (const [x0, x1, z0, z1] of holes) {
+      // what is left round the edge: a torn plate hanging down, and the bars that were under it
+      const tear = b.box(x0 + 0.45, deckY - 0.55, (z0 + z1) / 2, 0.9, 0.06, (z1 - z0) * 0.7, deckMat, 0, false); tear.rotation.z = -0.95;
+      const tear2 = b.box((x0 + x1) / 2 + 0.2, deckY - 0.42, z1 - 0.3, (x1 - x0) * 0.5, 0.06, 0.6, deckMat, 0, false); tear2.rotation.x = -0.75;
+      for (let k = 0; k < 4; k++) { const zz = z0 + ((k + 0.5) / 4) * (z1 - z0); b.bar(x1, deckY - 0.3, zz, x1 - 0.5 - (k % 2) * 0.5, deckY - 0.5 - (k % 3) * 0.2, zz + 0.1, 0.018, MAT.rust, 4); }
+      b.bar(x0, deckY - 0.38, z0 + 0.2, x1, deckY - 0.38, z0 + 0.2, 0.05, MAT.rust, 6);
+    }
+  }
   const lx = w / 2 - 1.2, lz = d / 2 - 1.2;
   for (const [x, z] of [[lx, lz], [-lx, lz], [lx, -lz], [-lx, -lz]] as const) {
     b.cyl(x, z, 0.45, -14, deckY - 0.4, MAT.rust, true, 0.45, 12);
@@ -211,18 +228,31 @@ export function buildRigs(ctx: Ctx) {
       col = mix(mix(steelC, vec3(0.08, 0.13, 0.04), creep * 0.8), earth, top);
       rough = mix(rough, 0.97, max(top, creep));
       bump = db * top;`, 'mossy');
-    const b = platform(ctx, 'jungle', cx, cz, 20, 16, DY, mossy);
+    const HOLES: [number, number, number, number][] = [[-5.2, -2.6, 0.2, 2.8], [4.2, 6.4, -7.2, -5.0]];
+    const inHole = (x: number, z: number) => HOLES.some((h) => x > h[0] - 0.25 && x < h[1] + 0.25 && z > h[2] - 0.25 && z < h[3] + 0.25);
+    const b = platform(ctx, 'jungle', cx, cz, 20, 16, DY, mossy, HOLES);
     const r = rng(33);
     const bark = patch(new THREE.MeshStandardMaterial({ color: '#3a2e22', roughness: 0.95 }), /* glsl */ `
       col *= 0.55 + 0.9 * tri(wp, wn, 2.4); col = mix(col, vec3(0.08, 0.2, 0.05), smoothstep(0.5, 0.75, tri(wp, wn, 0.8)) * 0.6);`, 'bark');
+    const vineM = new THREE.MeshStandardMaterial({ color: '#2f6a2a', roughness: 0.8 });
     const clumps: Clump[] = [];
     // an upper deck in the canopy, reached by a second ladder
     const UY = 9.4, UX = 4.5, UZ = 2.5;
-    b.box(UX, UY - 0.15, UZ, 7, 0.3, 5, mossy);
-    for (const [x, z] of [[UX - 3.1, UZ - 2.1], [UX + 3.1, UZ - 2.1], [UX - 3.1, UZ + 2.1], [UX + 3.1, UZ + 2.1]] as const) b.cyl(x, z, 0.16, DY, UY - 0.3, MAT.rust, true, 0.16, 8);
+    // the near two thirds still lie level; the far end has let go on one side and hangs down toward its corner
+    const SAG0 = UX + 1.2, SAGW = 2.3, DROP = 0.8;
+    b.box((UX - 3.5 + SAG0) / 2, UY - 0.15, UZ, SAG0 - (UX - 3.5), 0.3, 5, mossy);
+    {
+      const sag = b.box(SAG0 + SAGW / 2, UY - 0.15 - DROP / 2, UZ, Math.hypot(SAGW, DROP), 0.3, 5, mossy, 0, false);
+      sag.rotation.set(0.07, 0, -Math.atan2(DROP, SAGW));                       // down toward the sea, and twisted a little toward the corner that failed
+      world.addBox(cx + SAG0 + SAGW / 2, UY - 0.15, cz + UZ, 2.5, 0.15, SAGW / 2, Math.PI / 2, -DROP);
+    }
+    for (const [x, z] of [[UX - 3.1, UZ - 2.1], [UX - 3.1, UZ + 2.1]] as const) b.cyl(x, z, 0.16, DY, UY - 0.3, MAT.rust, true, 0.16, 8);
+    b.cyl(UX + 3.1, UZ - 2.1, 0.16, DY, UY - 0.3 - DROP, MAT.rust, true, 0.16, 8);
+    b.bar(UX + 3.1, DY, UZ + 2.1, UX + 3.6, DY + 2.6, UZ + 2.5, 0.16, MAT.rust, 8); b.bar(UX + 3.6, DY + 2.6, UZ + 2.5, UX + 3.0, UY - 1.4, UZ + 2.0, 0.16, MAT.rust, 8);   // the leg that buckled
     ladder(b, UX - 1.5, UZ - 2.62, DY, UY, 0, MAT.rust);
-    b.rail(UX - 0.6, UZ - 2.4, UX + 3.4, UZ - 2.4, UY, MAT.rust); b.rail(UX + 3.4, UZ - 2.4, UX + 3.4, UZ + 2.4, UY, MAT.rust);
-    b.rail(UX + 3.4, UZ + 2.4, UX - 3.4, UZ + 2.4, UY, MAT.rust); b.rail(UX - 3.4, UZ + 2.4, UX - 3.4, UZ - 2.4, UY, MAT.rust);
+    b.rail(UX - 0.6, UZ - 2.4, SAG0, UZ - 2.4, UY, MAT.rust);
+    b.rail(SAG0, UZ + 2.4, UX - 3.4, UZ + 2.4, UY, MAT.rust); b.rail(UX - 3.4, UZ + 2.4, UX - 3.4, UZ - 2.4, UY, MAT.rust);
+    b.bar(SAG0, UY + 1.05, UZ + 2.4, SAG0 + 1.6, UY + 0.2, UZ + 2.6, 0.03, MAT.rust, 5); b.bar(SAG0, UY + 1.05, UZ - 2.4, SAG0 + 1.2, UY + 0.5, UZ - 2.45, 0.03, MAT.rust, 5);   // rails torn away with it
     b.rail(UX - 3.4, UZ - 2.4, UX - 2.4, UZ - 2.4, UY, MAT.rust);
     // trees
     const trunks: [number, number, number, number][] = [[-6, 3, 11, 0.42], [-2, -4, 13, 0.5], [7, -5, 10, 0.38], [8, 6, 14, 0.5], [-7.5, -5.5, 8, 0.3], [1.5, 5.5, 12.5, 0.45], [-3, 6.5, 9, 0.3], [6.2, 0.5, 15, 0.4]];
@@ -245,11 +275,12 @@ export function buildRigs(ctx: Ctx) {
     for (let i = 0; i < 46; i++) {
       const x = (r() - 0.5) * 18, z = (r() - 0.5) * 14;
       if (Math.abs(x + 7) < 1.6 && z < -5.5) continue; // keep the ladder head clear
+      if (inHole(x, z)) continue;
       const pick = r();
       clumps.push({ x: cx + x, y: DY + 0.3 + r() * 0.5, z: cz + z, r: 0.5 + r() * 0.8, n: 55, g: DY, kind: pick < 0.42 ? 'fern' : pick < 0.68 ? 'broad' : 'bush' });
     }
     // growth spilling over the edges
-    const vine = new THREE.MeshStandardMaterial({ color: '#2f6a2a', roughness: 0.8 });
+    const vine = vineM;
     for (let i = 0; i < 70; i++) {
       const side = (r() * 4) | 0, k = (r() - 0.5) * 2;
       const x = side < 2 ? k * 10 : side === 2 ? 10.05 : -10.05, z = side < 2 ? (side === 0 ? 8.05 : -8.05) : k * 8;
@@ -262,8 +293,15 @@ export function buildRigs(ctx: Ctx) {
       clumps.push({ x: cx + x, y: DY + 0.1, z: cz + z, r: 0.5, n: 30, g: DY, kind: r() < 0.5 ? 'fern' : 'bush' });
     }
     // the orchid, alone on the high deck
-    b.bar(UX + 2.2, UY, UZ + 1.4, UX + 2.4, UY + 1.3, UZ + 1.5, 0.12, bark);
-    addPickup(ctx, 'orchid', 'orchid', new THREE.Vector3(cx + UX + 2.25, UY + 1.25, cz + UZ + 1.25), { scale: 1.8, rot: 3.6, radius: 2 });
+    // the orchid: a real plant rooted in the litter in the sound corner of the high deck, with one spray of flowers to pluck
+    {
+      const ox = UX - 2.85, oz = UZ + 1.85;
+      clumps.push({ x: cx + ox, y: UY, z: cz + oz, r: 0.17, n: 1, kind: 'broad', g: UY });
+      clumps.push({ x: cx + ox + 0.12, y: UY, z: cz + oz - 0.1, r: 0.12, n: 1, kind: 'broad', g: UY });
+      for (let k = 0; k < 5; k++) b.bar(ox, UY + 0.02, oz, ox + Math.cos(k * 1.3) * 0.22, UY + 0.015, oz + Math.sin(k * 1.3) * 0.22, 0.012, MAT.bone, 4);   // pale roots over the plate
+      b.bar(ox, UY, oz, ox + 0.03, UY + 0.36, oz - 0.04, 0.008, vineM, 5);                                                                         // the flower spike, to where it is cut
+      addPickup(ctx, 'orchid', 'orchid', new THREE.Vector3(cx + ox + 0.03, UY + 0.36, cz + oz - 0.04), { scale: 1.5, rot: 2.4, radius: 1.9 });
+    }
     // a floating home, tied up alongside and half claimed by the growth
     {
       const hx = 14.3, hz = 2, FY = 0.55;
@@ -330,9 +368,10 @@ export function buildRigs(ctx: Ctx) {
       while (n < COUNT - 320) {
         const x = (r() - 0.5) * 19.4, z = (r() - 0.5) * 15.4;
         if (Math.abs(x + 7) < 1.1 && z < -6.2) continue;              // the ladder head
+        if (inHole(x, z)) continue;
         place(x, DY, z, 0.7 + r() * 1.3);
       }
-      while (n < COUNT) place(UX + (r() - 0.5) * 6.6, UY, UZ + (r() - 0.5) * 4.6, 0.6 + r());
+      while (n < COUNT) place(UX - 3.3 + r() * 4.4, UY, UZ + (r() - 0.5) * 4.6, 0.6 + r());
       grass.count = n;
       grass.receiveShadow = true;
       scene.add(grass);

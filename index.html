@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>The Windy Blue</title>
+    <title>Windy Blue</title>
     <style>
       html, body { margin: 0; height: 100%; background: #05070a; overflow: hidden; }
       canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
@@ -46,10 +46,16 @@
         background: rgba(2, 6, 10, 0.34); transition: opacity 1.2s;
         color: #eef2f2; font: 14px/1.9 ui-sans-serif, system-ui, sans-serif; text-shadow: 0 1px 14px rgba(0, 10, 20, 0.75);
       }
-      #title h1 { font-weight: 200; font-size: clamp(22px, 4.2vw, 46px); letter-spacing: 0.62em; margin: 0 -0.62em 44px 0; text-transform: uppercase; }
+      #title h1 {
+        font: italic 400 clamp(44px, 9.5vw, 132px)/1 "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        letter-spacing: 0.02em; margin: 0 0 6vh; white-space: nowrap; color: #f3f1ea; text-shadow: 0 2px 22px rgba(0, 12, 24, 0.55);
+      }
+      #title h1 span { display: inline-block; transform-origin: 50% 88%; will-change: transform; }
+      #title h1 span.gap { width: 0.3em; }
       #title button {
-        font: inherit; color: #eef2f2; background: rgba(4, 14, 22, 0.28); border: 1px solid rgba(238, 242, 242, 0.4); padding: 9px 0; width: 210px; margin: 0 0 12px;
-        cursor: pointer; letter-spacing: 0.34em; text-transform: uppercase; text-shadow: inherit;
+        font: 400 15px/1.9 "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif; color: #f3f1ea; background: rgba(4, 14, 22, 0.24);
+        border: 1px solid rgba(243, 241, 234, 0.38); padding: 8px 0; width: 210px; margin: 0 0 12px;
+        cursor: pointer; letter-spacing: 0.3em; text-transform: uppercase; text-shadow: 0 1px 10px rgba(0, 10, 20, 0.7);
       }
       #title button:hover { border-color: #fff; background: rgba(4, 14, 22, 0.5); }
       #keys {
@@ -112,7 +118,7 @@
       <div class="row"><span class="label">Sound</span><button data-s="1">On</button><button data-s="0">Off</button></div>
       <div class="row"><button id="resume">Resume</button><button id="newgame">New game</button></div>
     </div></div>
-    <div id="title"><h1>The Windy Blue</h1><button id="titleContinue">Continue</button><button id="titleStart">Start</button></div>
+    <div id="title"><h1 id="titleName" aria-label="Windy Blue"></h1><button id="titleContinue">Continue</button><button id="titleStart">Start</button></div>
     <div id="fade"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

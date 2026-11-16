@@ -1,4 +1,4 @@
-# THE WINDY BLUE — Game Spec
+# WINDY BLUE — Game Spec
 
 A silent, first-person sailing mystery for the browser. A drowned world, a handful of strange places, almost nobody left, and one enormous thing in the atoll.
 

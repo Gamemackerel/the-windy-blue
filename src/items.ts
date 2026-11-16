@@ -86,18 +86,32 @@ export function makeItem(id: ItemId): THREE.Group {
       break;
     }
     case 'orchid': {
-      const stem = m(new THREE.CylinderGeometry(0.006, 0.008, 0.2, 5), std('#3f6b2a'), 0, -0.05, 0);
-      g.add(stem);
-      const petal = std('#efe6f2', 0.5, 0, { emissive: '#b04a9a', emissiveIntensity: 0.25, side: THREE.DoubleSide });
-      for (let i = 0; i < 5; i++) {
-        const p = m(new THREE.SphereGeometry(0.045, 8, 6), petal);
-        p.scale.set(0.55, 1, 0.14);
-        const a = (i / 5) * Math.PI * 2;
-        p.position.set(Math.sin(a) * 0.04, 0.08 + Math.cos(a) * 0.04, 0.01);
-        p.rotation.z = -a;
-        g.add(p);
-      }
-      g.add(m(new THREE.SphereGeometry(0.018, 8, 6), std('#c23a8a', 0.4, 0, { emissive: '#c23a8a', emissiveIntensity: 0.5 }), 0, 0.08, 0.02));
+      // origin at the cut end of the stem; it arches up and over, flowers opening toward the light
+      const green = std('#3f6b2a', 0.7), tepal = std('#f1e9f3', 0.45, 0, { emissive: '#8c4a86', emissiveIntensity: 0.16, side: THREE.DoubleSide });
+      const lipM = std('#b4327e', 0.4, 0, { emissive: '#b4327e', emissiveIntensity: 0.35, side: THREE.DoubleSide }), gold = std('#e7c24a', 0.5);
+      const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.01, 0.1, 0.01), new THREE.Vector3(0.05, 0.19, 0.03), new THREE.Vector3(0.12, 0.25, 0.05), new THREE.Vector3(0.2, 0.26, 0.06)];
+      const curve = new THREE.CatmullRomCurve3(pts);
+      g.add(m(new THREE.TubeGeometry(curve, 14, 0.0045, 5), green));
+      const flower = (at: number, s: number, turn: number) => {
+        const f = new THREE.Group();
+        f.position.copy(curve.getPoint(at)); f.position.y += 0.012;
+        f.rotation.set(-0.25, turn, 0);
+        for (let i = 0; i < 5; i++) {
+          // three narrow sepals and two broad petals, set like a star
+          const broad = i === 1 || i === 4, a = (i / 5) * Math.PI * 2;
+          const p = m(new THREE.SphereGeometry(0.03, 10, 6), tepal);
+          p.scale.set(broad ? 0.62 : 0.36, 1, 0.1);
+          p.position.set(Math.sin(a) * 0.026, Math.cos(a) * 0.026, -0.004);
+          p.rotation.set(0.28, 0, -a);
+          f.add(p);
+        }
+        const lip = m(new THREE.SphereGeometry(0.022, 10, 6), lipM); lip.scale.set(0.9, 1.1, 0.5); lip.position.set(0, -0.02, 0.016); lip.rotation.x = 0.9; f.add(lip);
+        f.add(m(new THREE.SphereGeometry(0.007, 8, 6), gold, 0, 0.002, 0.012));
+        f.scale.setScalar(s);
+        g.add(f);
+      };
+      flower(0.55, 1.0, 0.5); flower(0.78, 0.92, -0.4); flower(1.0, 0.8, 0.2);
+      const bud = m(new THREE.SphereGeometry(0.009, 8, 6), tepal); bud.position.copy(curve.getPoint(0.36)); bud.position.x -= 0.012; bud.scale.y = 1.5; g.add(bud);
       break;
     }
     case 'lens': {

@@ -355,6 +355,43 @@ if (title) {
   cont.style.display = state.loaded ? '' : 'none';
   start.textContent = state.loaded ? 'New game' : 'Start';
   titleEl.style.display = 'flex';
+  // The name stands in the wind. Each letter is its own small flag, rooted at its foot: gusts come through from the
+  // left as travelling waves, each letter leaning and lifting as the gust reaches it and settling back after, with a
+  // faster flutter riding on top while it is pressed. Between gusts it is nearly still.
+  {
+    const h1 = document.getElementById('titleName')!;
+    const letters: HTMLElement[] = [];
+    for (const ch of 'Windy Blue') {
+      const sp = document.createElement('span');
+      if (ch === ' ') sp.className = 'gap'; else { sp.textContent = ch; letters.push(sp); }
+      h1.appendChild(sp);
+    }
+    // smooth value noise: gust strength along a line that slides past the letters
+    const hash = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+    const noise = (x: number) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hash(i) * (1 - u) + hash(i + 1) * u; };
+    const lean = letters.map(() => 0), vel = letters.map(() => 0);
+    let last = performance.now();
+    const blow = (now: number) => {
+      if (!title && titleEl.style.display === 'none') return;
+      const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
+      letters.forEach((el, i) => {
+        const x = i / (letters.length - 1);
+        // the wind at this letter: long lulls, with gusts that arrive from the left and pass along the word
+        const g0 = noise(t * 0.34 - x * 0.75) * 0.65 + noise(t * 0.9 - x * 1.6 + 40) * 0.35;
+        const gust = Math.max(0, g0 - 0.38) / 0.62;
+        const push = gust * gust * (1.6 - 0.25 * x);
+        // each letter is a sprung thing with a little weight: it is pushed over, overshoots, and comes back
+        vel[i] += ((push - lean[i]) * 46 - vel[i] * 7.5) * dt;
+        lean[i] += vel[i] * dt;
+        const l = lean[i], flutter = Math.sin(t * 13 + i * 2.3) * 0.5 + Math.sin(t * 21.7 + i * 1.1) * 0.3;
+        const skew = -(l * 15 + flutter * l * 2.6), rot = l * 2.4 + flutter * l * 0.7;
+        const dx = l * 0.055, dy = -Math.abs(l) * 0.02 + Math.sin(t * 0.7 + i * 0.9) * 0.006;
+        el.style.transform = `translate(${dx.toFixed(4)}em, ${dy.toFixed(4)}em) rotate(${rot.toFixed(3)}deg) skewX(${skew.toFixed(3)}deg) scaleX(${(1 + l * 0.035).toFixed(4)})`;
+      });
+      requestAnimationFrame(blow);
+    };
+    requestAnimationFrame(blow);
+  }
   input.suspended = true;
   const begin = () => {
     // the view is already the right one: the dimming simply lifts
