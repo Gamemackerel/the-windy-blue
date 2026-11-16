@@ -364,6 +364,12 @@ The giant is one continuous skin (head, neck, torso, arms, hands, fingers), gene
 - **Roofs are solid**: a jump stops at a ceiling.
 - **Greenhouse.** One tomato a day can be picked from any vine; it comes off the plant into the hand.
 
+### 4.14 Plants and floating structures
+
+- **Plants are grown, not scattered.** Tree crowns are boughs that sag under their leaves; the jungle floor has ferns (fronds of leaflets from a crown), broad-leaved plants (long arching blades from a short stalk) and bushes; vines trail over the rig's edges. The greenhouse has tomato vines tied up stakes with side shoots of leaflets, squash with round lobed leaves on stalks, heads of salad, and a small tree. Leaves have a midrib and veins, a duller underside, let sunlight through from behind, and move in the wind. All instanced.
+- **Floating structures ride the swell.** The houseboat, the Fisher's raft, the Smoker's barge and the floating home heave, pitch and roll with the open-sea swell under them (the raft most, the barge least), with everything aboard, including their people and the view of anyone standing on them. Rigs on legs and the laboratory's pontoon stay fixed.
+- **The boat is never lost.** If its sailor is ashore on the starting island and the boat lies far off, it is back in its dock the next time they look.
+
 ## 14. Build status
 
 Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.

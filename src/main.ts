@@ -19,6 +19,7 @@ import { buildAtoll, ATOLL, atollHeight } from './giant';
 import { buildTower, TOWER } from './tower';
 import { buildFauna, FaunaKind } from './fauna';
 import { Floats } from './floats';
+import { floraTick } from './plants';
 import { bumpHeight, waveHeight } from './waves';
 import { J } from './figure';
 import { Audio } from './audio';
@@ -149,6 +150,7 @@ const npcs = buildRigs(ctx);
 const windmill = buildWindmill(ctx);
 const lab = buildLab(ctx);
 let pushX = 0, pushZ = 0, wrecking = false;
+let homeT = 2;
 let turnTo = 0;   // seconds left of being turned to face the giant after it picks you up
 const giant = buildAtoll(ctx, {
   wreck: wreckBoat, push: (ax, az) => { pushX += ax; pushZ += az; },
@@ -177,10 +179,10 @@ const floats = new Floats(scene, [
   { name: 'houseboat', x: PLACES.houseboat.x, z: PLACES.houseboat.z + 0.5, hx: 3.0, hz: 6.4, live: 0.8 },
   { name: 'raft', x: PLACES.raft.x, z: PLACES.raft.z, hx: 3.3, hz: 3.3, live: 1.25 },
   { name: 'barge', x: PLACES.barge.x, z: PLACES.barge.z, hx: 3.6, hz: 8.2, live: 0.5 },
-  { name: 'home', x: HOME.x, z: HOME.z, hx: 4.4, hz: 3.9, live: 0.7 },
+  { name: 'home', x: HOME.x, z: HOME.z, hx: 4.4, hz: 3.9, live: 0.45 },
 ], new Set<THREE.Object3D>([ocean.mesh, env.sky, boat.group, player.figure.group, ...npcs.map((n) => n.figure.group)]));
 for (const n of npcs) floats.ride(n.figure.group, () => n.condition === 2);
-world.updaters.push((dt, t) => floats.update(dt, t));
+world.updaters.push((dt, t) => { floats.update(dt, t); floraTick(t, wind.speed); });
 const merged = mergeStatic(scene);
 
 // ---- keeping the frame cheap ----
@@ -586,6 +588,16 @@ function frame() {
   // the anchor going down or coming up
   if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
   if (player.splashed) audio.play('giant-slap', player.pos, 0.5);
+  // Nobody is ever left on the home island without a boat. If the sailor is ashore there and the boat lies
+  // somewhere far off (left at anchor, lost in a throw), it is found back in its dock the next time they look.
+  if ((homeT -= dt) < 0) {
+    homeT = 2;
+    const m = island.mooring;
+    const ashore = player.mode === 'foot' && Math.hypot(player.pos.x - ISLAND.x, player.pos.z - ISLAND.z) < 230;
+    const boatFar = boat.mode !== 'cradle' && Math.hypot(boat.state.x - m.x, boat.state.z - m.z) > 320;
+    const unseen = Math.hypot(player.pos.x - m.x, player.pos.z - m.z) > 40 || island.indoors(player.pos);
+    if (ashore && boatFar && unseen && !wrecking && state.flag('sailRigged')) { boatHome(); state.touch(); }
+  }
   // gone under for good: wake where the boat was built, with the boat brought home
   if (player.drowned) {
     player.drowned = false;

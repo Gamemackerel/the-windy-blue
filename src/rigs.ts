@@ -2,6 +2,7 @@
 // raft and the Smoker's barge, plus the people who live on them.
 import * as THREE from 'three';
 import { Ctx } from './ctx';
+import { growPlants, Clump } from './plants';
 import { Builder } from './build';
 import { MAT, patch } from './materials';
 import { rng } from './noise';
@@ -23,8 +24,6 @@ export const PLACES = {
   barge: { x: 350, z: 250 },
 };
 
-const GREENS = ['#3f9a3a', '#2f7a2a', '#6fb04a', '#1f5c2a', '#57a83c'];
-const leafMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.55, side: THREE.DoubleSide });
 
 /** a ladder with visible rails and rungs, registered for climbing */
 function ladder(b: Builder, x: number, z: number, y0: number, y1: number, face: number, mat: THREE.Material) {
@@ -65,35 +64,8 @@ function platform(ctx: Ctx, name: string, cx: number, cz: number, w: number, d: 
   return b;
 }
 
-/** scatter instanced leaves around a set of points */
-function leaves(ctx: Ctx, pts: { x: number; y: number; z: number; r: number; n: number }[], seed: number, size = 0.5) {
-  const r = rng(seed);
-  const geo = new THREE.PlaneGeometry(1, 0.42, 2, 1);
-  const pa = geo.attributes.position;
-  for (let i = 0; i < pa.count; i++) pa.setZ(i, -Math.abs(pa.getX(i)) * 0.25);
-  geo.computeVertexNormals();
-  const total = pts.reduce((s, p) => s + p.n, 0);
-  const inst = new THREE.InstancedMesh(geo, leafMat, total);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), c = new THREE.Color();
-  let k = 0;
-  for (const p of pts)
-    for (let i = 0; i < p.n; i++) {
-      // points on a fuzzy shell so clumps read as foliage, not fog
-      const a = r() * 6.283, e = Math.acos(1 - 2 * r()), rad = p.r * (0.55 + 0.45 * Math.cbrt(r()));
-      pv.set(p.x + Math.sin(e) * Math.cos(a) * rad, p.y + Math.cos(e) * rad * 0.75, p.z + Math.sin(e) * Math.sin(a) * rad);
-      q.setFromEuler(new THREE.Euler((r() - 0.5) * 2.2, r() * 6.283, (r() - 0.5) * 1.2));
-      const s = size * (0.6 + r() * 0.9);
-      sc.set(s, s, s);
-      inst.setMatrixAt(k, m4.compose(pv, q, sc));
-      c.set(GREENS[(r() * GREENS.length) | 0]).multiplyScalar(0.55 + r() * 0.6);
-      inst.setColorAt(k, c);
-      k++;
-    }
-  inst.castShadow = true;
-  inst.receiveShadow = true;
-  ctx.scene.add(inst);
-  return inst;
-}
+/** grow a set of plants (see plants.ts) */
+function leaves(ctx: Ctx, pts: Clump[], seed: number, size = 0.5) { growPlants(ctx.scene, pts, seed, size); }
 
 export function buildRigs(ctx: Ctx) {
   const { scene, world, state } = ctx;
@@ -153,16 +125,16 @@ export function buildRigs(ctx: Ctx) {
       b.box(x, DY + 0.71, z, sx - 0.15, 0.04, sz - 0.15, soil, 0, false);
     }
     const r = rng(11);
-    const clumps: { x: number; y: number; z: number; r: number; n: number }[] = [];
+    const clumps: Clump[] = [];
     // tomato vines on stakes (west bed): the fruit
     const fruits: THREE.Mesh[] = [];
     const fruitMat = new THREE.MeshStandardMaterial({ color: '#b3261a', roughness: 0.35 });
     for (let i = 0; i < 6; i++) {
       const z = -1.6 + i * 0.9, x = -3.9 + (r() - 0.5) * 0.5;
       b.bar(x, DY + 0.7, z, x, DY + 2.2, z, 0.012, MAT.wood, 5);
-      clumps.push({ x: cx + x, y: DY + 1.45, z: cz + z, r: 0.5, n: 70 });
+      clumps.push({ x: cx + x, y: DY + 1.45, z: cz + z, r: 0.5, n: 70, kind: 'tomato', g: DY + 0.72 });
       for (let k = 0; k < 4; k++) {
-        const f = b.mesh(new THREE.SphereGeometry(0.075 + r() * 0.03, 12, 10), fruitMat, x + 0.3 + r() * 0.28, DY + 1.0 + r() * 0.8, z + (r() - 0.5) * 0.5);   // hanging on the aisle side, clear of the leaves
+        const f = b.mesh(new THREE.SphereGeometry(0.042 + r() * 0.016, 12, 10), fruitMat, x + 0.22 + r() * 0.2, DY + 1.0 + r() * 0.8, z + (r() - 0.5) * 0.5);   // hanging on the aisle side, clear of the leaves
         f.userData.static = false;
         fruits.push(f);
       }
@@ -171,12 +143,12 @@ export function buildRigs(ctx: Ctx) {
     const squash = new THREE.MeshStandardMaterial({ color: '#c98a1e', roughness: 0.5 });
     for (let i = 0; i < 7; i++) {
       const z = -1.8 + i * 0.8, x = 3.9 + (r() - 0.5) * 0.7;
-      clumps.push({ x: cx + x, y: DY + 0.95, z: cz + z, r: 0.42, n: 50 });
+      clumps.push({ x: cx + x, y: DY + 0.95, z: cz + z, r: 0.42, n: 50, kind: 'squash', g: DY + 0.72 });
       if (i % 2 === 0) { const s = b.mesh(new THREE.SphereGeometry(0.13, 10, 8), squash, x + 0.25, DY + 0.82, z); s.scale.set(1, 0.7, 1.3); }
     }
     b.bar(0, DY + 0.7, 3.1, 0.15, DY + 2.0, 3.2, 0.05, MAT.wood, 6);
-    clumps.push({ x: cx + 0.15, y: DY + 2.25, z: cz + 3.2, r: 0.85, n: 260 });
-    for (let i = 0; i < 6; i++) clumps.push({ x: cx - 2.2 + i * 0.9, y: DY + 0.9, z: cz + 3.1, r: 0.3, n: 30 });
+    clumps.push({ x: cx + 0.15, y: DY + 2.25, z: cz + 3.2, r: 0.85, n: 330 });
+    for (let i = 0; i < 12; i++) if (Math.abs(-2.3 + i * 0.42 - 0.1) > 0.45) clumps.push({ x: cx - 2.3 + i * 0.42, y: DY + 0.9, z: cz + 2.85 + (i % 2) * 0.45, r: 0.3, n: 30, kind: 'greens', g: DY + 0.73 });
     leaves(ctx, clumps, 5, 0.28);
 
     // harvest: any vine along the west bed gives up a tomato, which comes off the plant into the hand.
@@ -242,7 +214,7 @@ export function buildRigs(ctx: Ctx) {
     const r = rng(33);
     const bark = patch(new THREE.MeshStandardMaterial({ color: '#3a2e22', roughness: 0.95 }), /* glsl */ `
       col *= 0.55 + 0.9 * tri(wp, wn, 2.4); col = mix(col, vec3(0.08, 0.2, 0.05), smoothstep(0.5, 0.75, tri(wp, wn, 0.8)) * 0.6);`, 'bark');
-    const clumps: { x: number; y: number; z: number; r: number; n: number }[] = [];
+    const clumps: Clump[] = [];
     // an upper deck in the canopy, reached by a second ladder
     const UY = 9.4, UX = 4.5, UZ = 2.5;
     b.box(UX, UY - 0.15, UZ, 7, 0.3, 5, mossy);
@@ -272,7 +244,8 @@ export function buildRigs(ctx: Ctx) {
     for (let i = 0; i < 46; i++) {
       const x = (r() - 0.5) * 18, z = (r() - 0.5) * 14;
       if (Math.abs(x + 7) < 1.6 && z < -5.5) continue; // keep the ladder head clear
-      clumps.push({ x: cx + x, y: DY + 0.3 + r() * 0.5, z: cz + z, r: 0.5 + r() * 0.8, n: 55 });
+      const pick = r();
+      clumps.push({ x: cx + x, y: DY + 0.3 + r() * 0.5, z: cz + z, r: 0.5 + r() * 0.8, n: 55, g: DY, kind: pick < 0.42 ? 'fern' : pick < 0.68 ? 'broad' : 'bush' });
     }
     // growth spilling over the edges
     const vine = new THREE.MeshStandardMaterial({ color: '#2f6a2a', roughness: 0.8 });
@@ -284,8 +257,8 @@ export function buildRigs(ctx: Ctx) {
       const sway = (r() - 0.5) * 0.5;
       b.bar(x, DY, z, x + sway, DY - len, z + sway, 0.02 + r() * 0.02, vine, 4);
       const n = Math.ceil(len / 0.8);
-      for (let j = 0; j < n; j++) clumps.push({ x: cx + x + sway * (j / n), y: DY - (j + 0.4) * 0.8, z: cz + z + sway * (j / n), r: 0.3, n: 14 });
-      clumps.push({ x: cx + x, y: DY + 0.1, z: cz + z, r: 0.5, n: 30 });
+      for (let j = 0; j < n; j++) clumps.push({ x: cx + x + sway * (j / n), y: DY - (j + 0.4) * 0.8, z: cz + z + sway * (j / n), r: 0.3, n: 14, kind: 'vine' });
+      clumps.push({ x: cx + x, y: DY + 0.1, z: cz + z, r: 0.5, n: 30, g: DY, kind: r() < 0.5 ? 'fern' : 'bush' });
     }
     // the orchid, alone on the high deck
     b.bar(UX + 2.2, UY, UZ + 1.4, UX + 2.4, UY + 1.3, UZ + 1.5, 0.12, bark);
@@ -333,7 +306,7 @@ export function buildRigs(ctx: Ctx) {
     {
       const tp: number[] = [], tn: number[] = [];
       for (let k = 0; k < 9; k++) {
-        const a = (k / 9) * 6.283 + r() * 0.7, lean = 0.1 + r() * 0.34, h = 0.3 + r() * 0.5, w = 0.02;
+        const a = (k / 9) * 6.283 + r() * 0.7, lean = 0.1 + r() * 0.3, h = 0.16 + r() * 0.3, w = 0.016;
         const bx = Math.cos(a) * 0.05, bz = Math.sin(a) * 0.05, px = -Math.sin(a) * w, pz = Math.cos(a) * w;
         tp.push(bx - px, 0, bz - pz, bx + px, 0, bz + pz, bx + Math.cos(a) * lean, h, bz + Math.sin(a) * lean);
         for (let v = 0; v < 3; v++) tn.push(0, 1, 0);
@@ -341,7 +314,7 @@ export function buildRigs(ctx: Ctx) {
       const tuft = new THREE.BufferGeometry();
       tuft.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
       tuft.setAttribute('normal', new THREE.Float32BufferAttribute(tn, 3));
-      const COUNT = 2600;
+      const COUNT = 1900;
       const grass = new THREE.InstancedMesh(tuft, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, side: THREE.DoubleSide }), COUNT);
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), c = new THREE.Color();
       let n = 0;

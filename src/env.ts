@@ -40,7 +40,9 @@ vec3 skyBase(vec3 d) {
 `;
 
 export const NOISE_GLSL = /* glsl */ `
-float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+// The lattice is wrapped before hashing. Far from the origin, at fine scales, the old hash ran out of
+// floating-point precision in one axis and every cell in a row came out alike: the ground looked combed.
+float hash21(vec2 p) { p = mod(p, 1024.0); vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float hash31(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -209,6 +211,7 @@ export class Environment {
     sc.left = -9; sc.right = 9; sc.top = 9; sc.bottom = -9; sc.near = 1; sc.far = 260;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.06;
+    this.sun.shadow.radius = 2.8;   // the same five taps spread wider: edges soften and the stair-steps of a low sun dissolve, at no extra cost
     scene.add(this.sun, this.sun.target, this.hemi);
     this.update(0, new THREE.Vector3(), new THREE.Vector3());
   }
@@ -293,6 +296,9 @@ export class Environment {
     const stepped = !_snap.equals(this.sun.target.position);
     this.sun.target.position.copy(_snap);
     this.sun.position.copy(_snap).addScaledVector(this.lightDir, 130);
+    // a low sun rakes the ground, and the ground starts to shadow itself in fine stripes ("combed" earth):
+    // the lower the light, the further a surface is pushed clear of its own shadow
+    { const low = 1 - Math.min(1, Math.abs(this.lightDir.y) / 0.4); this.sun.shadow.normalBias = 0.06 + 0.34 * low * low; this.sun.shadow.bias = -0.0004 - 0.0014 * low; }
     this.sun.shadow.autoUpdate = false;
     if (stepped || (this.frame++ & 1) === 0) this.sun.shadow.needsUpdate = true;
     this.hemi.color.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.6);

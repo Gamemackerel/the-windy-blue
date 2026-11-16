@@ -92,7 +92,7 @@ export function buildIsland(ctx: Ctx) {
       vec2 q = abs(wn.x) > abs(wn.z) ? wp.zy : wp.xy;
       float joints = smoothstep(0.42, 0.5, abs(fract(q.x * 0.55 + fbm(q * 0.3) * 1.5) - 0.5));
       rock *= mix(1.0, 0.45, joints * smoothstep(0.25, 0.6, slope));
-      rock *= 0.7 + 0.6 * streaks(wp, wn, 0.8);
+      rock *= mix(1.0, 0.7 + 0.6 * streaks(wp, wn, 0.8), smoothstep(0.3, 0.6, slope));   // run-off streaks belong on steep faces; on gentle ground they read as combing
       // the ground itself: bare earth, with dry grass thatch thinning out toward paths and steep places
       float db;
       vec3 earth = dirt(wp.xz, vd, vec3(0.235, 0.175, 0.11), vec3(0.1, 0.073, 0.05), db);
@@ -253,7 +253,24 @@ export function buildIsland(ctx: Ctx) {
     }
   }
   b.rail(110, 7, 130, 7, DECK, MAT.rust, 0.9);
-  b.rail(110, 7, 110, 13, DECK, MAT.rust, 0.9);
+  // the dock-head gate across the slip: two barred leaves on heavy posts, one standing a little open
+  {
+    const gy = DECK, H = 1.25;
+    for (const z of [7.0, 13.0]) { b.box(110, gy + 0.75, z, 0.22, 1.5, 0.22, MAT.dark, 0, false); b.mesh(new THREE.SphereGeometry(0.1, 10, 8), MAT.dark, 110, gy + 1.56, z, false); }
+    const leaf = (hingeZ: number, dir: number, open: number) => {
+      const g = new THREE.Group();
+      g.position.set(IX + 110, gy + 0.08, IZ + hingeZ);
+      g.rotation.y = open;
+      const W = 2.85, add = (geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0) => { const m = new THREE.Mesh(geo, MAT.rust); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; g.add(m); };
+      for (const y of [0.04, H]) add(new THREE.BoxGeometry(0.05, 0.06, W), 0, y, dir * W / 2);
+      for (const z of [0.03, W - 0.03]) add(new THREE.BoxGeometry(0.05, H, 0.06), 0, H / 2, dir * z);
+      for (let i = 1; i < 9; i++) add(new THREE.CylinderGeometry(0.012, 0.012, H, 6), 0, H / 2, dir * (W * i) / 9);
+      add(new THREE.BoxGeometry(0.035, 0.05, Math.hypot(W, H)), 0, H / 2, dir * W / 2, -dir * Math.atan2(H, W));       // the brace that keeps it from sagging
+      b.flatten(g);
+    };
+    leaf(7.12, 1, 0); leaf(12.88, -1, 0.42);
+    world.addBox(IX + 110, DECK + 0.45, IZ + 10, 0.06, 0.45, 3);
+  }
   // bollards and fenders
   for (const x of [112, 118, 124, 129]) { b.cyl(x, 19.3, 0.16, DECK, DECK + 0.45, MAT.dark, false); b.cyl(x, 0.7, 0.16, DECK, DECK + 0.45, MAT.dark, false); }
   // cradle blocks under the hull

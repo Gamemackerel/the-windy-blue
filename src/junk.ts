@@ -275,9 +275,9 @@ export const JUNK: Record<string, Maker> = {
 };
 
 const SMALL = ['can', 'can', 'bottle', 'bottle', 'book', 'bookopen', 'pages', 'kettle', 'board', 'gear', 'spring', 'piston', 'valve', 'clock', 'telephone'];
-const MEDIUM = ['monitor', 'tower', 'keyboard', 'bookstack', 'radio', 'suitcase', 'typewriter', 'lampdesk', 'chair', 'tyre', 'pipe', 'capital'];
+const MEDIUM = ['monitor', 'tower', 'keyboard', 'bookstack', 'radio', 'suitcase', 'typewriter', 'lampdesk', 'chair', 'tyre', 'pipe'];
 const LARGE = ['fridge', 'engine', 'mannequin', 'lampfloor', 'bust', 'column', 'stonehead', 'tyre', 'chair', 'suitcase'];
-const STONE = ['bust', 'column', 'capital', 'stonehead', 'column'];
+const STONE = ['bust', 'column', 'stonehead', 'column'];
 const MACHINE = ['gear', 'gear', 'piston', 'spring', 'pipe', 'valve', 'engine', 'tyre', 'can'];
 
 export function scatterJunk(ctx: Ctx) {
@@ -327,7 +327,7 @@ export function scatterJunk(ctx: Ctx) {
 
   // ---- the storehouse: the densest pile, with the museum pieces
   put('bust', IX + 50.4, IZ + 10.2, { y: D + 0.035, yaw: 1.2 });                           // under the gap in the roof
-  strew(11, 18, [...STONE, ...MEDIUM, 'fridge', 'mannequin', 'lampfloor'], IX + 47.6, IX + 53.4, IZ + 7.8, IZ + 12.4, D, (x, z) => x > IX + 52.2 && Math.abs(z - IZ - 10.5) < 1.3, 0.035);
+  strew(11, 18, ['bust', 'stonehead', ...MEDIUM, 'fridge', 'mannequin', 'lampfloor'], IX + 47.6, IX + 53.4, IZ + 7.8, IZ + 12.4, D, (x, z) => x > IX + 52.2 && Math.abs(z - IZ - 10.5) < 1.3, 0.035);
   strew(12, 14, SMALL, IX + 47.4, IX + 53.6, IZ + 7.6, IZ + 12.6, D, undefined, 0.035);
   for (const [k, z, y] of [['bookstack', -2.2, 0.53], ['clock', -1.2, 0.53], ['radio', 0.4, 1.23], ['bottle', 1.5, 1.23], ['monitor', 2.3, 0.53], ['typewriter', -0.7, 1.23], ['can', 2.0, 1.93], ['kettle', -1.8, 1.93], ['telephone', 1.0, 0.53]] as const)
     put(k, IX + 46.15, IZ + 10.5 + z, { y: 1.6 + y, yaw: Math.PI / 2 + (z % 1) });

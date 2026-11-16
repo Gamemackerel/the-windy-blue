@@ -219,7 +219,8 @@ export class Npc {
       const k = c < 1.1 ? c / 1.1 : c < 2.6 ? 1 : c < 3.6 ? 1 - (c - 2.6) : 0;
       const e = k * k * (3 - 2 * k);
       // the wrist stops below the chin so the fingertips, and the cigarette in them, reach the lips
-      _t.set(p[J.head].x - 0.03, p[J.head].y - 0.155, p[J.head].z + 0.075);
+      // the hand comes up in front of the collar and stops there, held easy; the head bends to it
+      _t.set(p[J.head].x - 0.09, p[J.head].y - 0.25, p[J.head].z + 0.2);
       hR.lerp(_t, e);
       this.drag = e;
       atMouth = c > 1.1 && c < 2.6;
@@ -299,7 +300,7 @@ export class Npc {
       wantPitch = THREE.MathUtils.clamp(-Math.atan2(_t.y - f.joints[J.head].y, Math.hypot(_t.x, _t.z)), -0.5, 0.6);
       if (this.lookAway > 0) { wantYaw = -Math.sign(wantYaw || 1) * 0.9; wantPitch = 0.15; }
     } else wantYaw = Math.sin(this.t * 0.13) * 0.35;
-    wantPitch += this.drag * 0.12;                       // the head dips a little to meet the hand
+    wantPitch += this.drag * 0.38; wantYaw = wantYaw * (1 - this.drag * 0.7) - this.drag * 0.25;                       // the head dips a little to meet the hand
     f.headYaw += (wantYaw - f.headYaw) * Math.min(1, dt * 2.2);
     f.headPitch += (wantPitch - f.headPitch) * Math.min(1, dt * 2.2);
     f.refresh(0);
