@@ -342,6 +342,31 @@ let debug = params.has('debug');
 debugEl.style.display = debug ? 'block' : 'none';
 const fixedCam = params.has('cam') ? params.get('cam')!.split(',').map(Number) : null;
 
+// ---- the title: shown on a plain visit, over the open sea seen from straight above ----
+const TITLE_AT = new THREE.Vector3(-380, 6.1, -420);    // twenty feet up, well clear of everything
+const titleEl = document.getElementById('title')!;
+let title = location.search === '' && sessionStorage.getItem('ww-skip-title') === null;
+sessionStorage.removeItem('ww-skip-title');
+if (title) {
+  const cont = document.getElementById('titleContinue')!, start = document.getElementById('titleStart')!;
+  cont.style.display = state.loaded ? '' : 'none';
+  start.textContent = state.loaded ? 'New game' : 'Start';
+  titleEl.style.display = 'flex';
+  input.suspended = true;
+  const begin = () => {
+    titleEl.style.display = 'none';
+    try { (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* the first click in the game will capture the mouse */ }
+    ctx.fade(() => { title = false; input.suspended = false; }, 0.9);
+  };
+  cont.addEventListener('click', begin);
+  start.addEventListener('click', () => {
+    if (!state.loaded) { begin(); return; }
+    GameState.wipe();                                  // a fresh world needs a fresh load; come straight back in without the title
+    sessionStorage.setItem('ww-skip-title', '1');
+    location.reload();
+  });
+}
+
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
@@ -473,10 +498,10 @@ function setPaused(p: boolean) {
 pauseEl.querySelectorAll<HTMLElement>('[data-q]').forEach((b) => b.addEventListener('click', () => applyQuality(Number(b.dataset.q))));
 pauseEl.querySelectorAll<HTMLElement>('[data-s]').forEach((b) => b.addEventListener('click', () => setSound(b.dataset.s === '1')));
 document.getElementById('resume')!.addEventListener('click', () => setPaused(false));
-document.getElementById('newgame')!.addEventListener('click', () => { GameState.wipe(); location.search = ''; });
+document.getElementById('newgame')!.addEventListener('click', () => { GameState.wipe(); sessionStorage.setItem('ww-skip-title', '1'); if (location.search) location.search = ''; else location.reload(); });
 applyQuality(quality, false);
 setSound(localStorage.getItem('ww-sound') !== '0');
-if (!state.loaded && !fixedCam) { setTimeout(() => { hintEl.style.opacity = '0.55'; }, 5000); setTimeout(() => { hintEl.style.opacity = '0'; }, 14000); }
+if (!state.loaded && !fixedCam && !title) { setTimeout(() => { hintEl.style.opacity = '0.55'; }, 5000); setTimeout(() => { hintEl.style.opacity = '0'; }, 14000); }
 // on a first run, step the quality down if the machine is struggling
 let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 0;
 
@@ -504,7 +529,7 @@ function frame() {
     debug = !debug;
     debugEl.style.display = debug ? 'block' : 'none';
   }
-  if (input.hit('Escape') && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
+  if (input.hit('Escape') && !title && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
   if (paused || reporting) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   // Dynamic resolution: if frames are taking too long, draw slightly fewer pixels; when there is room, restore them.
   frameMs += (dt * 1000 - frameMs) * 0.08;
@@ -632,7 +657,7 @@ function frame() {
   rig.update(dt, t, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0, pulledBack ? boat.position : null);
   const outside = rig.third > 0.3;
   player.figure.group.visible = outside && sailing;
-  viewModel.visible = !rig.scope && !outside;
+  viewModel.visible = !rig.scope && !outside && !title;
   // under the surface: the light goes green-blue and close
   if (!lab.inside() && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.03) {
     const un = env.under;
@@ -656,7 +681,7 @@ function frame() {
     _g1.set(cl.l.x - sx, Math.min(top, Math.round((cl.y + 1.42) / 0.6 + 0.5) * 0.6 - 0.3), cl.l.z - sz);
     grips = [_g0, _g1];
   }
-  arms.group.visible = !rig.scope && !outside;
+  arms.group.visible = !rig.scope && !outside && !title;
   arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, player.held && !carry ? _held.copy(viewModel.position) : null, grips);
   // a small ring on whatever E would act on
   {
@@ -699,6 +724,14 @@ function frame() {
   if (fixedCam) {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
+  }
+  if (title) {
+    // straight down at the water, turning very slowly, lifting and falling a little as if hung from a kite
+    camera.position.set(TITLE_AT.x + Math.sin(t * 0.05) * 3, TITLE_AT.y + Math.sin(t * 0.31) * 0.25, TITLE_AT.z + Math.cos(t * 0.04) * 3);
+    camera.rotation.set(-Math.PI / 2, 0, t * 0.012);
+    if (Math.abs(camera.fov - 62) > 0.01) { camera.fov = 62; camera.updateProjectionMatrix(); }
+    focus.copy(camera.position);
+    markEl.style.opacity = '0';
   }
 
   // shadows hug the action

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Waterworld</title>
+    <title>The Windy Blue</title>
     <style>
       html, body { margin: 0; height: 100%; background: #05070a; overflow: hidden; }
       canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
@@ -41,6 +41,16 @@
       #pause button:hover, #pause button.on { border-color: #cfc9ba; color: #fff; }
       #pause .row { margin-bottom: 14px; }
       #pause .label { color: #8f897a; display: inline-block; width: 90px; }
+      #title {
+        position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+        color: #eef2f2; font: 14px/1.9 ui-sans-serif, system-ui, sans-serif; text-shadow: 0 1px 14px rgba(0, 10, 20, 0.75);
+      }
+      #title h1 { font-weight: 200; font-size: clamp(22px, 4.2vw, 46px); letter-spacing: 0.62em; margin: 0 -0.62em 44px 0; text-transform: uppercase; }
+      #title button {
+        font: inherit; color: #eef2f2; background: rgba(4, 14, 22, 0.28); border: 1px solid rgba(238, 242, 242, 0.4); padding: 9px 0; width: 210px; margin: 0 0 12px;
+        cursor: pointer; letter-spacing: 0.34em; text-transform: uppercase; text-shadow: inherit;
+      }
+      #title button:hover { border-color: #fff; background: rgba(4, 14, 22, 0.5); }
       #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
       #scope { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s;
         background: radial-gradient(circle at 50% 50%, transparent 0, transparent 38vh, rgba(0,0,0,0.55) 40vh, #000 43vh); }
@@ -92,6 +102,7 @@
       <div class="row"><span class="label">Sound</span><button data-s="1">On</button><button data-s="0">Off</button></div>
       <div class="row"><button id="resume">Resume</button><button id="newgame">New game</button></div>
     </div></div>
+    <div id="title"><h1>The Windy Blue</h1><button id="titleContinue">Continue</button><button id="titleStart">Start</button></div>
     <div id="fade"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
