@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { Ctx } from './ctx';
 import { waveHeight } from './waves';
 import { softDot } from './npc';
+import { Figure, J } from './figure';
+import { MAT } from './materials';
 import { PLACES } from './rigs';
 import { ISLAND } from './island';
 import { ATOLL } from './giant';
@@ -14,8 +16,8 @@ import { TOWER } from './tower';
 import { WINDMILL } from './windmill';
 import { LAB } from './lab';
 
-export type FaunaKind = 'fish' | 'gulls' | 'dolphins' | 'seal' | 'sharks' | 'whale';
-const WEIGHTS: [FaunaKind, number][] = [['fish', 40], ['gulls', 20], ['dolphins', 16], ['seal', 15], ['sharks', 7], ['whale', 2]];
+export type FaunaKind = 'fish' | 'gulls' | 'dolphins' | 'seal' | 'sharks' | 'whale' | 'driftwood' | 'kelp' | 'body';
+const WEIGHTS: [FaunaKind, number][] = [['fish', 30], ['gulls', 15], ['driftwood', 14], ['dolphins', 12], ['seal', 11], ['kelp', 10], ['sharks', 5], ['whale', 2], ['body', 1]];
 const Z = new THREE.Vector3(0, 0, 1);
 const _v = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
@@ -41,7 +43,7 @@ function aim(o: THREE.Object3D, dir: THREE.Vector3, roll = 0) {
   if (roll) o.quaternion.multiply(_q2.setFromAxisAngle(Z, roll));
 }
 
-export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => void }) {
+export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => void; use: () => boolean; bullet: () => void }) {
   const { scene, world, boat } = ctx;
   const skin = (c: string, rough = 0.32, metal = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal, side: THREE.DoubleSide });
 
@@ -142,6 +144,45 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
     for (const p of [...Object.values(PLACES), TOWER, WINDMILL, LAB]) if (Math.hypot(x - p.x, z - p.z) < 130) return false;
     return true;
   };
+  // ------------------------------------------------------------ things adrift
+  // driftwood: a few logs and planks, long in the water
+  const wood = Array.from({ length: 6 }, (_, i) => {
+    const log = i % 3 !== 2;
+    const m = new THREE.Mesh(log ? new THREE.CylinderGeometry(0.13 + (i % 2) * 0.05, 0.16 + (i % 2) * 0.05, 2.2 + i * 0.5, 9) : new THREE.BoxGeometry(0.34, 0.06, 2.6), log ? MAT.bone : MAT.paleWood);
+    if (log) m.geometry.rotateX(Math.PI / 2);
+    m.castShadow = true;
+    return { g: hide(m), x: 0, z: 0, yaw: 0, ph: i * 1.9, sink: log ? 0.04 : 0.0 };
+  });
+  // kelp: a raft of long brown blades lying in the surface, with their floats
+  const kelpMat = new THREE.MeshStandardMaterial({ color: '#4a3d18', roughness: 0.35, side: THREE.DoubleSide });
+  const bladeGeo = new THREE.PlaneGeometry(0.3, 3.4, 1, 6);
+  bladeGeo.rotateX(-Math.PI / 2);
+  { const bp = bladeGeo.attributes.position; for (let i = 0; i < bp.count; i++) { const z = bp.getZ(i); bp.setX(i, bp.getX(i) * (1 - Math.abs(z) / 2.2) + Math.sin(z * 2.3) * 0.12); } bladeGeo.computeVertexNormals(); }
+  const kelp = Array.from({ length: 46 }, (_, i) => {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(bladeGeo, kelpMat));
+    if (i % 3 === 0) { const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), kelpMat); bulb.position.set(0, 0.03, 1.6); g.add(bulb); }
+    return { g: hide(g), x: 0, z: 0, yaw: 0, ph: i * 0.83 };
+  });
+  // someone, face down, a long time in the sea
+  const corpse = new Figure({ coat: '#2e3a3c', trousers: '#1f2224', skin: '#8c9488', hood: false, hair: '#1c1a18' });
+  {
+    const p = corpse.joints;
+    p[J.hips].set(0, 0.95, 0); p[J.chest].set(0, 1.4, 0.03); p[J.head].set(0.03, 1.6, 0.1);
+    p[J.shL].set(0.2, 1.37, 0.03); p[J.shR].set(-0.2, 1.37, 0.03);
+    p[J.elL].set(0.46, 1.42, 0.12); p[J.haL].set(0.56, 1.68, 0.2); p[J.elR].set(-0.44, 1.2, 0.12); p[J.haR].set(-0.62, 1.0, 0.2);
+    p[J.hipL].set(0.1, 0.93, 0); p[J.hipR].set(-0.1, 0.93, 0);
+    p[J.knL].set(0.16, 0.5, 0.1); p[J.ftL].set(0.2, 0.06, 0.24); p[J.knR].set(-0.13, 0.5, 0.06); p[J.ftR].set(-0.22, 0.08, 0.3);
+    corpse.skirtAmount = 0.6; corpse.headPitch = 0.4;
+    corpse.refresh(0);
+  }
+  const body = new THREE.Group();
+  corpse.group.position.set(0, -1.15, 0);
+  { const lay = new THREE.Group(); lay.rotation.x = Math.PI / 2; lay.add(corpse.group); body.add(lay); }     // laid on its face
+  hide(body);
+  const prompt = new THREE.Vector3();
+  let promptOn = false;
+
   const start = (k: FaunaKind) => {
     kind = k; tau = 0; struck = false; barks = 0;
     const s = boat.state, sn = Math.sin(s.psi), cs = Math.cos(s.psi);
@@ -157,6 +198,14 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
     } else if (k === 'seal') {
       const side = Math.random() < 0.5 ? -1 : 1;
       at.set(boat.position.x + sn * 22 + cs * side * 13, 0, boat.position.z + cs * 22 - sn * side * 13);
+    } else if (k === 'driftwood' || k === 'kelp' || k === 'body') {
+      // somewhere ahead and a little off the bow, so the boat comes up on it
+      const side = Math.random() < 0.5 ? -1 : 1, d = k === 'body' ? 70 : 60 + Math.random() * 40, off = side * (k === 'body' ? 5 : 6 + Math.random() * 14);
+      at.set(boat.position.x + sn * d + cs * off, 0, boat.position.z + cs * d - sn * off);
+      const scatter = (list: { x: number; z: number; yaw: number }[], rad: number) => list.forEach((o) => { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * rad; o.x = at.x + Math.cos(a) * r; o.z = at.z + Math.sin(a) * r; o.yaw = Math.random() * 6.283; });
+      if (k === 'driftwood') scatter(wood, 9);
+      if (k === 'kelp') scatter(kelp, 8);
+      if (k === 'body') body.rotation.y = Math.random() * 6.283;
     } else if (k === 'whale') {
       const side = Math.random() < 0.5 ? -1 : 1, d = 110 + Math.random() * 60;
       at.set(boat.position.x + sn * d * 0.8 + cs * side * d * 0.6, 0, boat.position.z + cs * d * 0.8 - sn * side * d * 0.6);
@@ -165,7 +214,8 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
   };
   const stop = () => {
     kind = null; next = 40 + Math.random() * 80;
-    for (const o of [...fish.map((f) => f.g), ...dolphins.map((d) => d.g), ...sharks.map((d) => d.g), ...gulls.map((d) => d.g), seal, whale]) o.visible = false;
+    for (const o of [...fish.map((f) => f.g), ...dolphins.map((d) => d.g), ...sharks.map((d) => d.g), ...gulls.map((d) => d.g), ...wood.map((d) => d.g), ...kelp.map((d) => d.g), body, seal, whale]) o.visible = false;
+    promptOn = false;
   };
 
   world.updaters.push((dt, t) => {
@@ -185,7 +235,7 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
 
     const sailing = boat.mode === 'sailing';
     if (!kind) {
-      if (sailing && openSea()) { next -= dt; if (next <= 0) { let r = Math.random() * 100; for (const [k, w] of WEIGHTS) { if ((r -= w) < 0) { start(k); break; } } } }
+      if (sailing && openSea()) { next -= dt; if (next <= 0) { let r = Math.random() * 100; for (const [k, w] of WEIGHTS) { if ((r -= w) < 0) { start(k === 'body' && ctx.state.flag('seaBody') ? 'driftwood' : k); break; } } } }
       return;
     }
     tau += dt;
@@ -278,11 +328,42 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
       if (k > 0.08 && k < 0.5) splash(x - heading.x * 4, z - heading.z * 4, 5, 7);
       if (k > 0.86 && barks === 0) { barks = 1; ctx.sfx('giant-slap', whale.position, 1.3); for (let i = 0; i < 8; i++) splash(x + (Math.random() - 0.5) * 12, z + (Math.random() - 0.5) * 12, 60, 11); }
       if (tau > T + 4) stop();
+    } else if (kind === 'driftwood' || kind === 'kelp' || kind === 'body') {
+      // these just lie in the sea and ride it; they are left behind when the boat has gone on
+      const slope = (x: number, z: number, yaw: number, o: THREE.Object3D, len: number) => {
+        const sn2 = Math.sin(yaw), cs2 = Math.cos(yaw), a = sea(x + sn2 * len, z + cs2 * len), b = sea(x - sn2 * len, z - cs2 * len);
+        o.rotation.set(-Math.atan2(a - b, len * 2), yaw, 0, 'YXZ');
+        return (a + b) / 2;
+      };
+      if (kind === 'driftwood') for (const w of wood) {
+        w.x += Math.sin(t * 0.05 + w.ph) * dt * 0.05; w.yaw += Math.sin(t * 0.07 + w.ph) * dt * 0.02;
+        w.g.visible = true;
+        w.g.position.set(w.x, slope(w.x, w.z, w.yaw, w.g, 1.1) + 0.02 - w.sink + Math.sin(t * 0.9 + w.ph) * 0.02, w.z);
+        w.g.rotation.z = Math.sin(t * 0.6 + w.ph) * 0.12;
+      }
+      if (kind === 'kelp') for (const q of kelp) {
+        q.g.visible = true;
+        q.g.position.set(q.x, slope(q.x, q.z, q.yaw + Math.sin(t * 0.4 + q.ph) * 0.18, q.g, 1.4) + 0.015, q.z);
+      }
+      let d = Math.hypot(bx - at.x, bz - at.z);
+      if (kind === 'body') {
+        body.visible = true;
+        const yaw = body.rotation.y;
+        body.position.set(at.x, slope(at.x, at.z, yaw, body, 0.8) - 0.07 + Math.sin(t * 0.8) * 0.015, at.z);
+        const pp = ctx.playerPos();
+        d = Math.min(d, Math.hypot(pp.x - at.x, pp.z - at.z));
+        promptOn = d < 5.5 && !ctx.state.flag('seaBody');
+        prompt.set(at.x, body.position.y + 0.25, at.z);
+        if (promptOn && hooks.use()) { ctx.state.set('seaBody'); hooks.bullet(); ctx.sfx('take', prompt); promptOn = false; }
+      }
+      if (d > 260) stop();
     }
   });
 
   return {
     get active() { return kind; },
+    /** something in the sea that E would act on right now, if anything */
+    get prompt() { return promptOn ? prompt : null; },
     /** testing: bring something on now */
     trigger(k: FaunaKind) { stop(); start(k); },
   };

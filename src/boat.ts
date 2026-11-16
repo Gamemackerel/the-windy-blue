@@ -11,7 +11,7 @@ import { MAT, patch } from './materials';
 import { bodyMaterial, Tube } from './figure';
 
 const LEN = 5.2;
-const _w3 = new THREE.Vector3(), _up3 = new THREE.Vector3(0, 1, 0);
+const _w3 = new THREE.Vector3(), _up3 = new THREE.Vector3(0, 1, 0), _a0 = new THREE.Vector3(), _a1 = new THREE.Vector3(), _a2 = new THREE.Vector3();
 const BEAM = 1.9;
 const DRAFT = 0.42;
 const MAST_Z = 0.85;
@@ -112,6 +112,10 @@ export class Boat {
   stranded = false;
   /** 0 stowed in the bow .. 1 on the bottom, for the anchor's throw and recovery */
   anchorK = 0;
+  /** which side the helm sits (+1 or -1), and where their hand should be while handling the anchor (boat frame), if anywhere */
+  helmSide = 1;
+  anchorGrip: THREE.Vector3 | null = null;
+  private throwSide = 1;
   private anchor = new THREE.Group();
   private anchorLine!: THREE.Mesh;
   /** above zero while the boat is going down */
@@ -393,15 +397,16 @@ export class Boat {
     pp.needsUpdate = true;
   }
 
-  /** a small grapnel stowed in the bow, and the line it goes over the side on */
+  /** a small grapnel that lies on the boards by the helm's feet, and the line it goes over the side on. Its origin is the ring it is held by. */
   private buildAnchor() {
     const iron = new THREE.MeshStandardMaterial({ color: '#1c1b1a', roughness: 0.6, metalness: 0.6 });
-    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.5, 8), iron); shank.position.y = 0.25;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.01, 6, 12), iron); ring.position.y = 0.53;
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.42, 8), iron); shank.position.y = -0.23;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.009, 6, 12), iron);
     this.anchor.add(shank, ring);
     for (let i = 0; i < 4; i++) {
-      const fl = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.014, 6, 10, Math.PI * 0.55), iron);
-      fl.rotation.set(0, (i / 4) * Math.PI * 2, Math.PI * 1.0); fl.position.set(Math.cos((i / 4) * Math.PI * 2) * -0.13, 0.02, Math.sin((i / 4) * Math.PI * 2) * 0.13);
+      const a = (i / 4) * Math.PI * 2;
+      const fl = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 6, 10, Math.PI * 0.6), iron);
+      fl.rotation.set(0, -a, Math.PI * 1.2); fl.position.set(Math.cos(a) * 0.1, -0.44, Math.sin(a) * 0.1);
       this.anchor.add(fl);
     }
     this.anchor.traverse((m) => { m.castShadow = true; });
@@ -409,21 +414,34 @@ export class Boat {
     this.anchorLine.geometry.translate(0, 0.5, 0);
     this.group.add(this.anchor, this.anchorLine);
   }
-  /** the anchor goes over in an arc, takes its line down after it, and comes back the same way */
+  /**
+   * The helm picks the anchor up off the boards, swings it up and out over their own side and lets go;
+   * it falls away with its line after it. Weighing it is the same thing backwards, hauled up into the hand.
+   */
   private syncAnchor(dt: number) {
     if (!this.anchorLine) this.buildAnchor();
     const down = this.mode === 'moored' && this.mooring?.name === 'anchor';
-    if (dt < 1) this.anchorK = THREE.MathUtils.clamp(this.anchorK + (down ? dt / 1.5 : -dt / 1.3), 0, 1); else this.anchorK = down ? 1 : 0;
+    if (dt < 1) this.anchorK = THREE.MathUtils.clamp(this.anchorK + (down ? dt / 2.0 : -dt / 2.2), 0, 1); else this.anchorK = down ? 1 : 0;
     const k = this.anchorK, a = this.anchor;
-    const toss = Math.min(1, k / 0.42), e = toss * toss * (3 - 2 * toss), sink = Math.max(0, (k - 0.42) / 0.58);
-    // stowed on the bow boards -> out over the gunwale in an arc -> down through the water
-    a.position.set(0.15 + 0.95 * e, 0.34 + Math.sin(e * Math.PI) * 0.75 - e * 0.5 - sink * sink * 3.2, LEN / 2 - 1.15 + 0.35 * e);
-    a.rotation.set(e * 2.6 + sink * 0.5, 0, -e * 1.2);
-    a.visible = k < 0.98;
+    if (k <= 0 || k >= 1) this.throwSide = this.helmSide >= 0 ? -1 : 1;       // over the helm's own side; fixed for the length of a throw
+    const sd = this.throwSide, sm = (x: number) => x * x * (3 - 2 * x);
+    const S = _a0.set(sd * 0.22, 0.07, -0.72), C = _a1.set(sd * 0.5, 0.86, -0.98), R = _a2.set(sd * 0.98, 1.0, -1.02);
+    let lie = 1;
+    if (k < 0.2) a.position.copy(S);                                                       // the hand is on its way down to it
+    else if (k < 0.36) { const u = sm((k - 0.2) / 0.16); a.position.lerpVectors(S, C, u); a.position.y += Math.sin(u * Math.PI) * 0.06; lie = 1 - u; }   // lifted
+    else if (k < 0.5) { const u = sm((k - 0.36) / 0.14); a.position.lerpVectors(C, R, u); a.position.y += Math.sin(u * Math.PI) * 0.12; lie = 0; }         // swung out
+    else { const u = (k - 0.5) / 0.5; a.position.set(R.x + sd * 1.2 * u, R.y + 1.1 * u - 5.4 * u * u, R.z - 0.1 * u); lie = 0; }                          // let go
+    // lying along the boards when stowed; hanging from its ring in the hand; tumbling once thrown
+    a.rotation.set(k > 0.5 ? (k - 0.5) * 5 : 0, 0, sd * (Math.PI / 2) * lie + (k > 0.5 ? -sd * (k - 0.5) * 3 : 0));
+    if (lie > 0.99) a.position.y = 0.045;
+    a.visible = k < 0.97;
+    this.anchorGrip = k > 0.03 && k < 0.6 ? (this.anchorGrip ?? new THREE.Vector3()).copy(k < 0.5 ? a.position : R) : null;
+    if (this.anchorGrip && k < 0.2) this.anchorGrip.lerpVectors(_v.set(sd * 0.3, 0.74, -0.86), S, sm(k / 0.2));   // reaching down for it
+    if (this.anchorGrip && k > 0.5) this.anchorGrip.lerpVectors(R, _v.set(sd * 0.3, 0.74, -0.86), sm((k - 0.5) / 0.1));   // follow through, and back
     const l = this.anchorLine;
-    l.visible = k > 0.03;
+    l.visible = k > 0.3;
     if (l.visible) {
-      _v.set(0.05, 0.52, LEN / 2 - 0.75);                     // made fast at the bow
+      _v.set(0, 0.41, -0.72);                                  // made fast to the post
       l.position.copy(_v);
       _w3.copy(a.position).sub(_v);
       const len = Math.max(0.05, _w3.length());

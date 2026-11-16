@@ -165,7 +165,11 @@ const giant = buildAtoll(ctx, {
   fling: () => fling(),
 });
 const tower = buildTower(ctx);
-const fauna = buildFauna(ctx, { push: (ax, az) => { pushX += ax; pushZ += az; } });
+const fauna = buildFauna(ctx, {
+  push: (ax, az) => { pushX += ax; pushZ += az; },
+  use: () => input.hit('KeyE') && !paused,
+  bullet: () => { state.set('ammo', state.flag('ammo') + 1); },
+});
 if (params.has('fauna')) world.after(9, () => fauna.trigger(params.get('fauna') as FaunaKind));
 ocean.setShoal(ATOLL.x, ATOLL.z, ATOLL.r - 14, ATOLL.hole);
 ocean.addShore(ISLAND.x, ISLAND.z, 480, islandHeight);
@@ -718,6 +722,7 @@ function frame() {
       else if (player.fallback(_mk)) show = true;
       else if (player.swimExit(_mk, rig.yaw, t)) show = true;
     }
+    if (!show && fauna.prompt && !rig.scope) { _mk.copy(fauna.prompt); show = true; }
     if (show) {
       _mk.project(camera);
       if (_mk.z > 1 || Math.abs(_mk.x) > 1.05 || Math.abs(_mk.y) > 1.05) show = false;

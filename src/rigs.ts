@@ -425,7 +425,7 @@ export function buildRigs(ctx: Ctx) {
     b.box(0, DY + CH / 2, CZ0, CX1 - CX0, CH, 0.12, wall);
     // side walls, built round two window openings each
     const WZ = [-3.2, -0.6], WY0 = 1.2, WY1 = 1.72, mid = (CZ0 + CZ1) / 2, len = CZ1 - CZ0;
-    const paneM = new THREE.MeshStandardMaterial({ color: '#1c1610', roughness: 0.1, transparent: true, opacity: 0.3, emissive: '#ff9440', emissiveIntensity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+    const paneM = new THREE.MeshStandardMaterial({ color: '#b9c6c6', roughness: 0.06, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false });
     for (const [x, out] of [[CX0, -1], [CX1, 1]] as const) {
       b.box(x, DY + WY0 / 2, mid, 0.12, WY0, len, wall, 0, false);
       b.box(x, DY + (WY1 + CH) / 2, mid, 0.12, CH - WY1, len, wall, 0, false);
@@ -439,9 +439,6 @@ export function buildRigs(ctx: Ctx) {
         for (const y of [WY0 - 0.025, WY1 + 0.025]) b.box(x + out * 0.02, DY + y, z, 0.17, 0.05, 0.89, trimM, 0, false);
         b.box(x + out * 0.05, DY + WY0 - 0.06, z, 0.2, 0.03, 0.98, trimM, 0, false);
         b.box(x, DY + (WY0 + WY1) / 2, z, 0.03, WY1 - WY0, 0.025, trimM, 0, false);
-        // a shutter folded back against the wall beside it (one has dropped a hinge)
-        const sh = b.box(x + out * 0.085, DY + (WY0 + WY1) / 2 - (z < -2 && out > 0 ? 0.06 : 0), z + 0.86, 0.03, WY1 - WY0 + 0.08, 0.72, MAT.wood, 0, false);
-        if (z < -2 && out > 0) sh.rotation.x = 0.09;
       }
       // corner boards, a skirting board and the fascia under the roof
       for (const z of [CZ0, CZ1]) b.box(x + out * 0.02, DY + CH / 2, z, 0.2, CH, 0.2, trimM, 0, false);
@@ -487,7 +484,6 @@ export function buildRigs(ctx: Ctx) {
       const glim = new THREE.PointLight('#ff8a3a', 1.5, 2.6, 1.4);
       glim.position.set(cx + 0.3, DY + 0.9, cz - 2.6);
       scene.add(glim);
-      world.updaters.push(() => { paneM.emissiveIntensity = 0.04 + night() * 0.5; });
     }
     // inside: bunk, strongbox, drawers, the overturned table, the man in the chair
     b.box(-1.25, DY + 0.28, -3.0, 0.9, 0.5, 2.4, MAT.paleWood);

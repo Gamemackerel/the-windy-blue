@@ -37,7 +37,7 @@ function atollLocal(lx: number, lz: number) {
 }
 export const atollHeight = (x: number, z: number) => atollLocal(x - ATOLL.x, z - ATOLL.z);
 
-type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'take' | 'hold' | 'throw' | 'dying' | 'dead';
+type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'take' | 'hold' | 'throw' | 'submerge' | 'dying' | 'dead';
 
 export interface GiantHooks {
   wreck: () => void; push: (ax: number, az: number) => void;
@@ -349,7 +349,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
 
   // spray
   const NP = 5000;
-  const pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
+  const pPos = new Float32Array(NP * 3).fill(-500), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
   const pGeo = new THREE.BufferGeometry();
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
   const spray = new THREE.Points(pGeo, new THREE.PointsMaterial({ map: softDot(), color: '#dfe6e6', size: 0.42, transparent: true, opacity: 0.32, depthWrite: false, sizeAttenuation: true }));
@@ -457,12 +457,15 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       state.set('giantStamp', state.data.day);
       setVisual();
     }
-    if (pd > 900 && phase !== 'asleep' && alive) { setPhase('asleep'); sinkT = -0.78; sink = -0.78; }
-    if (pd > 900) { spray.visible = false; return; }
-    spray.visible = true;
+    // From midnight until a little before dawn it stands up out of its hole and watches the stars, whether or not anyone is near.
+    const starTime = ctx.env.time < 0.236;
+    const nightNow = ctx.env.daylight < 0.15;
+    const far = pd > 900;
+    if (far && alive && phase !== 'asleep' && phase !== 'stargaze' && phase !== 'emerge' && phase !== 'submerge') { setPhase('submerge'); sfx('giant-sink'); }
+    spray.visible = !far;
 
     // ---- particles and rings (always, so splashes finish)
-    for (let i = 0; i < NP; i++) {
+    if (!far) for (let i = 0; i < NP; i++) {
       if (pLife[i] <= 0) continue;
       pLife[i] -= dt;
       if (pLife[i] <= 0) { pPos[i * 3 + 1] = -500; continue; }
@@ -505,6 +508,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       if (body) { world.remove(body); body = null; }
       if (hooks.held()) hooks.hold(false);
       if ((sailing && bd < 62) || (hooks.swimming() && pd < 75)) { setPhase('emerge'); yaw = sailing ? toBoat : Math.atan2(pp.x - cx, pp.z - cz); sfx('giant-rise', 1.6); }
+      else if (starTime) { setPhase('emerge'); sfx('giant-rise', 1.6); }
       root.visible = false;
       return;
     }
@@ -515,12 +519,12 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       const dy = angDiff(toBoat, yaw);
       yaw += THREE.MathUtils.clamp(dy, -0.11 * dt, 0.11 * dt) * (phase === 'stargaze' ? 0 : 1);
       away = bd > 235 ? away + dt : 0;
-      if (away > 45 && phase === 'watch') { setPhase('asleep'); sinkT = sink = -0.78; sfx('giant-sink'); return; }
+      if (away > 45 && phase === 'watch' && !(starTime && nightNow)) { setPhase('submerge'); sfx('giant-sink'); }
     }
     root.updateMatrixWorld(true);
     rig.worldToLocal(boatL.copy(boatW));
 
-    const nightSky = ctx.env.daylight < 0.15;
+    const nightSky = nightNow;
     switch (phase) {
       case 'emerge': {
         const k = Math.min(1, tau / 14);
@@ -562,8 +566,14 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       }
       case 'stargaze': {
         leanT = -0.06; sinkT = -0.02;
+        if (!starTime && bd > 235) { setPhase('submerge'); sfx('giant-sink'); break; }      // back down before the light comes
         attention = bd < 150 && sailing ? attention + dt : Math.max(0, attention - dt);
         if (!nightSky || attention > 2.5 || provoked > 0) { setPhase('watch'); idle = 5; attention = 0; }
+        break;
+      }
+      case 'submerge': {
+        leanT = 0; sinkT = -0.8;
+        if (sink < -0.76) { sink = sinkT = -0.78; setPhase('asleep'); }
         break;
       }
       case 'peer': {

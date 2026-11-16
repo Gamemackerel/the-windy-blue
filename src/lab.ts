@@ -10,6 +10,7 @@ import { Figure, J } from './figure';
 
 export const LAB = { x: 720, z: 220 };
 const FLOOR = -14, CEIL = -10;
+const _bm = new THREE.Matrix4();
 
 export const JOURNALS = [
   'Subject has outgrown the third tank. We have stopped pretending the growth curve means anything.\n\nMoving it to the sea pen tonight.',
@@ -29,23 +30,27 @@ export function buildLab(ctx: Ctx) {
   const pp = ctx.playerPos();
 
   // ---------- surface pontoon and hatch ----------
-  b.box(0, 0.1, 0, 9, 0.8, 9, MAT.rust);
-  b.box(0, 0.52, 0, 8.8, 0.04, 8.8, MAT.steel, 0, false);
-  for (const [x, z] of [[-4.6, -4.6], [4.6, -4.6], [-4.6, 4.6], [4.6, 4.6]] as const) b.cyl(x, z, 0.5, -0.6, 0.9, MAT.whiteSteel, false, 0.5, 12);
-  b.cyl(0, 0.6, 1.5, 0.5, 3.0, MAT.whiteSteel, true, 1.5, 20);
-  b.mesh(new THREE.SphereGeometry(1.5, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.whiteSteel, 0, 3.0, 0.6).scale.y = 0.45;
-  b.box(0, 1.55, -0.93, 0.95, 1.9, 0.08, MAT.dark, 0, false);
+  // The pontoon floats directly over the entry shaft, so the way down is under its dome and nothing stands alone in the sea.
+  const PX = -9.2, PZ = -0.6, pcx = cx + PX, pcz = cz + PZ;
+  const pb = new Builder(scene, world, pcx, 0, pcz);
+  const PP = (x: number, y: number, z: number) => new THREE.Vector3(pcx + x, y, pcz + z);
+  pb.box(0, 0.1, 0, 9, 0.8, 9, MAT.rust);
+  pb.box(0, 0.52, 0, 8.8, 0.04, 8.8, MAT.steel, 0, false);
+  for (const [x, z] of [[-4.6, -4.6], [4.6, -4.6], [-4.6, 4.6], [4.6, 4.6]] as const) pb.cyl(x, z, 0.5, -0.6, 0.9, MAT.whiteSteel, false, 0.5, 12);
+  pb.cyl(0, 0.6, 1.5, 0.5, 3.0, MAT.whiteSteel, true, 1.5, 20);
+  pb.mesh(new THREE.SphereGeometry(1.5, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.whiteSteel, 0, 3.0, 0.6).scale.y = 0.45;
+  pb.box(0, 1.55, -0.93, 0.95, 1.9, 0.08, MAT.dark, 0, false);
   // the hub where the valve wheel belongs
-  b.cyl(0, -1.0, 0.05, 1.45, 1.55, MAT.dark, false, 0.05, 8).rotation.x = Math.PI / 2;
+  pb.cyl(0, -1.0, 0.05, 1.45, 1.55, MAT.dark, false, 0.05, 8).rotation.x = Math.PI / 2;
   const wheel = makeItem('wheel');
   wheel.scale.setScalar(2.2);
-  wheel.position.set(cx, 1.5, cz - 1.02);
+  wheel.position.set(pcx, 1.5, pcz - 1.02);
   wheel.visible = !!state.flag('hatch');
   scene.add(wheel);
-  b.rail(-4.3, 4.3, 4.3, 4.3, 0.54, MAT.rust); b.rail(4.3, 4.3, 4.3, -4.3, 0.54, MAT.rust); b.rail(-4.3, -4.3, -4.3, 4.3, 0.54, MAT.rust);
-  world.moorings.push({ name: 'lab', x: cx, z: cz - 7.6, psi: Math.PI / 2, dock: P(0, 0.54, -3.6) });
+  pb.rail(-4.3, 4.3, 4.3, 4.3, 0.54, MAT.rust); pb.rail(4.3, 4.3, 4.3, -4.3, 0.54, MAT.rust); pb.rail(-4.3, -4.3, -4.3, 4.3, 0.54, MAT.rust);
+  world.moorings.push({ name: 'lab', x: pcx, z: pcz - 7.6, psi: Math.PI / 2, dock: PP(0, 0.54, -3.6) });
   world.interactables.push({
-    pos: P(0, 1.5, -1.5), radius: 1.7,
+    pos: PP(0, 1.5, -1.5), radius: 1.7,
     enabled: () => !!state.flag('hatch') || state.has('wheel'),
     use: () => {
       if (!state.flag('hatch')) {
@@ -87,18 +92,29 @@ export function buildLab(ctx: Ctx) {
   for (const [x, z] of [[21, 4.5], [21, -4.5], [16.5, 4.5], [16.5, -4.5]] as const) b.bar(x, FLOOR, z, x, CEIL, z, 0.07, rib);
   for (const z of [-4.5, 4.5]) b.bar(12, CEIL, z, 21, CEIL, z, 0.08, rib);
   b.bar(21, CEIL, -4.5, 21, CEIL, 4.5, 0.08, rib);
-  // entry tube and its ladder (the way back up)
-  b.mesh(new THREE.CylinderGeometry(1.1, 1.1, 12, 18, 1, true), glass, -9.2, CEIL + 6, 0).renderOrder = 6;
-  b.bar(-9.44, FLOOR, 0, -9.44, 2, 0, 0.025, MAT.steel); b.bar(-8.96, FLOOR, 0, -8.96, 2, 0, 0.025, MAT.steel);
-  for (let y = FLOOR + 0.3; y < 2; y += 0.3) b.bar(-9.44, y, 0, -8.96, y, 0, 0.016, MAT.steel, 5);
-  world.interactables.push({ pos: P(-9.2, FLOOR + 1.2, 0.3), radius: 1.3, use: () => ctx.fade(() => { pp.set(cx, 0.54, cz - 2.4); }, 0.9) });
+  // entry shaft and its ladder (the way back up): glass panes in a steel frame, rising to the underside of the pontoon
+  {
+    const SX = -9.2, top = -0.3, hgt = top - CEIL;
+    b.mesh(new THREE.CylinderGeometry(1.1, 1.1, hgt, 12, 1, true), glass, SX, CEIL + hgt / 2, 0).renderOrder = 6;
+    for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2; b.bar(SX + Math.cos(a) * 1.1, CEIL, Math.sin(a) * 1.1, SX + Math.cos(a) * 1.1, top, Math.sin(a) * 1.1, 0.035, rib, 5); }   // mullions
+    for (let y = CEIL; y <= top + 0.01; y += hgt / 5) { const ring = b.mesh(new THREE.TorusGeometry(1.1, 0.05, 6, 24), rib, SX, y, 0); ring.rotation.x = Math.PI / 2; }
+    { const collar = b.mesh(new THREE.TorusGeometry(1.1, 0.11, 8, 24), rib, SX, CEIL, 0); collar.rotation.x = Math.PI / 2; }   // where it comes through the roof
+    world.addCyl(cx + SX, cz, 1.18, CEIL + 0.3, top);
+    b.bar(SX - 0.24, FLOOR, 0, SX - 0.24, 0.5, 0, 0.025, MAT.steel); b.bar(SX + 0.24, FLOOR, 0, SX + 0.24, 0.5, 0, 0.025, MAT.steel);
+    for (let y = FLOOR + 0.3; y < 0.5; y += 0.3) b.bar(SX - 0.24, y, 0, SX + 0.24, y, 0, 0.016, MAT.steel, 5);
+    // small lamps up the shaft: it is air in there, not sea
+    const lampM = new THREE.MeshStandardMaterial({ color: '#2a2218', emissive: '#ffcf9a', emissiveIntensity: 1.6 });
+    for (let y = CEIL + 1.5; y < top - 0.5; y += 2.4) b.mesh(new THREE.SphereGeometry(0.06, 8, 6), lampM, SX, y, -1.0, false);
+  }
+  world.interactables.push({ pos: P(-9.2, FLOOR + 1.2, 0.3), radius: 1.3, use: () => ctx.fade(() => { pp.set(pcx, 0.54, pcz - 2.4); }, 0.9) });
 
   // ---------- lights ----------
   const red = new THREE.MeshStandardMaterial({ color: '#200', emissive: '#ff1a0a', emissiveIntensity: 3 });
   const white = new THREE.MeshStandardMaterial({ color: '#ddd', emissive: '#e8f2ff', emissiveIntensity: 0 });
   const reds: THREE.PointLight[] = [], whites: THREE.PointLight[] = [];
   const stripMats: THREE.MeshStandardMaterial[] = [];
-  const zones = [-8, 0, 8, 16.5];
+  const zones = [-6, 0, 6, 16.5];       // each on a cross beam
+  b.bar(16.5, CEIL, -4.5, 16.5, CEIL, 4.5, 0.07, rib);
   zones.forEach((x) => {
     b.box(x, FLOOR + 2.6, -4.85, 0.25, 0.12, 0.12, red, 0, false);
     const r = new THREE.PointLight('#ff2010', 0, 14, 1.4);
@@ -106,9 +122,10 @@ export function buildLab(ctx: Ctx) {
     scene.add(r); reds.push(r);
     const sm = white.clone();
     stripMats.push(sm);
-    b.box(x, CEIL - 0.25, 0, 3.4, 0.08, 0.3, sm, 0, false);
+    b.box(x, CEIL - 0.13, 0, 0.26, 0.07, 3.4, sm, 0, false);
+    for (const z of [-1.5, 1.5]) b.box(x, CEIL - 0.07, z, 0.05, 0.08, 0.05, rib, 0, false);
     const w = new THREE.PointLight('#e4f0ff', 0, 16, 1.3);
-    w.position.set(cx + x, CEIL - 0.6, cz);
+    w.position.set(cx + x, CEIL - 0.5, cz);
     scene.add(w); whites.push(w);
   });
   let lit = [0, 0, 0, 0], flood = 0;
@@ -166,20 +183,30 @@ export function buildLab(ctx: Ctx) {
     for (let i = 0; i < 9; i++) { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 8), new THREE.MeshStandardMaterial({ color: '#c9c4b4', roughness: 0.6 })); v.position.set(Math.sin(i * 0.5) * 0.06, -0.6 + i * 0.15, 0); g.add(v); }
   }));
   // the centrepiece: something with the giant's proportions, the size of a child
-  const child = new Figure({ coat: '#8f9a8c', trousers: '#8f9a8c', skin: '#9aa597', hood: false, scale: 0.62, bare: true });
+  const CS = 2.35;
+  const child = new Figure({ coat: '#8f9a8c', trousers: '#8f9a8c', skin: '#9aa597', hood: false, scale: CS, bare: true });
+  const bubbles = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: '#cfe8dc', transparent: true, opacity: 0.45, depthWrite: false }), 26);
+  const bub = Array.from({ length: 26 }, (_, i) => ({ a: i * 2.4, r: 0.25 + ((i * 37) % 80) / 100, y: ((i * 53) % 100) / 100, v: 0.16 + ((i * 17) % 10) * 0.02, s: 0.012 + ((i * 29) % 10) * 0.003 }));
   floaters.push(tank(16.5, 0, 1.3, 3.2, (g) => {
     const p = child.joints;
-    p[J.hips].set(0, 0.3, 0); p[J.chest].set(0, 0.74, 0.14); p[J.head].set(0, 0.92, 0.3);
-    p[J.shL].set(0.2, 0.7, 0.14); p[J.shR].set(-0.2, 0.7, 0.14);
-    p[J.elL].set(0.26, 0.45, 0.3); p[J.haL].set(0.14, 0.5, 0.52); p[J.elR].set(-0.26, 0.45, 0.3); p[J.haR].set(-0.14, 0.5, 0.52);
-    p[J.hipL].set(0.1, 0.27, 0); p[J.hipR].set(-0.1, 0.27, 0);
-    p[J.knL].set(0.13, 0.5, 0.36); p[J.ftL].set(0.12, 0.06, 0.24); p[J.knR].set(-0.13, 0.5, 0.36); p[J.ftR].set(-0.12, 0.06, 0.24);
-    child.skirtAmount = 0; child.headPitch = 0.5;
+    // knees drawn up to the chest, arms wrapped round the shins, the head bowed onto the knees
+    p[J.hips].set(0, 0.55, 0); p[J.chest].set(0, 0.94, 0.17); p[J.head].set(0, 1.06, 0.36);
+    p[J.shL].set(0.19, 0.9, 0.2); p[J.shR].set(-0.19, 0.9, 0.2);
+    p[J.elL].set(0.3, 0.68, 0.34); p[J.haL].set(0.05, 0.6, 0.52); p[J.elR].set(-0.3, 0.68, 0.34); p[J.haR].set(-0.07, 0.56, 0.53);
+    p[J.hipL].set(0.1, 0.52, 0.02); p[J.hipR].set(-0.1, 0.52, 0.02);
+    p[J.knL].set(0.12, 0.88, 0.4); p[J.ftL].set(0.1, 0.44, 0.34); p[J.knR].set(-0.12, 0.86, 0.4); p[J.ftR].set(-0.1, 0.43, 0.36);
+    child.skirtAmount = 0; child.headPitch = 0.95;
     child.refresh(0);
-    child.group.position.y = -0.4;
-    g.add(child.group);
-    for (const off of [0.6, -0.5]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.6, 5), MAT.dark); tube.position.set(off, 0.8, -0.3); tube.rotation.z = off * 0.5; g.add(tube); }
+    child.group.position.set(0, -0.74 * CS, -0.24 * CS);
+    const curl = new THREE.Group();
+    curl.rotation.set(0.42, 0.5, 0.12);
+    curl.add(child.group);
+    g.add(curl);
+    for (const off of [0.5, -0.4]) { const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 5), MAT.dark); tube.position.set(off, 1.1, -0.5); tube.rotation.z = off * 0.5; g.add(tube); }
   }));
+  bubbles.position.set(cx + 16.5, FLOOR + 0.5, cz);
+  bubbles.renderOrder = 5; bubbles.frustumCulled = false;
+  scene.add(bubbles);
   // benches, an operating table, cabinets
   b.box(-6, FLOOR + 0.45, 3.9, 5, 0.9, 1.0, rib); b.box(3, FLOOR + 0.45, 3.9, 4, 0.9, 1.0, rib);
   b.box(6.5, FLOOR + 0.45, 0, 2.2, 0.9, 1.0, MAT.whiteSteel);
@@ -348,7 +375,13 @@ export function buildLab(ctx: Ctx) {
     // drifting particles give the water depth
     const SN = 900;
     const sp = new Float32Array(SN * 3);
-    for (let i = 0; i < SN; i++) { sp[i * 3] = cx + (r() - 0.5) * 80; sp[i * 3 + 1] = -22 + r() * 20; sp[i * 3 + 2] = cz + (r() - 0.5) * 60; }
+    for (let i = 0; i < SN; i++) {
+      let x = (r() - 0.5) * 80, z = (r() - 0.5) * 60;
+      const y = -22 + r() * 20;
+      // nothing drifts inside the rooms or the shaft: it is pushed out to the nearer side
+      if (x > -13 && x < 22 && Math.abs(z) < 6) z = (z < 0 ? -1 : 1) * (6.2 + r() * 8);
+      sp[i * 3] = cx + x; sp[i * 3 + 1] = y; sp[i * 3 + 2] = cz + z;
+    }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
     const snow = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#9fb4b8', size: 0.06, transparent: true, opacity: 0.5, depthWrite: false }));
@@ -408,10 +441,20 @@ export function buildLab(ctx: Ctx) {
 
     // things drift in their tanks; the eye follows you
     floaters.forEach((g, i) => {
-      g.position.y += Math.sin(t * 0.5 + i * 1.7) * 0.0006;
+      const o = (g.userData.home ??= g.position.clone()) as THREE.Vector3, k = i * 1.7;
+      // adrift: a slow wander in all three directions, each on its own time, and a lazy turning
+      g.position.set(o.x + Math.sin(t * 0.17 + k) * 0.03 + Math.sin(t * 0.41 + k * 2.1) * 0.012,
+        o.y + Math.sin(t * 0.23 + k * 1.3) * 0.035 + Math.sin(t * 0.61 + k * 0.7) * 0.015,
+        o.z + Math.sin(t * 0.19 + k * 3.1) * 0.03);
       if (g.userData.eye) { g.lookAt(pp.x, pp.y + 1.5, pp.z); }
-      else g.rotation.y = Math.sin(t * 0.12 + i) * 0.5;
+      else g.rotation.set(Math.sin(t * 0.13 + k) * 0.09, Math.sin(t * 0.07 + i) * 0.7 + Math.sin(t * 0.29 + k) * 0.08, Math.sin(t * 0.11 + k * 2.0) * 0.07);
     });
+    for (let i = 0; i < bub.length; i++) {
+      const q = bub[i], y = ((q.y + t * q.v * 0.1) % 1) * 3.2, wob = Math.sin(t * 1.7 + i) * 0.03;
+      _bm.makeScale(q.s, q.s * 1.15, q.s).setPosition(Math.cos(q.a) * q.r + wob, y, Math.sin(q.a) * q.r + Math.cos(t * 1.3 + i) * 0.03);
+      bubbles.setMatrixAt(i, _bm);
+    }
+    bubbles.instanceMatrix.needsUpdate = true;
     (out.userData.sway as { value: number }).value = t;
     (out.userData.fish as (t: number) => void)(t);
     (out.userData.snow as THREE.Points).position.y = Math.sin(t * 0.05) * 0.6;

@@ -151,6 +151,7 @@ export function addPickup(ctx: Ctx, id: ItemId, key: string, pos: THREE.Vector3,
     },
   };
   world.interactables.push(it);
+  mesh.userData.it = it;
   return mesh;
 }
 

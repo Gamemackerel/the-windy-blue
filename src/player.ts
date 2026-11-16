@@ -397,6 +397,12 @@ export class Player {
       _v.set(this.pos.x + mx * speed * dt, this.pos.y, this.pos.z + mz * speed * dt);
       w.resolve(_v, RADIUS);
       this.pos.x = _v.x; this.pos.z = _v.z;
+      {
+        // the hull is in the way: a swimmer goes round it
+        const bs = this.boat.state, sn = Math.sin(bs.psi), cs = Math.cos(bs.psi), dx = this.pos.x - bs.x, dz = this.pos.z - bs.z;
+        const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs, e = Math.hypot(lx / 1.3, lz / 3.0);
+        if (e < 1 && e > 1e-3) { const k = 1 / e, nx = lx * k, nz = lz * k; this.pos.x = bs.x + nx * cs + nz * sn; this.pos.z = bs.z - nx * sn + nz * cs; }
+      }
     }
     this.speed = 0;
     const sea = waveHeight(this.pos.x, this.pos.z, t);
@@ -488,14 +494,26 @@ export class Player {
     }
     // aft hand on the tiller, forward hand on the sheet
     const aSh = aftIsLeft ? J.shL : J.shR, aEl = aftIsLeft ? J.elL : J.elR, aHa = aftIsLeft ? J.haL : J.haR;
+    f.group.worldToLocal(b.tillerGrip(_t));          // (the feet above borrowed _t)
     solveIK(p[aSh], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[aEl], p[aHa]);
     const fSh = aftIsLeft ? J.shR : J.shL, fEl = aftIsLeft ? J.elR : J.elL, fHa = aftIsLeft ? J.haR : J.haL;
     // the sheet comes back from its block to the outboard hand, held in front of the body and hauled in as it is trimmed
-    f.group.worldToLocal(b.local(-0.3 * this.sideSmooth, 0.74 + (1.5 - s.sheet) * 0.05, -0.86 - (1.5 - s.sheet) * 0.06, _u));
-    solveIK(p[fSh], _u, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[fEl], p[fHa]);
+    b.helmSide = this.sideSmooth;
     f.group.updateMatrixWorld();
-    b.group.worldToLocal(f.group.localToWorld(_w.copy(p[fHa])));
-    (b.sheetHand ??= new THREE.Vector3()).copy(_w);
+    if (b.anchorGrip) {
+      // the anchor is in this hand: the sheet is let go for the moment, and the body leans after the throw
+      f.group.worldToLocal(b.group.localToWorld(_u.copy(b.anchorGrip)));
+      const reachX = THREE.MathUtils.clamp((_u.x - p[fSh].x) * 0.35, -0.16, 0.16), dip = Math.max(0, p[fSh].y - 0.45 - _u.y) * 0.5;
+      p[J.chest].x += reachX; p[J.chest].y -= dip; p[J.chest].z += dip * 0.6; p[J.head].x += reachX * 1.2; p[J.head].y -= dip * 1.2; p[J.head].z += dip;
+      p[fSh].x += reachX; p[fSh].y -= dip; p[fSh].z += dip * 0.6;
+      solveIK(p[fSh], _u, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[fEl], p[fHa]);
+      b.sheetHand = null;
+    } else {
+      f.group.worldToLocal(b.local(-0.3 * this.sideSmooth, 0.74 + (1.5 - s.sheet) * 0.05, -0.86 - (1.5 - s.sheet) * 0.06, _u));
+      solveIK(p[fSh], _u, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[fEl], p[fHa]);
+      b.group.worldToLocal(f.group.localToWorld(_w.copy(p[fHa])));
+      (b.sheetHand ??= new THREE.Vector3()).copy(_w);
+    }
 
     f.skirtAmount = 0.55;
     // eyes forward, glancing up at the sail now and then

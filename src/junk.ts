@@ -214,6 +214,8 @@ export const JUNK: Record<string, Maker> = {
     const m = JM.plastic;
     const t = add(g, lathe([[0.001, 1.5], [0.045, 1.5], [0.05, 1.44], [0.17, 1.4], [0.18, 1.28], [0.13, 1.1], [0.15, 0.95], [0.13, 0.9], [0.001, 0.9]], 18), m);
     t.scale.z = 0.6;
+    t.material = (plastic2 ??= Object.assign(localClone(m), { side: THREE.DoubleSide }));       // the turned shell is seen from both sides
+    add(g, new THREE.SphereGeometry(0.15, 14, 10), m, 0, 0.92, 0).scale.set(1, 0.6, 0.62);           // hips, closing it underneath
     const head = add(g, new THREE.SphereGeometry(0.095, 16, 12), m, 0, 1.6, 0); head.scale.set(0.85, 1.15, 1);   // no face
     for (const s of [-1, 1]) {
       add(g, new THREE.CapsuleGeometry(0.062, 0.36, 3, 10), m, s * 0.085, 0.68, 0);
@@ -276,6 +278,8 @@ export const JUNK: Record<string, Maker> = {
 
 const SMALL = ['can', 'can', 'bottle', 'bottle', 'book', 'bookopen', 'pages', 'kettle', 'board', 'gear', 'spring', 'piston', 'valve', 'clock', 'telephone'];
 const MEDIUM = ['monitor', 'tower', 'keyboard', 'bookstack', 'radio', 'suitcase', 'typewriter', 'lampdesk', 'chair', 'tyre', 'pipe'];
+let plastic2: THREE.Material | null = null;
+const localClone = (m: THREE.Material) => { const c = m.clone(); c.onBeforeCompile = m.onBeforeCompile; c.customProgramCacheKey = m.customProgramCacheKey; return c; };
 const LARGE = ['fridge', 'engine', 'mannequin', 'lampfloor', 'bust', 'column', 'stonehead', 'tyre', 'chair', 'suitcase'];
 const STONE = ['bust', 'column', 'stonehead', 'column'];
 const MACHINE = ['gear', 'gear', 'piston', 'spring', 'pipe', 'valve', 'engine', 'tyre', 'can'];

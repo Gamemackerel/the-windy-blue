@@ -9,6 +9,7 @@ import { World } from './world';
 
 const _t = new THREE.Vector3(), _u = new THREE.Vector3(), _w = new THREE.Vector3();
 const POLE_KNEE = new THREE.Vector3(0, 0.4, 1), POLE_L = new THREE.Vector3(0.55, -1, -0.35), POLE_R = new THREE.Vector3(-0.55, -1, -0.35);
+const _pole = new THREE.Vector3(), _poleOut = new THREE.Vector3(-0.5, -1, 0.15);   // elbow down and a little out: the forearm comes up to the mouth beside the chest
 const _fq = new THREE.Quaternion(), _hq = new THREE.Quaternion(), _tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.22, 0.25, 0));
 const { UARM, FARM, THIGH, SHIN, SH_W, HIP_W } = LIMB;
 
@@ -66,6 +67,9 @@ export class Npc {
   private puffI = 0;
   private wasAtMouth = false;
   private drag = 0;
+  /** the thing being given, held out in the left hand until the player takes it */
+  private offered: THREE.Object3D | null = null;
+  private holdK = 0;
   readonly chest = new THREE.Vector3();
 
   constructor(private ctx: Ctx, readonly spec: NpcSpec, private playerHand: () => THREE.Vector3, private playerPos: () => THREE.Vector3) {
@@ -143,8 +147,14 @@ export class Npc {
     if (!s.gives || !s.giveSpot) return;
     const due = this.traded() || this.condition > 0;
     if (!due || this.ctx.state.flag('got_trade_' + s.key)) return;
-    if (!restoring) { this.reach = 0.001; this.ctx.sfx('place', s.giveSpot); }
-    addPickup(this.ctx, s.gives, 'trade_' + s.key, s.giveSpot, { scale: s.gives === 'chart' ? 1.4 : 1.2 });
+    if (this.offered) {
+      // they were holding it out and can no longer: it falls where they stood
+      if (this.condition > 0) { this.offered.position.copy(s.giveSpot); (this.offered.userData.it as { pos: THREE.Vector3 }).pos.copy(s.giveSpot); this.offered = null; this.ctx.sfx('place', s.giveSpot); }
+      return;
+    }
+    const mesh = addPickup(this.ctx, s.gives, 'trade_' + s.key, s.giveSpot, { scale: s.gives === 'chart' ? 1.4 : 1.2 });
+    if (mesh && this.condition === 0) this.offered = mesh;        // unhurt: it stays in the hand, held out, until it is taken
+    else if (!restoring) this.ctx.sfx('place', s.giveSpot);
   }
 
   /** a bullet has struck this joint, travelling along dir */
@@ -220,7 +230,8 @@ export class Npc {
       const e = k * k * (3 - 2 * k);
       // the wrist stops below the chin so the fingertips, and the cigarette in them, reach the lips
       // the hand comes up in front of the collar and stops there, held easy; the head bends to it
-      _t.set(p[J.head].x - 0.09, p[J.head].y - 0.25, p[J.head].z + 0.2);
+      // all the way to the mouth: the wrist stops just under the chin so the fingers, and the cigarette, reach the lips
+      _t.set(p[J.head].x - 0.04, p[J.head].y - 0.175, p[J.head].z + 0.125);
       hR.lerp(_t, e);
       this.drag = e;
       atMouth = c > 1.1 && c < 2.6;
@@ -228,14 +239,27 @@ export class Npc {
       if (this.wasAtMouth && !atMouth) this.exhale();
       this.wasAtMouth = atMouth;
     }
+    // holding something out: the arm stays out toward whoever it is for
+    this.holdK += ((this.offered ? 1 : 0) - this.holdK) * Math.min(1, dt * 3.5);
+    if (this.holdK > 0.01) {
+      this.figure.group.worldToLocal(_t.copy(this.playerPos())); _t.y = 0;
+      const d = Math.hypot(_t.x, _t.z) || 1, ax = THREE.MathUtils.clamp(_t.x / d, -0.5, 0.9), az = Math.max(0.5, _t.z / d);
+      _t.set(p[J.shL].x + ax * 0.42, p[J.chest].y - 0.16 + Math.sin(t * 0.9) * 0.006, p[J.shL].z + az * 0.44);
+      hL.lerp(_t, this.holdK);
+    }
     // taking or giving: the left hand goes out
-    if (this.reach > 0) {
+    if (this.reach > 0 && !this.offered) {
       const e = Math.sin(Math.min(1, this.reach) * Math.PI);
       this.figure.group.worldToLocal(_t.copy(this.playerHand()));
       _t.y = Math.max(_t.y, 0.5);
       hL.lerp(_t, e * 0.85);
     }
     limbs(p, hL, hR, fL, fR);
+    // bringing the cigarette up: the elbow swings out to the side so the arm folds beside the body instead of into it
+    if (this.drag > 0.01) {
+      _pole.copy(POLE_R).lerp(_poleOut, this.drag);
+      solveIK(p[J.shR], hR, UARM, FARM, _pole, p[J.elR], p[J.haR]);
+    }
   }
 
   private exhale() {
@@ -300,7 +324,7 @@ export class Npc {
       wantPitch = THREE.MathUtils.clamp(-Math.atan2(_t.y - f.joints[J.head].y, Math.hypot(_t.x, _t.z)), -0.5, 0.6);
       if (this.lookAway > 0) { wantYaw = -Math.sign(wantYaw || 1) * 0.9; wantPitch = 0.15; }
     } else wantYaw = Math.sin(this.t * 0.13) * 0.35;
-    wantPitch += this.drag * 0.38; wantYaw = wantYaw * (1 - this.drag * 0.7) - this.drag * 0.25;                       // the head dips a little to meet the hand
+    wantPitch += this.drag * 0.14; wantYaw = wantYaw * (1 - this.drag * 0.6) - this.drag * 0.12;                       // the head dips a little to meet the hand
     f.headYaw += (wantYaw - f.headYaw) * Math.min(1, dt * 2.2);
     f.headPitch += (wantPitch - f.headPitch) * Math.min(1, dt * 2.2);
     f.refresh(0);
@@ -311,6 +335,14 @@ export class Npc {
       this.cig.quaternion.copy(_hq).multiply(_fq);
     }
     f.group.localToWorld(this.chest.copy(f.joints[J.chest]));
+    if (this.offered) {
+      if (!this.offered.visible) this.offered = null;                                   // taken
+      else {
+        f.group.localToWorld(_t.copy(f.joints[J.haL])); _t.y += 0.045;
+        this.offered.position.copy(_t);
+        (this.offered.userData.it as { pos: THREE.Vector3 }).pos.copy(_t);
+      }
+    }
   }
 }
 

@@ -455,6 +455,7 @@ export class Figure {
       _e.set(0, -1, 0).multiplyScalar(1 - blow * 0.85);
       if (wl > 0.01) _e.addScaledVector(this.wind, blow / wl);
       _e.normalize();
+      { const fwd = _e.dot(_c); if (fwd > -0.3) _e.addScaledVector(_c, -(fwd + 0.3)).normalize(); }   // always trailing behind: it never passes forward through the neck and chest
       for (let i = 0; i < 8; i++) {
         const k = i / 7, fl = Math.sin(now * 13 - k * 5) * 0.022 * k * (0.25 + blow) + Math.sin(now * 21 - k * 9) * 0.008 * k * blow;
         _tmp.copy(hips).addScaledVector(_a, len * 1.12).addScaledVector(_c, -0.1).addScaledVector(_b, -0.05).addScaledVector(_e, 0.3 * k).addScaledVector(_b, fl);
