@@ -824,6 +824,7 @@ function frame() {
   }
   arms.group.visible = !rig.scope && !outside && !title;
   arms.heldGun = player.held === 'revolver';
+  arms.aiming = aiming;
   let heldAt: THREE.Vector3 | null = null;
   if (player.held && !carry) {
     heldAt = _held.copy(viewModel.position);
@@ -866,7 +867,11 @@ function frame() {
     const k = Math.min(1, dt * 10), out = player.reaching;
     // the revolver is held at the hip of the view; anything else rests on the palm, lower and further out, so the forearm runs forward under it
     const onPalm = !aiming && player.held !== 'revolver';
-    const tx = aiming ? 0.0 : onPalm ? 0.14 : 0.17, ty = (aiming ? -0.075 : onPalm ? -0.25 : -0.15) + out * 0.05, tz = (aiming ? -0.36 : onPalm ? -0.5 : -0.42) - out * 0.22;
+    // aiming, the gun comes up so that the line of its sights runs through the middle of the screen
+    let sightY = 0.075;
+    const sight = aiming ? viewModel.getObjectByName('sight') : null;
+    if (sight && sight.parent) sightY = (sight.position.y * (sight.parent as THREE.Object3D).scale.y);
+    const tx = aiming ? 0.0 : onPalm ? 0.14 : 0.17, ty = (aiming ? -sightY - 0.007 : onPalm ? -0.25 : -0.15) + out * 0.05, tz = (aiming ? -0.44 : onPalm ? -0.5 : -0.42) - out * 0.22;
     viewModel.position.x += (tx - viewModel.position.x) * k;
     viewModel.position.y += (ty - viewModel.position.y + Math.sin(t * 1.3) * 0.0015) * k;
     viewModel.position.z += (tz - viewModel.position.z) * k;
@@ -968,4 +973,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { THREE, arms, viewModel, fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { THREE, arms, viewModel, get aim() { return aimOn; }, set aim(v: boolean) { aimOn = v; }, fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

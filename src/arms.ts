@@ -6,6 +6,7 @@ import { Tube, ProfKey, bodyMaterial, fillHand, setGrip, solveIK, LIMB } from '.
 
 const _t = new THREE.Vector3(), _e = new THREE.Vector3(), _n = new THREE.Vector3(), _x = new THREE.Vector3(), _m = new THREE.Matrix4(), _pole = new THREE.Vector3();
 const FWD = new THREE.Vector3(0, 0, -1);
+const GUN_TILT = -0.38;
 
 interface Arm {
   s: number;                      // +1 left, -1 right (camera space: left is -x)
@@ -21,6 +22,8 @@ export class Arms {
   carry: { obj: THREE.Object3D; size: number } | null = null;
   /** what the right hand holds is the revolver (gripped) rather than something carried on the palm */
   heldGun = false;
+  /** looking down the sights: the right arm is left out of the picture */
+  aiming = false;
   private arms: Arm[] = [];
   private sway = 0;
 
@@ -121,7 +124,11 @@ export class Arms {
       _x.crossVectors(_e, _n);
       _m.makeBasis(_x, _e, _n);
       a.hand.quaternion.setFromRotationMatrix(_m);
+      if (i === 1 && this.heldGun) a.hand.rotateX(GUN_TILT);           // the fist rolled forward a little, the way a pistol is held
       a.hand.position.copy(a.wr).addScaledVector(_e, -0.02);
+      // looking down the sights there is no hand: just the gun
+      const show = !(i === 1 && this.aiming);
+      a.hand.visible = show; a.tube.mesh.visible = show;
     }
   }
 }

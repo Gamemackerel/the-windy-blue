@@ -60,6 +60,7 @@ export function makeItem(id: ItemId): THREE.Group {
       const barrel = m(new THREE.CylinderGeometry(0.0085, 0.0095, 0.13, 12), blued, 0, gy + 0.018, gz + 0.11); barrel.rotation.x = Math.PI / 2; g.add(barrel);
       const rod = m(new THREE.CylinderGeometry(0.0035, 0.0035, 0.1, 6), worn, 0, gy + 0.004, gz + 0.1); rod.rotation.x = Math.PI / 2; g.add(rod);
       g.add(m(new THREE.BoxGeometry(0.003, 0.008, 0.012), blued, 0, gy + 0.03, gz + 0.168));
+      { const notch = new THREE.Object3D(); notch.name = 'sight'; notch.position.set(0, gy + 0.034, gz); g.add(notch); }   // the line of the sights
       // hammer, trigger guard, trigger
       const hammer = m(new THREE.BoxGeometry(0.008, 0.024, 0.012), worn, 0, gy + 0.036, gz - 0.03); hammer.rotation.x = -0.6; g.add(hammer);
       const guard = m(new THREE.TorusGeometry(0.019, 0.003, 6, 14, Math.PI), blued, 0, gy - 0.022, gz + 0.006); guard.rotation.set(0, Math.PI / 2, Math.PI); g.add(guard);
