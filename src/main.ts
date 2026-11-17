@@ -612,7 +612,7 @@ setSound(localStorage.getItem('ww-sound') !== '0');
 const keysEl = document.getElementById('keys')!;
 const hints = location.search === '';                 // never in test or report views
 let keysT = 0, sailSlow = 0, nagT = 0;
-const WALK_KEYS = '<b>↑ ↓ ← →</b>move<i>·</i><b>E</b>interact<i>·</i><b>Tab</b>satchel';
+const WALK_KEYS = '<b>W A S D</b>move<i>·</i><b>E</b>interact<i>·</i><b>Tab</b>satchel';
 const SAIL_KEYS = '<b>A D</b>tiller<i>·</i><b>W S</b>haul in, let out<br><b>F</b>anchor<i>·</i><b>E</b>ashore<i>·</i><b>Wheel</b>view<i>·</i><b>H</b>this';
 function showKeys(html: string, secs: number) { keysEl.innerHTML = html; keysEl.style.opacity = '0.9'; keysT = secs; }
 function hideKeys() { keysEl.style.opacity = '0'; keysT = 0; }
