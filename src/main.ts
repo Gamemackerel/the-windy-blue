@@ -419,9 +419,9 @@ if (title) {
       if (!title && titleEl.style.display === 'none') return;
       const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
       // the wind: long lulls and gusts, and the cloth answers it with a little lag
-      const want = 0.25 + 0.75 * Math.pow(noise(t * 0.22) * 0.7 + noise(t * 0.61 + 9) * 0.3, 1.6);
-      gust += (want - gust) * Math.min(1, dt * 1.4);
-      phase += dt * (1.6 + 3.2 * gust);
+      const want = 0.3 + 0.7 * Math.pow(noise(t * 0.09) * 0.75 + noise(t * 0.23 + 9) * 0.25, 1.6);
+      gust += (want - gust) * Math.min(1, dt * 0.5);
+      phase += dt * (0.5 + 0.8 * gust);                        // slow: a long easy swell through the cloth
       vc.setTransform(1, 0, 0, 1, 0, 0);
       vc.clearRect(0, 0, view.width, view.height);
       // two flags, one for each word, each fixed along its own left edge and blowing on its own
@@ -431,12 +431,12 @@ if (title) {
         let x = x0;
         for (let sx = x0; sx < x1; sx += SW) {
           const u = (sx - x0) / span;                             // 0 at the hoist .. 1 at the fly
-          const amp = Math.pow(u, 0.85) * (0.05 + 0.07 * gust) * Hd;
+          const amp = Math.pow(u, 0.85) * (0.022 + 0.026 * gust) * Hd;
           const k = 1.5 + 0.9 * gust;                             // a shorter flag carries fewer waves
-          const a1 = u * k * Math.PI * 2 - phase - wd.ph, a2 = u * k * 4.1 - phase * 1.7 + 1.3 + wd.ph;
-          const lift = Math.sin(a1) + 0.35 * Math.sin(a2);
+          const a1 = u * k * Math.PI * 2 - phase - wd.ph, a2 = u * k * 4.1 - phase * 1.4 + 1.3 + wd.ph;
+          const lift = Math.sin(a1) + 0.2 * Math.sin(a2);
           const slope = Math.cos(a1) + 0.5 * Math.cos(a2);
-          const sag = u * u * (1 - gust) * 0.12 * Hd;             // in a lull the free end droops
+          const sag = u * u * (1 - gust) * 0.045 * Hd;            // in a lull the free end droops a little
           const dy = amp * lift * 0.55 + sag;
           // the cloth turning away from the eye takes up less width across the screen
           const turn = Math.min(1, Math.abs(slope) * amp / Hd * 3.5);

@@ -374,7 +374,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   let blink = 0, blinkAt = 4, lidOpen = 1;
   let acting = 0;                // which hand is busy
   const strike = new THREE.Vector3();
-  let rollA = 0, forced = false;   // forced: woken for a test, whatever the hour
+  let rollA = 0, forced = false, nightUp = false;   // forced: woken for a test, whatever the hour
   let struck = false, away = 0, idle = 3, attention = 0, provoked = 0, onFoot = false, subFrom = 0;
   let sheet = 0;                 // water still pouring off after surfacing
   let body: CylCollider | null = null;
@@ -462,7 +462,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       setVisual();
     }
     // From midnight until a little before dawn it stands up out of its hole and watches the stars, whether or not anyone is near.
-    const starTime = ctx.env.time < 0.236 || forced;
+    const starTime = ctx.env.time < 0.2222 || forced;          // midnight until 05:20
     const nightNow = ctx.env.daylight < 0.15;
     const far = pd > 900;
     if (far && alive && phase !== 'asleep' && phase !== 'stargaze' && phase !== 'emerge' && phase !== 'submerge') { setPhase('submerge'); sfx('giant-sink'); }
@@ -512,7 +512,8 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       if (body) { world.remove(body); body = null; }
       if (hooks.held()) hooks.hold(false);
       // it keeps to the night: it comes up at midnight (and only then will a boat or a swimmer draw its eye)
-      if (starTime) { setPhase('emerge'); yaw = sailing && bd < 230 ? toBoat : hooks.swimming() && pd < 230 ? Math.atan2(pp.x - cx, pp.z - cz) : yaw; sfx('giant-rise', 1.6); }
+      if ((sailing && bd < 62) || (hooks.swimming() && pd < 75)) { nightUp = false; setPhase('emerge'); yaw = sailing ? toBoat : Math.atan2(pp.x - cx, pp.z - cz); sfx('giant-rise', 1.6); }   // by day, something over the hole wakes it
+      else if (starTime) { nightUp = true; setPhase('emerge'); yaw = sailing && bd < 230 ? toBoat : hooks.swimming() && pd < 230 ? Math.atan2(pp.x - cx, pp.z - cz) : yaw; sfx('giant-rise', 1.6); }
       root.visible = false;
       return;
     }
@@ -523,7 +524,9 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       const dy = angDiff(toBoat, yaw);
       yaw += THREE.MathUtils.clamp(dy, -0.11 * dt, 0.11 * dt) * (phase === 'stargaze' ? 0 : 1);
       away = bd > 235 ? away + dt : 0;
-      if (!starTime && phase !== 'submerge' && phase !== 'take' && phase !== 'hold' && phase !== 'throw') { setPhase('submerge'); sfx('giant-sink'); }   // before dawn it goes back down, whatever it was doing
+      const busy = phase === 'submerge' || phase === 'take' || phase === 'hold' || phase === 'throw' || phase === 'emerge';
+      if (!starTime && nightUp && !busy) { nightUp = false; setPhase('submerge'); sfx('giant-sink'); }        // up for the night: at 05:20 it goes back down, whatever it was doing
+      else if (!nightUp && away > 45 && phase === 'watch') { setPhase('submerge'); sfx('giant-sink'); }      // woken by day: once the boat has gone, it goes back down
     }
     root.updateMatrixWorld(true);
     rig.worldToLocal(boatL.copy(boatW));
@@ -571,7 +574,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       }
       case 'stargaze': {
         leanT = -0.06; sinkT = -0.02;
-        if (!starTime && bd > 235) { setPhase('submerge'); sfx('giant-sink'); break; }      // back down before the light comes
+        if (!starTime && bd > 235) { nightUp = false; setPhase('submerge'); sfx('giant-sink'); break; }      // back down before the light comes
         attention = bd < 150 && sailing ? attention + dt : Math.max(0, attention - dt);
         if (!nightSky || attention > 2.5 || provoked > 0) { setPhase('watch'); idle = 5; attention = 0; }
         break;
@@ -579,7 +582,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       case 'submerge': {
         leanT = 0.04;
         if (tau < 0.05) subFrom = sink;
-        const EYES = -0.288;                                     // the sea at the lower lids
+        const EYES = -0.272;                                     // the sea just under the eyes
         const sm = (x: number) => x * x * (3 - 2 * x);
         if (tau < 9) sink = subFrom + (EYES - subFrom) * sm(tau / 9);
         else if (tau < 13) { sink = EYES; if (tau > 11 && tau < 11.05) blink = 0.6; }
