@@ -124,7 +124,7 @@ export function buildGiantBody(material: THREE.Material) {
     const k0 = Math.hypot(px, py, pz), k1 = Math.hypot(px / 0.258, py / 0.15, pz / 0.155);
     return Math.max((k0 * (k0 - 1)) / Math.max(k1, 1e-6), -(y + 0.085));
   } });
-  const neckP = profile([[0.072, 0.21], [0.073, 0.14], [0.077, 0.1], [0.086, 0.075], [0.095, 0.055], [0.085, 0.03], [0.06, 0.01]]);   // into the slope of the shoulders, and no further
+  const neckP = profile([[0.088, 0.2], [0.094, 0.15], [0.103, 0.1], [0.115, 0.07], [0.125, 0.05], [0.11, 0.025], [0.08, 0.01]]);   // a thick column, nearly as broad as the jaw, widening into the shoulders   // into the slope of the shoulders, and no further
   prims.push({ bone: idx(body), k: 0.045, cx: 0, cy: 0.1, cz: 0, br: 0.25, f: (x, y, z) => {
     neckP.at(y, o);
     const rho = Math.hypot(x, (z - 0.005) / 0.82);
