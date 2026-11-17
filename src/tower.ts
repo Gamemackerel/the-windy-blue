@@ -68,7 +68,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
     // the landing is broad: it starts at the wall and reaches well out beyond the line of the stair, room to stand back and face the door
     const LW = 6.0, rr = towerR(top) - 0.02 + LW / 2, span = 0.42, N = 10;
     for (let i = 0; i < N; i++) {
-      const am = aEnd + ((i + 0.5) / N) * span, len = (rr * span) / N + 0.06, yaw = am + Math.PI / 2;
+      const am = aEnd + ((i + 0.5) / N) * span, len = ((rr + LW / 2) * span) / N + 0.1, yaw = am + Math.PI / 2;   // long enough at the outer edge that neighbours overlap
       const tread = new THREE.Mesh(new THREE.BoxGeometry(LW, 0.5, len), matte);
       tread.position.set(cx + Math.sin(am) * rr, top - 0.25, cz + Math.cos(am) * rr);
       tread.rotation.y = yaw; tread.receiveShadow = true; tread.userData.static = true;
@@ -83,23 +83,26 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   }
   // the door: a seam in the stone and a slab a shade less reflective
   const da = aEnd + 0.12;
+  const reveals: THREE.Mesh[] = [];
   const door = new THREE.Mesh(new THREE.BoxGeometry(7, 15, 0.5), new THREE.MeshStandardMaterial({ color: '#030304', roughness: 0.03, metalness: 0.8 }));
-  // the door is part of the face of the tower: a slab flush with the wall, picked out only by a hairline seam and a shade more gloss
-  door.geometry = new THREE.BoxGeometry(7, 15, 0.06);
-  door.position.set(cx + Math.sin(da) * (tR + 0.035), top + 7.5, cz + Math.cos(da) * (tR + 0.035));
+  // the door is a great block set into the tower and standing a little proud of it: it starts well inside the wall
+  // and comes out past the face, so it reads as a door, and it sinks into the landing when it opens
+  door.geometry = new THREE.BoxGeometry(7, 15, 1.4);
+  door.position.set(cx + Math.sin(da) * (tR - 0.4), top + 7.5, cz + Math.cos(da) * (tR - 0.4));
   door.rotation.y = da;
+  door.castShadow = true;
   scene.add(door);
-  // when it has gone, what is behind it is simply dark
-  const opening = new THREE.Mesh(new THREE.PlaneGeometry(7, 15), new THREE.MeshBasicMaterial({ color: '#1c2e36' }));   // the faint cold light of the store inside
-  opening.position.set(cx + Math.sin(da) * (tR + 0.02), top + 7.5, cz + Math.cos(da) * (tR + 0.02));
+  // once it has gone, the doorway looks into the store
+  const openingM = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 1.36, 1.42) });
+  const opening = new THREE.Mesh(new THREE.PlaneGeometry(7, 15), openingM);
+  opening.position.set(cx + Math.sin(da) * (tR + 0.04), top + 7.5, cz + Math.cos(da) * (tR + 0.04));   // on the face: the tower itself is solid behind it
   opening.rotation.y = da; opening.visible = false;
   scene.add(opening);
-  // the seam round the door: thin strips lying in the face of the wall
-  const seamM = new THREE.MeshBasicMaterial({ color: '#000' });
-  for (const [w, h, x, y] of [[0.06, 15.1, -3.53, 7.5], [0.06, 15.1, 3.53, 7.5], [7.1, 0.06, 0, 15.03]] as const) {
-    const seam = new THREE.Mesh(new THREE.PlaneGeometry(w, h), seamM);
-    seam.position.set(cx + Math.sin(da) * (tR + 0.07) + Math.cos(da) * x, top + y, cz + Math.cos(da) * (tR + 0.07) - Math.sin(da) * x);
-    seam.rotation.y = da; scene.add(seam);
+  // the reveal of the doorway: the thickness of the wall either side and over the top
+  for (const [w, h, x, y] of [[0.05, 15, -3.5, 7.5], [0.05, 15, 3.5, 7.5], [7, 0.05, 0, 15]] as const) {
+    const side = new THREE.Mesh(new THREE.BoxGeometry(w < 1 ? 0.08 : w, h < 1 ? 0.08 : h, 1.1), matte);
+    side.position.set(cx + Math.sin(da) * (tR - 0.5) + Math.cos(da) * x, top + y, cz + Math.cos(da) * (tR - 0.5) - Math.sin(da) * x);
+    side.rotation.y = da; side.visible = false; scene.add(side); reveals.push(side);
   }
   // the pad: twelve glyphs on a plinth beside the door
   const pad = new THREE.Group();
@@ -134,10 +137,10 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   const flash = new Float32Array(12);
   const isOpen = () => !!state.flag('towerOpen');
   const openDoor = (instant: boolean) => {
-    opening.visible = true;
-    if (instant) { door.position.y = top - 8.2; return; }
+    opening.visible = true; for (const r of reveals) r.visible = true;
+    if (instant) { door.visible = false; return; }
     ctx.sfx('gate', door.position, 1.6);
-    world.tween(7, (k) => { door.position.y = top + 7.5 - 15.7 * k * k * (3 - 2 * k); });
+    world.tween(7, (k) => { door.position.y = top + 7.5 - 15.7 * k * k * (3 - 2 * k); }, () => { door.visible = false; });   // gone down into the stair
   };
   if (isOpen()) openDoor(true);
   world.interactables.push({
@@ -182,9 +185,10 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   // through the door
   const outside = new THREE.Vector3(cx + Math.sin(da) * (tR + 2.5), top, cz + Math.cos(da) * (tR + 2.5));
   const inner = buildTowerInterior(ctx, { cx, cz, floor: top, top: TOWER.h, doorAngle: da, hooks, exit: outside });
+  openingM.map = inner.portal; openingM.needsUpdate = true;
   world.interactables.push({
     pos: new THREE.Vector3(cx + Math.sin(da) * (tR + 0.8), top + 1.2, cz + Math.cos(da) * (tR + 0.8)), radius: 2.6,
-    enabled: () => isOpen() && door.position.y < top - 6,
+    enabled: () => isOpen() && (!door.visible || door.position.y < top - 6),
     use: () => ctx.fade(() => { ctx.playerPos().copy(inner.enter); ctx.sfx('door', inner.enter); }, 0.9),
   });
 

@@ -59,7 +59,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
 
   // ------------------------------------------------------------ shell, floors
   {
-    const wall = add(new THREE.Mesh(new THREE.CylinderGeometry(WR, WR, ROOF - F0, 72, 1, true), wallM));
+    const wall = add(new THREE.Mesh(new THREE.CylinderGeometry(WR, WR, ROOF - F0, 200, 1, true), wallM));
     wall.position.set(cx, (F0 + ROOF) / 2, cz);
     const disc = (y: number, r: number, mat: THREE.Material, up: boolean, r0 = 0) => {
       const m = add(new THREE.Mesh(r0 ? new THREE.RingGeometry(r0, r, 64) : new THREE.CircleGeometry(r, 64), mat));
@@ -284,7 +284,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   for (let i = 1; i < tankA.length; i += 3) {
     const a = (tankA[i] + tankA[i - 1]) / 2, y = stairY((a - A0) / (TURNS * Math.PI * 2)) + 4.4;
     const fix = add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.3), fixM)); fix.position.copy(at(a, WR - 0.2, y)); fix.rotation.y = a;
-    const glow = new THREE.Sprite(glowM); glow.position.copy(at(a, WR - 0.6, y - 0.2)); glow.scale.set(9, 7, 1); add(glow);
+    const glow = new THREE.Sprite(glowM); glow.visible = false; glow.position.copy(at(a, WR - 0.6, y - 0.2)); glow.scale.set(9, 7, 1); add(glow);
     const l = new THREE.PointLight('#eef4f8', 0, 26, 1.3);
     l.position.copy(at(a, WR - 2.2, y - 0.3));
     scene.add(l); lamps.push(l);
@@ -484,6 +484,10 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   });
   const heapPrompt = world.interactables[world.interactables.length - 1];
   const amb = new THREE.Color(), fog = new THREE.Color();
+  const portalRT = new THREE.WebGLRenderTarget(280, 600, { type: THREE.HalfFloatType });
+  const portalCam = new THREE.PerspectiveCamera(78, 7 / 15, 0.3, 200);
+  portalCam.position.copy(at(da, WR - 0.6, F0 + 1.8)); portalCam.lookAt(at(da + 0.5, 12, F0 + 10)); portalCam.updateMatrixWorld();
+  let portalFrame = 0;
   world.updaters.push((dt, t) => {
     tNow = t;
     const here = inside(pp), down = inPlant(pp), any = here || down;
@@ -519,6 +523,17 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
     } else if (jetT < 0 && here) layBodies(-1);
     if (nudge > 0) { nudge = Math.max(0, nudge - dt * 1.5); const s = sleepers[7]; bodies.setMatrixAt(7, _m4.compose(_v.copy(s.to).setY(s.to.y + Math.sin(nudge * Math.PI) * 0.06), _q.setFromEuler(s.rest), _one)); bodies.instanceMatrix.needsUpdate = true; }
     // the screens: one picture refreshed every few frames, in turn, while someone is at the desk to look
+    // through the open door from outside: a picture of the room taken from just inside the doorway, so the opening shows the stair and the tanks
+    if (!any && state.flag('towerOpen') && pp.distanceTo(portalCam.position) < 60 && (portalFrame++ % 3) === 0) {
+      room.visible = true;
+      // lit as it is when you are inside: the lamps on, and the cold fill through the whole well
+      const un = ctx.env.under, keep = [un.amount, un.intensity];
+      for (const l of lamps) l.intensity = 90;              // (never change which lights exist: that rebuilds every shader)
+      hooks.feed(portalCam, portalRT);
+      for (const l of lamps) l.intensity = 0;
+      un.amount = keep[0]; un.intensity = keep[1];
+      room.visible = false;
+    }
     if (atDesk() && (frame++ % 3) === 0) {
       const f = feeds[feedI++ % feeds.length];
       room.visible = true; plant.visible = true;
@@ -528,6 +543,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   const atDesk = () => roomOpen() && pp.y > GAL - 1 && pp.y < ROOF - 1 && Math.hypot(pp.x - at(ca, 15, 0).x, pp.z - at(ca, 15, 0).z) < 9;
 
   return {
+    portal: portalRT.texture,
     inside: (p: THREE.Vector3) => inside(p) || inPlant(p),
     onRoof, keeper,
     enter: at(da, WR - 3.2, F0),

@@ -522,6 +522,10 @@ export class Player {
       p[J.chest].x += reachX; p[J.chest].y -= dip; p[J.chest].z += dip * 0.6; p[J.head].x += reachX * 1.2; p[J.head].y -= dip * 1.2; p[J.head].z += dip;
       p[fSh].x += reachX; p[fSh].y -= dip; p[fSh].z += dip * 0.6;
       solveIK(p[fSh], _u, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[fEl], p[fHa]);
+      // the other shoulder goes with the body, and that hand stays on the tiller
+      p[aSh].x += reachX; p[aSh].y -= dip; p[aSh].z += dip * 0.6;
+      f.group.worldToLocal(b.tillerGrip(_t));
+      solveIK(p[aSh], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[aEl], p[aHa]);
       b.sheetHand = null;
     } else {
       f.group.worldToLocal(b.local(-0.3 * this.sideSmooth, 0.74 + (1.5 - s.sheet) * 0.05, -0.86 - (1.5 - s.sheet) * 0.06, _u));

@@ -185,7 +185,7 @@ export class Boat {
     }
     for (let k = 0; k < 4; k++) {
       const coil = new THREE.Mesh(new THREE.TorusGeometry(0.15 - k * 0.012, 0.014, 6, 20), MAT.rope);
-      coil.rotation.x = Math.PI / 2; coil.position.set(0.3, -0.08 + k * 0.024, 1.25);
+      coil.rotation.x = Math.PI / 2; coil.position.set(0.1, -0.07 + k * 0.024, 0.95);   // well inboard, on the boards
       this.group.add(coil);
     }
     const bailer = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.16, 12, 1, true), new THREE.MeshStandardMaterial({ color: '#5a2a1e', roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide }));
@@ -222,7 +222,8 @@ export class Boat {
     for (const s of [0.2, 0.46]) {
       const y = 0.32;
       const w = 2 * halfBeam(s) * Math.pow(uAtHeight(s, y), 0.8);
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, 0.3), wood);
+      // a little short of the hull, so its corners (where the hull narrows fore and aft of the seat's middle) stay inside
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(w * 0.88, 0.04, 0.3), wood);
       seat.position.set(0, y, stationZ(s));
       seat.castShadow = seat.receiveShadow = true;
       this.group.add(seat);

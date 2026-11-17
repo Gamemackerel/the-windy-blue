@@ -66,7 +66,7 @@ export function makeItem(id: ItemId): THREE.Group {
       const guard = m(new THREE.TorusGeometry(0.019, 0.003, 6, 14, Math.PI), blued, 0, gy - 0.022, gz + 0.006); guard.rotation.set(0, Math.PI / 2, Math.PI); g.add(guard);
       const trig = m(new THREE.BoxGeometry(0.004, 0.018, 0.005), worn, 0, gy - 0.03, gz + 0.004); trig.rotation.x = 0.35; g.add(trig);
       // the grip: a curved back-strap with a wooden panel each side, swept down and back
-      const gripG = new THREE.Group(); gripG.position.z = -0.012; gripG.rotation.x = 0.36;   // raked back, away from the trigger g.add(gripG);
+      const gripG = new THREE.Group(); gripG.position.z = -0.012; gripG.rotation.x = 0.36; g.add(gripG);   // raked back, away from the trigger
       const strap = m(new THREE.BoxGeometry(0.018, 0.1, 0.03), blued, 0, 0.0, -0.002); gripG.add(strap);
       for (const sx of [-1, 1]) { const pnl = m(new THREE.BoxGeometry(0.006, 0.088, 0.032), wood, sx * 0.011, -0.002, 0.0); pnl.scale.z = 1.05; gripG.add(pnl); }
       const butt = m(new THREE.SphereGeometry(0.018, 10, 6), blued, 0, -0.05, -0.004); butt.scale.set(0.6, 0.5, 1.1); gripG.add(butt);
