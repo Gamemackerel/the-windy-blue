@@ -394,20 +394,21 @@ if (title) {
     const text = document.createElement('canvas');
     const vc = view.getContext('2d')!, tc = text.getContext('2d')!;
     const font = (px: number) => `italic 400 ${px}px "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif`;
-    let W = 0, H = 0, dpr = 1, pad = 0;
+    let W = 0, H = 0, dpr = 1, pad = 0, words: { x0: number; x1: number; ph: number }[] = [];
     const layout = () => {
       dpr = Math.min(2, devicePixelRatio || 1);
       const px = Math.max(44, Math.min(132, innerWidth * 0.095));
       tc.font = font(px);
-      const tw = tc.measureText('Windy Blue').width;
+      const w1 = tc.measureText('Windy').width, w2 = tc.measureText('Blue').width, gap = px * 0.42;
       pad = px * 0.55;                                         // room for the cloth to move into
-      W = Math.ceil(tw + pad * 2); H = Math.ceil(px * 1.9);
+      W = Math.ceil(w1 + gap + w2 + pad * 2); H = Math.ceil(px * 1.9);
+      words = [{ x0: pad, x1: pad + w1, ph: 0 }, { x0: pad + w1 + gap, x1: pad + w1 + gap + w2, ph: 2.1 }];
       for (const c of [view, text]) { c.width = W * dpr; c.height = H * dpr; }
       view.style.width = W + 'px'; view.style.height = H + 'px';
       tc.setTransform(dpr, 0, 0, dpr, 0, 0);
       tc.clearRect(0, 0, W, H);
       tc.font = font(px); tc.textBaseline = 'middle'; tc.fillStyle = '#f3f1ea';
-      tc.fillText('Windy Blue', pad, H / 2);
+      tc.fillText('Windy', words[0].x0, H / 2); tc.fillText('Blue', words[1].x0, H / 2);
     };
     layout();
     addEventListener('resize', layout);
@@ -423,31 +424,26 @@ if (title) {
       phase += dt * (1.6 + 3.2 * gust);
       vc.setTransform(1, 0, 0, 1, 0, 0);
       vc.clearRect(0, 0, view.width, view.height);
-      const SW = 2 * dpr, cols = Math.ceil(view.width / SW), Hd = view.height, P = pad * dpr, span = view.width - 2 * P;
-      let x = P;                                                // where the cloth has got to across the screen
-      for (let c = 0; c < cols; c++) {
-        const sx = c * SW, u = Math.max(0, (sx - P) / span);   // 0 at the hoist .. 1 at the fly
-        const amp = Math.pow(u, 0.85) * (0.05 + 0.07 * gust) * Hd;
-        const k = 2.6 + 1.4 * gust;                             // waves along the flag
-        const a1 = u * k * Math.PI * 2 - phase, a2 = u * k * 4.1 - phase * 1.7 + 1.3;
-        const lift = Math.sin(a1) + 0.35 * Math.sin(a2);
-        const slope = Math.cos(a1) + 0.5 * Math.cos(a2);
-        const sag = u * u * (1 - gust) * 0.12 * Hd;             // in a lull the free end droops
-        const dy = amp * lift * 0.55 + sag;
-        // the cloth turning away from the eye takes up less width across the screen
-        const turn = Math.min(1, Math.abs(slope) * amp / Hd * 3.5);
-        const w = SW * (1 - 0.32 * turn * turn);
-        const drawX = sx < P ? sx : x;
-        vc.drawImage(text, sx, 0, SW, Hd, drawX, dy, w + 0.6, Hd);
-        // folds: what faces away from the light is darker
-        const shade = Math.max(0, 0.3 * slope * Math.min(1, u * 4) * (0.5 + gust));
-        if (shade > 0.01) {
-          vc.globalCompositeOperation = 'source-atop';
-          vc.fillStyle = `rgba(10, 22, 34, ${shade.toFixed(3)})`;
-          vc.fillRect(Math.round(drawX), 0, Math.max(1, Math.round(drawX + w) - Math.round(drawX)), Hd);   // edge to edge on whole pixels, so no strip is darkened twice
-          vc.globalCompositeOperation = 'source-over';
+      // two flags, one for each word, each fixed along its own left edge and blowing on its own
+      const SW = 2 * dpr, Hd = view.height;
+      for (const wd of words) {
+        const x0 = (wd.x0 - pad * 0.15) * dpr, x1 = (wd.x1 + pad * 0.5) * dpr, span = x1 - x0;
+        let x = x0;
+        for (let sx = x0; sx < x1; sx += SW) {
+          const u = (sx - x0) / span;                             // 0 at the hoist .. 1 at the fly
+          const amp = Math.pow(u, 0.85) * (0.05 + 0.07 * gust) * Hd;
+          const k = 1.5 + 0.9 * gust;                             // a shorter flag carries fewer waves
+          const a1 = u * k * Math.PI * 2 - phase - wd.ph, a2 = u * k * 4.1 - phase * 1.7 + 1.3 + wd.ph;
+          const lift = Math.sin(a1) + 0.35 * Math.sin(a2);
+          const slope = Math.cos(a1) + 0.5 * Math.cos(a2);
+          const sag = u * u * (1 - gust) * 0.12 * Hd;             // in a lull the free end droops
+          const dy = amp * lift * 0.55 + sag;
+          // the cloth turning away from the eye takes up less width across the screen
+          const turn = Math.min(1, Math.abs(slope) * amp / Hd * 3.5);
+          const w = SW * (1 - 0.32 * turn * turn);
+          vc.drawImage(text, sx, 0, SW, Hd, x, dy, w + 0.6, Hd);
+          x += w;
         }
-        if (sx >= P) x += w; else x = sx + SW;
       }
       requestAnimationFrame(blow);
     };
@@ -617,8 +613,8 @@ const SAIL_KEYS = '<b>A D</b>tiller<i>·</i><b>W S</b>haul in, let out<br><b>F</
 function showKeys(html: string, secs: number) { keysEl.innerHTML = html; keysEl.style.opacity = '0.9'; keysT = secs; }
 function hideKeys() { keysEl.style.opacity = '0'; keysT = 0; }
 function nag(text: string, secs: number) { hintEl.textContent = text; hintEl.style.opacity = '0.6'; nagT = secs; }
-let walkHint = hints ? (state.loaded ? 40 : 2.5) : -1;     // seconds until the first words appear, once the game is under way
-let idleT = 0, sinceHelp = 0;
+let walkHint = hints ? 2.5 : -1;     // seconds until the first words appear, once the game is under way
+let idleT = 0, sinceHelp = 0, wasHelm = false, sailCardShown = false;
 // on a first run, step the quality down if the machine is struggling
 let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 0;
 
@@ -777,7 +773,11 @@ function frame() {
     idleT = still ? idleT + dt : 0;
     if (idleT > 6 && sinceHelp > 420) { showKeys(WALK_KEYS, 8); sinceHelp = 0; idleT = 0; }
     const helm = player.mode === 'sail';
-    if (helm && !state.flag('sailHint')) { state.set('sailHint'); showKeys(SAIL_KEYS, 16); }
+    if (helm && !wasHelm) {
+      if (!sailCardShown) { sailCardShown = true; showKeys(SAIL_KEYS, 16); }
+      else nag('H · controls', 6);
+    }
+    wasHelm = helm;
     if (helm && input.hit('KeyH')) { if (keysT > 0) hideKeys(); else showKeys(SAIL_KEYS, 14); }
     // making no way for a while (pinned head to wind, sheet hauled in hard, sail flogging): offer the reminder, quietly
     if (helm && boat.mode === 'sailing' && keysT <= 0) {
