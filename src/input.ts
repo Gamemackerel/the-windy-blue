@@ -10,8 +10,20 @@ export class Input {
   locked = false;
   /** true while typing into a form: the game ignores the keyboard */
   suspended = false;
+  /** the pointer is let go to click on something in the world (a keypad): clicks do not recapture it, dragging does not look */
+  freeMouse = false;
+  /** where the free pointer is, -1..1 each way */
+  readonly pointer = { x: 0, y: 0 };
+  private canvas: HTMLCanvasElement;
+  /** let the pointer go (true), or take it back (false: only takes effect from a click, as browsers require) */
+  release(free: boolean) {
+    this.freeMouse = free;
+    if (free && document.pointerLockElement) document.exitPointerLock();
+    if (!free) { try { (this.canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* the next click will */ } }
+  }
 
   constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
     addEventListener('keydown', (e) => {
       if (this.suspended) return;
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
@@ -21,13 +33,15 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     canvas.addEventListener('click', () => {
-      if (!this.locked) { try { (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* not available here */ } }
+      if (!this.locked && !this.freeMouse) { try { (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* not available here */ } }
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
     });
     addEventListener('mousemove', (e) => {
-      if (this.locked || e.buttons & 3) {
+      const r = canvas.getBoundingClientRect();
+      this.pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1; this.pointer.y = -(((e.clientY - r.top) / r.height) * 2 - 1);
+      if (this.locked || (e.buttons & 3 && !this.freeMouse)) {
         this.lookX += e.movementX;
         this.lookY += e.movementY;
       }

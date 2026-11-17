@@ -69,6 +69,7 @@
       #credits h2 { font: italic 400 clamp(36px, 7vw, 96px)/1.1 "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif; margin: 0 0 5vh; }
       #credits p { font: 400 17px/2 "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", Georgia, serif; letter-spacing: 0.12em; margin: 0; opacity: 0.8; }
       #credits p.small { margin-top: 12vh; font-size: 11px; letter-spacing: 0.3em; opacity: 0.35; font-family: ui-sans-serif, system-ui, sans-serif; }
+      #deep { position: fixed; inset: 0; background: #0b3442; opacity: 0; pointer-events: none; }
       #hint { position: fixed; right: 18px; bottom: 14px; color: #cfc9ba; opacity: 0; font: 12px ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.2em; transition: opacity 2s; pointer-events: none; text-shadow: 0 1px 3px #000; }
       #scope { position: fixed; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s;
         background: radial-gradient(circle at 50% 50%, transparent 0, transparent 38vh, rgba(0,0,0,0.55) 40vh, #000 43vh); }
@@ -126,6 +127,7 @@
     </div></div>
     <div id="title"><h1 id="titleName" aria-label="Windy Blue"></h1><button id="titleContinue">Continue</button><button id="titleStart">Start</button></div>
     <div id="credits"><div class="in"><h2>Windy Blue</h2><p>Thank you for playing.</p><p class="small">Esc</p></div></div>
+    <div id="deep"></div>
     <div id="fade"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

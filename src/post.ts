@@ -23,6 +23,7 @@ export interface Atmosphere {
 
 export class Post {
   ao = true; rays = true; bloom = true;
+  private _f = new THREE.Vector3();
   /** strength of the ink lines on edges, 0 to switch them off */
   lines = 1;
   private samples = 2;
@@ -267,7 +268,8 @@ export class Post {
 
     // where is the light on screen?
     const s = this._v.copy(at.sunDir).multiplyScalar(1e5).add(camera.position).project(camera);
-    const inFront = s.z < 1 && at.rays > 0.01;
+    // in front of the eye, truly: a light behind the camera also projects onto the screen (mirrored), and drew a glow on whatever was ahead
+    const inFront = camera.getWorldDirection(this._f).dot(at.sunDir) > 0.05 && at.rays > 0.01;
     if (this.rays && inFront && Math.abs(s.x) < 1.6 && Math.abs(s.y) < 1.6) {
       const u = this.mRays.uniforms;
       u.tDiffuse.value = color; u.tDepth.value = depth;

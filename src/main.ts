@@ -156,6 +156,7 @@ let homeT = 2;
 let ending = 0;
 const leap = new THREE.Vector3(), endCam = new THREE.Vector3();
 const creditsEl = document.getElementById('credits')!;
+const deepEl = document.getElementById('deep')!;
 let turnTo = 0;   // seconds left of being turned to face the giant after it picks you up
 const giant = buildAtoll(ctx, {
   wreck: wreckBoat, push: (ax, az) => { pushX += ax; pushZ += az; },
@@ -791,6 +792,12 @@ function frame() {
   player.figure.group.visible = outside && sailing;
   viewModel.visible = !rig.scope && !outside && !title;
   // under the surface: the light goes green-blue and close
+  // a swimmer whose head goes under sees nothing but blue (the sea's underside, seen from inches below, only confused)
+  {
+    const under = player.mode === 'swim' && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.02;
+    deepEl.style.opacity = under ? '1' : '0';
+    if (under) deepEl.style.background = `rgb(${(11 * (0.25 + 0.75 * env.daylight)) | 0}, ${(52 * (0.2 + 0.8 * env.daylight)) | 0}, ${(66 * (0.2 + 0.8 * env.daylight)) | 0})`;
+  }
   if (!lab.inside() && !tower.inside(player.pos) && !ending && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.03) {
     const un = env.under;
     un.amount = 1; un.density = 0.11; un.intensity = 0.55 * (0.25 + env.daylight);
@@ -851,7 +858,9 @@ function frame() {
   }
   {
     const k = Math.min(1, dt * 10), out = player.reaching;
-    const tx = aiming ? 0.0 : 0.17, ty = (aiming ? -0.075 : -0.15) + out * 0.05, tz = (aiming ? -0.36 : -0.42) - out * 0.22;
+    // the revolver is held at the hip of the view; anything else rests on the palm, lower and further out, so the forearm runs forward under it
+    const onPalm = !aiming && player.held !== 'revolver';
+    const tx = aiming ? 0.0 : onPalm ? 0.14 : 0.17, ty = (aiming ? -0.075 : onPalm ? -0.25 : -0.15) + out * 0.05, tz = (aiming ? -0.36 : onPalm ? -0.5 : -0.42) - out * 0.22;
     viewModel.position.x += (tx - viewModel.position.x) * k;
     viewModel.position.y += (ty - viewModel.position.y + Math.sin(t * 1.3) * 0.0015) * k;
     viewModel.position.z += (tz - viewModel.position.z) * k;

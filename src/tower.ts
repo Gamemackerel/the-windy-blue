@@ -29,14 +29,19 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
 
   // the stair: one and a quarter turns up to the door
   const RISE = 62, TURNS = 1.25, SEG = 84, W = 3.0;
-  const rs = R + W / 2 - 0.1;
+  // the tower narrows as it rises: the stair keeps tight to it all the way
+  const towerR = (y: number) => R - (0.14 * R * (y + 40)) / (TOWER.h + 40);
+  const rsAt = (y: number) => towerR(y) + W / 2 - 0.02;
+  const rs = rsAt(0);
   const a0 = Math.PI;                          // starts on the south-west, at the quay
-  for (let i = 0; i < SEG; i++) {
+  const UNDER = 6;                          // a few more turns of stair go on down into the sea, out of sight
+  for (let i = -UNDER; i < SEG; i++) {
     const k0 = i / SEG, k1 = (i + 1) / SEG;
     const am = a0 + (k0 + k1) * 0.5 * TURNS * Math.PI * 2;
     const y0 = 1.2 + k0 * RISE, y1 = 1.2 + k1 * RISE;
-    const len = rs * (TURNS * Math.PI * 2) / SEG + 0.25;
-    const x = Math.sin(am) * rs, z = Math.cos(am) * rs;
+    const rr = rsAt((y0 + y1) / 2);
+    const len = rr * (TURNS * Math.PI * 2) / SEG + 0.25;
+    const x = Math.sin(am) * rr, z = Math.cos(am) * rr;
     const yaw = am + Math.PI / 2;              // tangent, climbing with increasing angle
     // each segment is three shallow treads over one ramp collider
     for (let s = 0; s < 3; s++) {
@@ -50,28 +55,38 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
     }
     world.addBox(cx + x, y0 - 0.25, cz + z, W / 2, 0.25, len / 2, yaw, y1 - y0);
   }
-  // quay at the foot, and the landing before the door
-  const qx = Math.sin(a0) * (rs + 1), qz = Math.cos(a0) * (rs + 1);
-  b.box(qx - 2.5, 0.2, qz - 3, 9, 2.0, 9, matte);
-  world.moorings.push({ name: 'tower', x: cx + qx - 2.5, z: cz + qz - 11, psi: Math.PI / 2, dock: new THREE.Vector3(cx + qx - 2.5, 1.2, cz + qz - 5.5) });
+  // no quay: a boat comes alongside the stair where it goes into the sea, and one steps off onto it
+  {
+    const am = a0 + (2 / SEG) * TURNS * Math.PI * 2, rr = rsAt(1.5), out = rr + W / 2 + 3.2;
+    world.moorings.push({ name: 'tower', x: cx + Math.sin(am) * out, z: cz + Math.cos(am) * out, psi: am + Math.PI / 2, dock: new THREE.Vector3(cx + Math.sin(am) * rr, 1.2 + (2.5 / SEG) * RISE, cz + Math.cos(am) * rr) });
+  }
   const aEnd = a0 + TURNS * Math.PI * 2, top = 1.2 + RISE;
-  const lx = Math.sin(aEnd + 0.12) * (R + 3.4), lz = Math.cos(aEnd + 0.12) * (R + 3.4);
-  b.box(lx, top - 0.5, lz, 12, 1.0, 12, matte, aEnd + 0.12);
+  const tR = towerR(top);
+  const lx = Math.sin(aEnd + 0.12) * (tR + 2.4), lz = Math.cos(aEnd + 0.12) * (tR + 2.4);
+  b.box(lx, top - 0.5, lz, 14, 1.0, 5, matte, aEnd + 0.12);           // a shelf against the wall at the head of the stair
   // the door: a seam in the stone and a slab a shade less reflective
   const da = aEnd + 0.12;
   const door = new THREE.Mesh(new THREE.BoxGeometry(7, 15, 0.5), new THREE.MeshStandardMaterial({ color: '#030304', roughness: 0.03, metalness: 0.8 }));
-  door.position.set(cx + Math.sin(da) * (R - 0.6), top + 7.5, cz + Math.cos(da) * (R - 0.6));
+  // the door is part of the face of the tower: a slab flush with the wall, picked out only by a hairline seam and a shade more gloss
+  door.geometry = new THREE.BoxGeometry(7, 15, 0.06);
+  door.position.set(cx + Math.sin(da) * (tR + 0.035), top + 7.5, cz + Math.cos(da) * (tR + 0.035));
   door.rotation.y = da;
   scene.add(door);
-  for (const s of [-1, 1]) {
-    const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.5, 16, 1.4), matte);
-    jamb.position.set(cx + Math.sin(da) * (R - 0.2) + Math.cos(da) * s * 3.9, top + 8, cz + Math.cos(da) * (R - 0.2) - Math.sin(da) * s * 3.9);
-    jamb.rotation.y = da;
-    scene.add(jamb);
+  // when it has gone, what is behind it is simply dark
+  const opening = new THREE.Mesh(new THREE.PlaneGeometry(7, 15), new THREE.MeshBasicMaterial({ color: '#1c2e36' }));   // the faint cold light of the store inside
+  opening.position.set(cx + Math.sin(da) * (tR + 0.02), top + 7.5, cz + Math.cos(da) * (tR + 0.02));
+  opening.rotation.y = da; opening.visible = false;
+  scene.add(opening);
+  // the seam round the door: thin strips lying in the face of the wall
+  const seamM = new THREE.MeshBasicMaterial({ color: '#000' });
+  for (const [w, h, x, y] of [[0.06, 15.1, -3.53, 7.5], [0.06, 15.1, 3.53, 7.5], [7.1, 0.06, 0, 15.03]] as const) {
+    const seam = new THREE.Mesh(new THREE.PlaneGeometry(w, h), seamM);
+    seam.position.set(cx + Math.sin(da) * (tR + 0.07) + Math.cos(da) * x, top + y, cz + Math.cos(da) * (tR + 0.07) - Math.sin(da) * x);
+    seam.rotation.y = da; scene.add(seam);
   }
   // the pad: twelve glyphs on a plinth beside the door
   const pad = new THREE.Group();
-  pad.position.set(cx + Math.sin(da) * (R + 0.9) + Math.cos(da) * 5.2, top + 1.35, cz + Math.cos(da) * (R + 0.9) - Math.sin(da) * 5.2);
+  pad.position.set(cx + Math.sin(da) * (tR + 0.9) + Math.cos(da) * 5.2, top + 1.35, cz + Math.cos(da) * (tR + 0.9) - Math.sin(da) * 5.2);
   pad.rotation.y = da;
   scene.add(pad);
   const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.9, 0.5), matte);
@@ -79,6 +94,8 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   pad.add(plinth);
   world.addBox(pad.position.x, top + 1, pad.position.z, 0.6, 1.4, 0.4, da);
   const keys: THREE.MeshStandardMaterial[] = [];
+  const keyMeshes: THREE.Mesh[] = [];
+  const _rc = new THREE.Raycaster(), _ndc = new THREE.Vector2();
   // keys: the ten numerals in three rows, nought below, with a key that wipes what has been entered
   const KEYMAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, -1, 0, -2];      // -1: wipe, -2: blank
   const mark = new THREE.MeshStandardMaterial({ color: '#8a8f96', roughness: 0.35, metalness: 0.7 });
@@ -89,7 +106,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
     keys.push(km);
     const key = new THREE.Group();
     key.position.set(-0.3 + (i % 3) * 0.3, 0.75 - Math.floor(i / 3) * 0.3, 0.26);
-    key.add(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.04), km));
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.04), km); key.add(face); keyMeshes.push(face);
     { const k = KEYMAP[i]; if (k !== -2) { const gm = glyphMesh(k === -1 ? WIPE : NUMERALS[k], 0.085, mark); gm.position.z = 0.026; key.add(gm); } }
     pad.add(key);
   }
@@ -100,6 +117,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   const flash = new Float32Array(12);
   const isOpen = () => !!state.flag('towerOpen');
   const openDoor = (instant: boolean) => {
+    opening.visible = true;
     if (instant) { door.position.y = top - 8.2; return; }
     ctx.sfx('gate', door.position, 1.6);
     world.tween(7, (k) => { door.position.y = top + 7.5 - 15.7 * k * k * (3 - 2 * k); });
@@ -108,7 +126,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   world.interactables.push({
     pos: new THREE.Vector3(pad.position.x + Math.sin(da) * 0.9, top + 1.2, pad.position.z + Math.cos(da) * 0.9), radius: 1.6,
     enabled: () => !active && cool <= 0 && !isOpen(),
-    use: () => { active = true; entered.length = 0; sel = 4; cool = 0.3; },
+    use: () => { active = true; entered.length = 0; sel = -1; cool = 0.3; ctx.input.release(true); },
   });
   world.updaters.push((dt) => {
     cool = Math.max(0, cool - dt);
@@ -120,11 +138,12 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
     if (!active) return;
     const inp = ctx.input;
     ctx.hold(0.2);
-    if (inp.hit('KeyA') || inp.hit('ArrowLeft')) sel = Math.floor(sel / 3) * 3 + ((sel % 3) + 2) % 3;
-    if (inp.hit('KeyD') || inp.hit('ArrowRight')) sel = Math.floor(sel / 3) * 3 + ((sel % 3) + 1) % 3;
-    if (inp.hit('KeyW') || inp.hit('ArrowUp')) sel = (sel + 9) % 12;
-    if (inp.hit('KeyS') || inp.hit('ArrowDown')) sel = (sel + 3) % 12;
-    if (cool <= 0 && inp.hit('KeyE')) {
+    // whichever key is under the pointer is lit; a click presses it
+    _rc.setFromCamera(_ndc.set(inp.pointer.x, inp.pointer.y), ctx.view);
+    const hit = _rc.intersectObjects(keyMeshes, false)[0];
+    sel = hit ? keyMeshes.indexOf(hit.object as THREE.Mesh) : -1;
+    const leave = inp.hit('Escape') || inp.hit('Tab') || inp.hit('KeyQ') || ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].some((k) => inp.hit(k));
+    if (cool <= 0 && sel >= 0 && inp.mouseHit(0)) {
       const k = KEYMAP[sel];
       flash[sel] = 1;
       ctx.sfx('key', pad.position);
@@ -133,18 +152,19 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
       if (entered.length >= 8) {
         const right = entered.every((d, i) => d === code[i]);
         entered.length = 0;
-        if (right) { active = false; state.set('towerOpen'); world.after(0.6, () => openDoor(false)); }
+        if (right) { active = false; ctx.input.release(false); state.set('towerOpen'); world.after(0.6, () => openDoor(false)); }
         else world.after(0.5, () => { ctx.sfx('deny', pad.position, 1.5); for (let i = 0; i < 12; i++) flash[i] = 0.6; });
       }
     }
-    if (inp.hit('Escape') || inp.hit('Tab') || inp.hit('KeyQ')) { active = false; cool = 0.4; }
+    if (leave) { active = false; cool = 0.4; ctx.input.release(false); }
+    if (!active) ctx.input.release(false);
   });
 
   // through the door
-  const outside = new THREE.Vector3(cx + Math.sin(da) * (R + 3), top, cz + Math.cos(da) * (R + 3));
+  const outside = new THREE.Vector3(cx + Math.sin(da) * (tR + 2.5), top, cz + Math.cos(da) * (tR + 2.5));
   const inner = buildTowerInterior(ctx, { cx, cz, floor: top, top: TOWER.h, doorAngle: da, hooks, exit: outside });
   world.interactables.push({
-    pos: new THREE.Vector3(cx + Math.sin(da) * (R + 1.2), top + 1.2, cz + Math.cos(da) * (R + 1.2)), radius: 2.6,
+    pos: new THREE.Vector3(cx + Math.sin(da) * (tR + 0.8), top + 1.2, cz + Math.cos(da) * (tR + 0.8)), radius: 2.6,
     enabled: () => isOpen() && door.position.y < top - 6,
     use: () => ctx.fade(() => { ctx.playerPos().copy(inner.enter); ctx.sfx('door', inner.enter); }, 0.9),
   });

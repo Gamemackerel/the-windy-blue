@@ -24,21 +24,23 @@ await page.keyboard.press('KeyE'); await wait(400);
 const pad = await ev(() => { const g = window.__game, w = g.world; const it = w.interactables.filter((i) => Math.hypot(i.pos.x - 950, i.pos.z + 850) < 40 && i.pos.y > 60 && i.pos.y < 70); return it.map((i) => i.pos.toArray()); });
 await put(pad[0][0], 63.2, pad[0][2], 0); await wait(500);
 await page.keyboard.press('KeyE'); await wait(500);
-// key layout: rows 1 2 3 / 4 5 6 / 7 8 9 / wipe 0 blank; selection starts on 5
-let r = 1, c = 1;
+// click each figure on the pad (keys in rows 1 2 3 / 4 5 6 / 7 8 9 / wipe 0 blank)
+const KEYMAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, -1, 0, -2];
+await ev(() => { const g = window.__game, T3 = g.THREE; const ks = []; g.scene.traverse((o) => { if (o.isMesh && o.geometry?.parameters?.width === 0.24 && o.geometry.parameters.height === 0.24) ks.push(o); }); const v = new T3.Vector3(); for (const k of ks) v.add(k.getWorldPosition(new T3.Vector3())); v.multiplyScalar(1 / ks.length); { const p = g.player.pos, dx = p.x - v.x, dz = p.z - v.z, d = Math.hypot(dx, dz); p.x = v.x + (dx / d) * 1.9; p.z = v.z + (dz / d) * 1.9; } g.camera.position.set(g.player.pos.x, g.player.pos.y + 1.64, g.player.pos.z); const c = g.camera.position; g.rig.yaw = Math.atan2(v.x - c.x, v.z - c.z) + Math.PI; g.rig.pitch = Math.atan2(c.y - v.y, Math.hypot(v.x - c.x, v.z - c.z)); });
+await wait(900);
 for (const d of T.code) {
-  const tr = d === 0 ? 3 : Math.floor((d - 1) / 3), tc = d === 0 ? 1 : (d - 1) % 3;
-  while (r < tr) { await page.keyboard.press('KeyS'); r++; await wait(60); }
-  while (r > tr) { await page.keyboard.press('KeyW'); r--; await wait(60); }
-  while (c < tc) { await page.keyboard.press('KeyD'); c++; await wait(60); }
-  while (c > tc) { await page.keyboard.press('KeyA'); c--; await wait(60); }
-  await wait(380); await page.keyboard.press('KeyE'); await wait(120);
+  const xy = await ev((k) => { const g = window.__game, T3 = g.THREE; let m = null; g.scene.traverse((o) => { if (o.isMesh && o.geometry?.parameters?.width === 0.24 && o.geometry.parameters.height === 0.24) { (window.__keys ??= new Set()).add(o); } }); const keys = [...window.__keys].sort((a, b) => a.id - b.id); m = keys[k]; const v = m.getWorldPosition(new T3.Vector3()).project(g.camera); return [(v.x + 1) * 640, (1 - v.y) * 360]; }, KEYMAP.indexOf(d));
+  await page.mouse.move(xy[0], xy[1]); await wait(120); await page.mouse.down(); await page.mouse.up(); await wait(200);
 }
 await wait(1500); await shot('pad');
 console.log('door open flag:', await ev(() => window.__game.state.flag('towerOpen')));
 await wait(8000);
-const doorAt = pad.find((p) => Math.abs(Math.hypot(p[0] - 950, p[2] + 850) - 31.2) < 0.3);
-await put(doorAt[0], 63.2, doorAt[2], 0); await wait(500);
+const doorAt = await ev(() => { const g = window.__game, its = g.world.interactables.filter((i) => Math.abs(i.pos.y - 64.4) < 0.3 && i.radius === 2.6 && Math.hypot(i.pos.x - 950, i.pos.z + 850) < 40); return its.map((i) => i.pos.toArray()); });
+console.log('door candidates', JSON.stringify(doorAt));
+const D = doorAt[doorAt.length - 1];
+await put(D[0] + (D[0] - 950) * 0.02, 63.2, D[2] + (D[2] + 850) * 0.02, Math.atan2(950 - D[0], -850 - D[2]) + Math.PI); await wait(500);   // just outside, facing it
+await console.log('at door:', await ev(() => { const g = window.__game, t = g.world.nearestInteractable(g.player.pos, g.player.yaw); return g.player.pos.toArray().map((v) => +v.toFixed(1)) + ' target ' + (t ? t.pos.toArray().map((v) => +v.toFixed(1)) + ' r' + t.radius : 'none') + ' busy ' + g.player.busy.toFixed(2); }));
+await wait(600);
 await page.keyboard.press('KeyE'); await wait(2500);     // go in
 console.log('inside:', await ev(() => window.__game.tower.inside(window.__game.player.pos)), await ev(() => window.__game.player.pos.toArray().map((v) => +v.toFixed(1))));
 await ev(() => { window.__game.rig.pitch = -0.5; }); await wait(600); await shot('atrium');

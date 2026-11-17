@@ -626,10 +626,10 @@ export function buildIsland(ctx: Ctx) {
   const door = b.box(LF.x, DECK + 1.25, LF.z + LF.d / 2 - 0.2, 2, 2.5, 0.16, MAT.rust, 0, false);
   door.userData.static = false;
   const doorCol = world.addBox(IX + LF.x, DECK + 1.25, IZ + LF.z + LF.d / 2 - 0.2, 1, 1.25, 0.2);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.2, emissive: '#ffd9a0', emissiveIntensity: 0 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.6, emissive: '#ffd9a0', emissiveIntensity: 0 });   // matte: polished, it threw the moon into the night as a great bloom
   const eye = b.mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 20), eyeMat, LF.x, DECK + 3.2, LF.z + LF.d / 2 + 0.02, false);
   eye.rotation.x = Math.PI / 2;
-  const eyeRing = b.mesh(new THREE.TorusGeometry(0.26, 0.04, 8, 24), MAT.brass, LF.x, DECK + 3.2, LF.z + LF.d / 2 + 0.03, false);
+  const eyeRing = b.mesh(new THREE.TorusGeometry(0.26, 0.04, 8, 24), Object.assign(MAT.brass.clone(), { roughness: 0.7 }), LF.x, DECK + 3.2, LF.z + LF.d / 2 + 0.03, false);
   // sail bundle on a trestle inside
   b.box(LF.x, DECK + 0.77, LF.z - 2.4, 2.6, 0.06, 0.7, MAT.wood, 0, false);
   for (const tx of [-1.05, 1.05]) {
@@ -700,7 +700,7 @@ export function buildIsland(ctx: Ctx) {
   const rayMat = new THREE.ShaderMaterial({
     uniforms: { uOp: { value: 0 }, uFade: { value: 1 } },
     vertexShader: 'varying float vAlong; void main() { vAlong = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'uniform float uOp; uniform float uFade; varying float vAlong; void main() { float a = mix(1.0, pow(1.0 - vAlong, 1.6), uFade); gl_FragColor = vec4(vec3(1.0, 0.9, 0.72) * uOp * a, 1.0); }',
+    fragmentShader: 'uniform float uOp; uniform float uFade; varying float vAlong; void main() { float a = mix(1.0, pow(max(1.0 - vAlong, 0.0), 1.6), uFade); gl_FragColor = vec4(vec3(1.0, 0.9, 0.72) * uOp * a, 1.0); }',
     transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
   });
   const ray = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.2, 1, 14, 1, true), rayMat);
@@ -734,8 +734,9 @@ export function buildIsland(ctx: Ctx) {
     let d = target - mYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     mYaw += d * Math.min(1, dt * 6);
     mirror.rotation.y = mYaw;
-    const lit = smooth(0.12, 0.3, ctx.env.daylight);
+    const lit = smooth(0.02, 0.14, ctx.env.sunDir.y);          // sunlight only: the moon (which daylight counts) is far too weak to light anything off a mirror
     glassMat.emissiveIntensity = lit * 2.5;
+    glassMat.roughness = 0.05 + (1 - lit) * 0.4;               // by night the mirror is dull, so it does not flash the moon across the yard
     // where does the thrown light land?
     const dx = Math.sin(mYaw), dz = Math.cos(mYaw);
     let len = 70, onWall = false;
@@ -752,6 +753,7 @@ export function buildIsland(ctx: Ctx) {
     beamMat.opacity = lit * 0.05;
     rayMat.uniforms.uOp.value = lit * 0.05; rayMat.uniforms.uFade.value = onWall ? 0.2 : 1;   // in the open it spreads and dies away; onto the wall it arrives nearly whole
     spot.visible = onWall && lit > 0.02;
+    ray.visible = lit > 0.002;
     const onEye = mStep === STEPS / 2 && Math.abs(d) < 0.05;
     const aligned = onEye && lit > 0.5;
     if (aligned && !state.flag('loft')) { state.set('loft'); openLoft(false); }

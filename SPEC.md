@@ -393,6 +393,16 @@ The pan hangs on a fixed chain from its end of the beam. Overloaded, it goes dow
 - **The control room.** The card opens a room on the gallery: four screens fed live from cameras (the entrance, the well, the outside stair, the plant) and a desk with two procedures of three controls each, marked by a wave and a falling figure. Flooding the reactor stops it: sirens, red beacons, the cold lights failing. Jettisoning drops all two hundred sleepers down the well, where they pile over the door and block the way out. Trying to move them barely shifts one.
 - **The end.** Back on the roof after the jettison, the view pulls out until the player is a speck on top of the tower, with only the interaction ring. E: they step off and fall toward the sea; three quarters of the way down it cuts to black and the credits.
 
+### 4.18 Controls and small things (Nov 17)
+
+- **Revolver:** click to raise it to the sights, click again to fire, Esc or any step lowers it. Nothing can be held while the boat is under way.
+- **Tower keypad:** E releases the mouse to click the keys; Esc or a movement key gives the view back.
+- **Hands** have an open and a closed form: closed on the tiller, sheet, rungs and anything carried; held items rest on an open palm.
+- **At anchor** with nothing near, E stands you up in the boat; you can step over the side from there.
+- **On a long straight run** with no input for ten seconds and no land near, the view drifts out and slowly circles; any input brings it back.
+- **The giant** keeps strictly to the night (midnight until just before dawn), sinks slowly with a pause at eye level, and after a throw watches for a moment before going down.
+- **Sea life** is occasionally seen far off, from deck or shore.
+
 ## 14. Build status
 
 Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.

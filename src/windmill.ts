@@ -54,14 +54,14 @@ export function buildWindmill(ctx: Ctx) {
   world.interactables.push({ pos: P(0, BASE + 1, -R_IN + 0.5), radius: 1.3, use: () => ctx.fade(() => { pp.set(cx, BASE, cz - R_OUT - 1.2); ctx.sfx('door', pp); }) });
   b.mesh(new THREE.CylinderGeometry(R_IN, R_IN, 0.1, 24), MAT.steel, 0, BASE - 0.02, 0, false);
 
-  // landings every ten metres, ladders alternating north and south
+  // two landings on the way up (a third and two thirds of the height), ladders alternating north and south
   const lampMat = new THREE.MeshStandardMaterial({ color: '#1c1c1c', emissive: '#ffcf9a', emissiveIntensity: 0 });
   const slitMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
   const levels: number[] = [];
-  for (let y = BASE; y < TOP - 5; y += 10) levels.push(y);
+  for (let k = 0; k < 3; k++) levels.push(BASE + Math.round(((TOP - BASE) * k) / 3));
   levels.forEach((y0, i) => {
     const last = i === levels.length - 1;
-    const y1 = last ? TOP : y0 + 10;
+    const y1 = last ? TOP : levels[i + 1];
     const s = i % 2 === 0 ? 1 : -1;
     if (i > 0) {
       b.box(0, y0 - 0.05, 0, 2.0, 0.1, 3.4, MAT.steel);
@@ -321,14 +321,17 @@ export function buildWindmill(ctx: Ctx) {
     needle.rotation.x = Math.atan2(Math.sin(d), Math.cos(d));
     vane.rotation.y = ctx.wind.dir + Math.PI - yaw + Math.sin(t * 2.3) * 0.06;
     pilot.emissiveIntensity = state.flag('wmParts') ? 2.5 + Math.sin(t * 4) * 0.4 : 0;
-    lampMat.emissiveIntensity = on ? 3 : 0;
+    lampMat.emissiveIntensity = on ? 3 : 0.7;             // unpowered, each lamp still glows faintly on its battery
     beaconMat.emissiveIntensity = on ? (Math.sin(t * 2.2) > 0.6 ? 8 : 0.3) : 0;
     slitMat.color.copy(ctx.env.uniforms.uHorizon.value).multiplyScalar(1.4);
     // one moving light keeps the climber company once the power is on
     const p = ctx.playerPos();
     const inside = Math.hypot(p.x - cx, p.z - cz) < R_OUT + 3 && p.y > BASE - 1;
-    towerLight.intensity = on && inside ? 30 : 0;
-    towerLight.position.set(cx - 1.6, Math.round((p.y - BASE) / 10) * 10 + BASE + 2.3, cz);
+    // the lamp nearest the climber lights them: brightly once the power is on, and only just, before
+    towerLight.intensity = inside ? (on ? 30 : 2.2) : 0;
+    towerLight.color.set(on ? '#ffcf9a' : '#ff9a5a');
+    let near = levels[0]; for (const y of levels) if (Math.abs(p.y - y - 1) < Math.abs(p.y - near - 1)) near = y;
+    towerLight.position.set(cx - 1.6, near + 2.3, cz);
   });
 
   return { powered, inside: (p: THREE.Vector3) => Math.hypot(p.x - cx, p.z - cz) < R_IN + 0.1 && p.y > BASE - 0.5 && p.y < TOP - 1 };

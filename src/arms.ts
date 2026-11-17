@@ -83,7 +83,7 @@ export class Arms {
         // the revolver is gripped; anything else rests on the open palm, held up to be seen
         rate = 18;
         if (this.heldGun) { want.copy(held); want.x += 0.02; want.y -= 0.075; want.z += 0.09; closed = true; }
-        else { want.copy(held); want.y -= 0.06; want.z += 0.06; palmUp = 1; }
+        else { want.copy(held); want.y -= 0.045; want.z += 0.075; palmUp = 1; }
       }
       if (a.reachT > 0) {
         a.reachT += dt * 2.3;
@@ -100,14 +100,15 @@ export class Arms {
       a.pos.lerp(want, Math.min(1, dt * rate));
 
       // the arm is a little longer than the body's, so things at arm's length can be touched
-      _pole.set(-s * 0.7, -1, 0.35);
+      // holding something out on the palm, the elbow sits back by the ribs so the forearm runs forward under it
+      if (palmUp) _pole.set(-s * 0.25, -0.35, 1); else _pole.set(-s * 0.7, -1, 0.35);
       solveIK(a.sh, a.pos, LIMB.UARM * 1.12, LIMB.FARM * 1.12, _pole, a.el, a.wr);
       _x.set(0, 0, -1);
       a.tube.update([a.sh, a.el, a.wr], _x, _x);
       // hand: along the forearm, palm turned in (or down, when gripping a bar)
       _e.subVectors(a.wr, a.el).normalize();
       _n.set(s * (1 - palmDown), -palmDown - 0.15, 0);
-      if (palmUp) _n.set(0, 1, 0.25);
+      if (palmUp) _n.set(-s * 0.15, 1, 0);
       setGrip(a.hand, closed);
       _n.addScaledVector(_e, -_n.dot(_e));
       if (_n.lengthSq() < 1e-6) _n.copy(FWD);
