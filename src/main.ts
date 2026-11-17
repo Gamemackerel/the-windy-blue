@@ -381,39 +381,74 @@ if (title) {
   cont.style.display = state.loaded ? '' : 'none';
   start.textContent = state.loaded ? 'New game' : 'Start';
   titleEl.style.display = 'flex';
-  // The name stands in the wind. Each letter is its own small flag, rooted at its foot: gusts come through from the
-  // left as travelling waves, each letter leaning and lifting as the gust reaches it and settling back after, with a
-  // faster flutter riding on top while it is pressed. Between gusts it is nearly still.
+  // The name is written on a flag nobody can see. The flag is fixed along its left edge and the wind runs through it:
+  // waves travel from the hoist to the fly, growing as they go, and the cloth folds toward and away from the eye, so
+  // the letters ripple together, foreshorten where the cloth turns away, and darken in the troughs of the folds.
+  // Gusts come and go: in a lull the free end sags and the waves slow; in a gust it streams out and snaps.
   {
     const h1 = document.getElementById('titleName')!;
-    const letters: HTMLElement[] = [];
-    for (const ch of 'Windy Blue') {
-      const sp = document.createElement('span');
-      if (ch === ' ') sp.className = 'gap'; else { sp.textContent = ch; letters.push(sp); }
-      h1.appendChild(sp);
-    }
-    // smooth value noise: gust strength along a line that slides past the letters
+    const view = document.createElement('canvas');
+    view.style.display = 'block';
+    view.style.filter = 'drop-shadow(0 2px 10px rgba(0, 12, 24, 0.6))';   // the shadow goes on the whole picture, after the cloth is drawn, so the slices never show
+    h1.appendChild(view);
+    const text = document.createElement('canvas');
+    const vc = view.getContext('2d')!, tc = text.getContext('2d')!;
+    const font = (px: number) => `italic 400 ${px}px "Cochin", "Hoefler Text", "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif`;
+    let W = 0, H = 0, dpr = 1, pad = 0;
+    const layout = () => {
+      dpr = Math.min(2, devicePixelRatio || 1);
+      const px = Math.max(44, Math.min(132, innerWidth * 0.095));
+      tc.font = font(px);
+      const tw = tc.measureText('Windy Blue').width;
+      pad = px * 0.55;                                         // room for the cloth to move into
+      W = Math.ceil(tw + pad * 2); H = Math.ceil(px * 1.9);
+      for (const c of [view, text]) { c.width = W * dpr; c.height = H * dpr; }
+      view.style.width = W + 'px'; view.style.height = H + 'px';
+      tc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      tc.clearRect(0, 0, W, H);
+      tc.font = font(px); tc.textBaseline = 'middle'; tc.fillStyle = '#f3f1ea';
+      tc.fillText('Windy Blue', pad, H / 2);
+    };
+    layout();
+    addEventListener('resize', layout);
     const hash = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
     const noise = (x: number) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hash(i) * (1 - u) + hash(i + 1) * u; };
-    const lean = letters.map(() => 0), vel = letters.map(() => 0);
-    let last = performance.now();
+    let gust = 0.5, phase = 0, last = performance.now();
     const blow = (now: number) => {
       if (!title && titleEl.style.display === 'none') return;
       const dt = Math.min(0.05, (now - last) / 1000), t = now / 1000; last = now;
-      letters.forEach((el, i) => {
-        const x = i / (letters.length - 1);
-        // the wind at this letter: long lulls, with gusts that arrive from the left and pass along the word
-        const g0 = noise(t * 0.34 - x * 0.75) * 0.65 + noise(t * 0.9 - x * 1.6 + 40) * 0.35;
-        const gust = Math.max(0, g0 - 0.38) / 0.62;
-        const push = gust * gust * (1.6 - 0.25 * x);
-        // each letter is a sprung thing with a little weight: it is pushed over, overshoots, and comes back
-        vel[i] += ((push - lean[i]) * 46 - vel[i] * 7.5) * dt;
-        lean[i] += vel[i] * dt;
-        const l = lean[i], flutter = Math.sin(t * 13 + i * 2.3) * 0.5 + Math.sin(t * 21.7 + i * 1.1) * 0.3;
-        const skew = -(l * 15 + flutter * l * 2.6), rot = l * 2.4 + flutter * l * 0.7;
-        const dx = l * 0.055, dy = -Math.abs(l) * 0.02 + Math.sin(t * 0.7 + i * 0.9) * 0.006;
-        el.style.transform = `translate(${dx.toFixed(4)}em, ${dy.toFixed(4)}em) rotate(${rot.toFixed(3)}deg) skewX(${skew.toFixed(3)}deg) scaleX(${(1 + l * 0.035).toFixed(4)})`;
-      });
+      // the wind: long lulls and gusts, and the cloth answers it with a little lag
+      const want = 0.25 + 0.75 * Math.pow(noise(t * 0.22) * 0.7 + noise(t * 0.61 + 9) * 0.3, 1.6);
+      gust += (want - gust) * Math.min(1, dt * 1.4);
+      phase += dt * (1.6 + 3.2 * gust);
+      vc.setTransform(1, 0, 0, 1, 0, 0);
+      vc.clearRect(0, 0, view.width, view.height);
+      const SW = 2 * dpr, cols = Math.ceil(view.width / SW), Hd = view.height, P = pad * dpr, span = view.width - 2 * P;
+      let x = P;                                                // where the cloth has got to across the screen
+      for (let c = 0; c < cols; c++) {
+        const sx = c * SW, u = Math.max(0, (sx - P) / span);   // 0 at the hoist .. 1 at the fly
+        const amp = Math.pow(u, 0.85) * (0.05 + 0.07 * gust) * Hd;
+        const k = 2.6 + 1.4 * gust;                             // waves along the flag
+        const a1 = u * k * Math.PI * 2 - phase, a2 = u * k * 4.1 - phase * 1.7 + 1.3;
+        const lift = Math.sin(a1) + 0.35 * Math.sin(a2);
+        const slope = Math.cos(a1) + 0.5 * Math.cos(a2);
+        const sag = u * u * (1 - gust) * 0.12 * Hd;             // in a lull the free end droops
+        const dy = amp * lift * 0.55 + sag;
+        // the cloth turning away from the eye takes up less width across the screen
+        const turn = Math.min(1, Math.abs(slope) * amp / Hd * 3.5);
+        const w = SW * (1 - 0.32 * turn * turn);
+        const drawX = sx < P ? sx : x;
+        vc.drawImage(text, sx, 0, SW, Hd, drawX, dy, w + 0.6, Hd);
+        // folds: what faces away from the light is darker
+        const shade = Math.max(0, 0.3 * slope * Math.min(1, u * 4) * (0.5 + gust));
+        if (shade > 0.01) {
+          vc.globalCompositeOperation = 'source-atop';
+          vc.fillStyle = `rgba(10, 22, 34, ${shade.toFixed(3)})`;
+          vc.fillRect(Math.round(drawX), 0, Math.max(1, Math.round(drawX + w) - Math.round(drawX)), Hd);   // edge to edge on whole pixels, so no strip is darkened twice
+          vc.globalCompositeOperation = 'source-over';
+        }
+        if (sx >= P) x += w; else x = sx + SW;
+      }
       requestAnimationFrame(blow);
     };
     requestAnimationFrame(blow);
