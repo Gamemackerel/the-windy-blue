@@ -24,8 +24,8 @@ export interface TowerHooks {
 }
 
 const WR = 24.5;             // inside radius of the wall
-const SW = 4.0, SR = 24.5 - SW / 2;   // the stair: width, and centre radius - its inner edge where it always was, its outer edge at the wall
-const TURNS = 5.5, PER = 24; // turns of stair, and ramp sections to a turn
+const SW = 11.0, SR = 24.5 - SW / 2;   // the stair: width, and centre radius - broad, from the wall well out toward the middle
+const TURNS = 11, PER = 24; // turns of stair, and ramp sections to a turn
 const TANKS = 200;
 
 export const TOWER_JOURNALS = [
@@ -81,34 +81,51 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
 
   // ------------------------------------------------------------ the stair
   const stairY = (u: number) => F0 + u * (GAL - F0);
+  const ST = Math.max(4, Math.round(RISE / 0.16)), HALF = RISE / (2 * ST), HALF_T = HALF;   // shallow steps, about a quarter of a metre each
   {
-    const treads = new THREE.InstancedMesh(new THREE.BoxGeometry(SW, 0.32, SLEN / 4 + 0.04), steel, N * 4);
-    const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 1), steel, N * 2);
-    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steel, N * 4);
+    // each tread a true wedge of the ring between the inner edge and the wall, so the stair bends with the tower instead of
+    // going round it in straight pieces. Built once, about the tower's axis, and turned into place for every step.
+    const dT = DA / ST, TH = 0.32;
+    const wedge = (() => {
+      const r0 = SR - SW / 2, r1 = SR + SW / 2, n = 4, sh = new THREE.Shape(), a1 = dT * 1.04;
+      for (let k = 0; k <= n; k++) { const a = (k / n) * a1; const px = Math.sin(a) * r1, py = -Math.cos(a) * r1; if (k === 0) sh.moveTo(px, py); else sh.lineTo(px, py); }
+      for (let k = n; k >= 0; k--) { const a = (k / n) * a1; sh.lineTo(Math.sin(a) * r0, -Math.cos(a) * r0); }
+      const g = new THREE.ExtrudeGeometry(sh, { depth: TH, bevelEnabled: false });
+      g.rotateX(-Math.PI / 2); g.translate(0, -TH, 0);           // lying flat, its top at 0
+      return g;
+    })();
+    const treads = new THREE.InstancedMesh(wedge, steel, N * ST);
+    const ri0 = SR - SW / 2 + 0.05;
+    for (const hh of [1.05, 0.55]) {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= N * 2; i++) { const f = i / (N * 2), a = A0 + f * N * DA; pts.push(new THREE.Vector3(cx + Math.sin(a) * ri0, F0 + f * (GAL - F0) + HALF + hh, cz + Math.cos(a) * ri0)); }
+      const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), N * 8, hh > 1 ? 0.035 : 0.025, 6), steel);
+      rail.frustumCulled = false; add(rail);
+    }
+    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steel, N * ST);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s1 = new THREE.Vector3(1, 1, 1);
     const slope = Math.atan2(RISE, SLEN), rlen = Math.hypot(RISE, SLEN) + 0.05;
     for (let i = 0; i < N; i++) {
       const am = A0 + (i + 0.5) * DA, y0 = F0 + i * RISE, yaw = am + Math.PI / 2;
       const x = Math.sin(am) * SR, z = Math.cos(am) * SR;
-      for (let s = 0; s < 4; s++) {
-        const t = (s + 0.5) / 4 - 0.5;
-        v.set(cx + x + Math.sin(yaw) * t * SLEN, y0 + RISE * ((s + 1) / 4) - 0.16, cz + z + Math.cos(yaw) * t * SLEN);
-        treads.setMatrixAt(i * 4 + s, m4.compose(v, q.setFromEuler(e.set(0, yaw, 0)), s1));
+      for (let s = 0; s < ST; s++) {
+        v.set(cx, y0 + RISE * ((s + 1) / ST), cz);
+        treads.setMatrixAt(i * ST + s, m4.compose(v, q.setFromEuler(e.set(0, A0 + i * DA + s * dT, 0)), s1));
       }
-      world.addBox(cx + x, y0 - 0.25 + RISE / 8, cz + z, SW / 2, 0.25, SLEN / 2 + 0.12, yaw, RISE);   // through the middle of each tread's top, so the foot stands on the steps rather than sinking into them
+      world.addBox(cx + x, y0 - 0.25 + HALF, cz + z, SW / 2, 0.25, SLEN / 2 + 0.12, yaw, RISE);   // through the middle of each tread's top, so the foot stands on the steps rather than sinking into them
       // the well side: a rail, and something solid behind it
       const ri = SR - SW / 2 + 0.05, rx = cx + Math.sin(am) * ri, rz = cz + Math.cos(am) * ri;
       q.setFromEuler(e.set(-slope, yaw, 0, 'YXZ'));
-      for (let k = 0; k < 2; k++) rails.setMatrixAt(i * 2 + k, m4.compose(v.set(rx, y0 + RISE / 2 + RISE / 8 + (k ? 1.05 : 0.55), rz), q, s1.set(1, 1, rlen)));
       // a post on every tread, from the tread itself up to the handrail
-      for (let k = 0; k < 4; k++) {
-        const f = (k + 0.5) / 4, top = y0 + RISE * (k + 1) / 4, railY = y0 + RISE * f + RISE / 8 + 1.05, pa = am + (f - 0.5) * DA;
-        posts.setMatrixAt(i * 4 + k, m4.compose(v.set(cx + Math.sin(pa) * ri, (top + railY) / 2, cz + Math.cos(pa) * ri), q.setFromEuler(e.set(0, yaw, 0)), s1.set(1, (railY - top) / 1.1, 1)));
+      for (let k = 0; k < ST; k++) {
+        const f = (k + 0.5) / ST, top = y0 + RISE * (k + 1) / ST, railY = y0 + RISE * f + HALF + 1.05, pa = am + (f - 0.5) * DA;
+        posts.setMatrixAt(i * ST + k, m4.compose(v.set(cx + Math.sin(pa) * ri, (top + railY) / 2, cz + Math.cos(pa) * ri), q.setFromEuler(e.set(0, yaw, 0)), s1.set(1, (railY - top) / 1.1, 1)));
       }
       s1.set(1, 1, 1);
-      world.addBox(rx, y0 + RISE / 2 + RISE / 8 + 0.9, rz, 0.07, 1.9, SLEN / 2 + 0.1, yaw);
+      world.addBox(rx, y0 + RISE / 2 + HALF + 0.9, rz, 0.07, 1.9, SLEN / 2 + 0.1, yaw);
     }
-    for (const m of [treads, rails, posts]) { m.frustumCulled = false; m.receiveShadow = true; add(m); }
+    void slope; void rlen;
+    for (const m of [treads, posts]) { m.frustumCulled = false; m.receiveShadow = true; add(m); }
   }
 
   // ------------------------------------------------------------ the sleepers
@@ -168,13 +185,17 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
     const r = rng(733), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s1 = new THREE.Vector3(1, 1, 1), lq = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
     const tX = new THREE.Vector3(), tY = new THREE.Vector3(), tZ = new THREE.Vector3(), tB = new THREE.Matrix4();
     for (let i = 0; i < TANKS; i++) {
-      const tier = i % 2, u = (Math.floor(i / 2) + 0.5 + tier * 0.5) / (TANKS / 2), a = A0 + u * TURNS * Math.PI * 2;   // the upper row set over the gaps of the lower
-      const home = at(a, WR - 0.68, stairY(u) + RISE / 8 + 2.3 + tier * 1.5 + ((Math.floor(i / 2) % 2) ? 0.18 : -0.18));
-      const yaw = a + Math.PI;                                    // facing the well
-      // lying along the wall, tipped a little with the climb, the body facing the well
-      const tilt = 0.14 + ((i * 7) % 3 - 1) * 0.05;
-      tY.set(Math.cos(a), 0, -Math.sin(a)).multiplyScalar(Math.cos(tilt)); tY.y = Math.sin(tilt); tY.normalize();
-      tZ.set(-Math.sin(a), 0, -Math.cos(a)); tX.crossVectors(tY, tZ).normalize(); tZ.crossVectors(tX, tY).normalize();
+      // a single row round the wall, every tank lying on the steps with its head end against the wall
+      const u = (i + 0.5) / TANKS, a = A0 + u * TURNS * Math.PI * 2;
+      const tr = WR - 1.36;                                      // the head end against the wall
+      const tilt0 = 0.2 + ((i * 7) % 3 - 1) * 0.04;
+      const home = at(a, tr, stairY(u) + HALF_T + 0.64 + Math.sin(tilt0) * 1.22);      // the low inner end of the tank resting on the tread
+      world.addBox(home.x, home.y, home.z, 0.66, 0.66 + Math.sin(tilt0) * 1.25, 1.28, a);
+      const yaw = a + Math.PI;
+      // run out from the wall toward the middle, the inner end dipped: the sleeper's head at the wall, lying on their back
+      const tilt = tilt0;
+      tY.set(Math.sin(a), 0, Math.cos(a)).multiplyScalar(Math.cos(tilt)); tY.y = Math.sin(tilt); tY.normalize();   // toward the wall, and up
+      tZ.set(0, 1, 0); tX.crossVectors(tY, tZ).normalize(); tZ.crossVectors(tX, tY).normalize();
       q.setFromRotationMatrix(tB.makeBasis(tX, tY, tZ));
       glass.setMatrixAt(i, m4.compose(home, q, s1)); caps.setMatrixAt(i, m4);
       tlamps.setMatrixAt(i, m4.compose(home.clone().addScaledVector(tY, 1.24), q.clone().multiply(lq), s1));
