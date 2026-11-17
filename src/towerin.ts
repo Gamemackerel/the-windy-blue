@@ -24,7 +24,7 @@ export interface TowerHooks {
 }
 
 const WR = 24.5;             // inside radius of the wall
-const SR = 20.5, SW = 3.4;   // the stair: centre radius and width
+const SW = 4.0, SR = 24.5 - SW / 2;   // the stair: width, and centre radius - its inner edge where it always was, its outer edge at the wall
 const TURNS = 5.5, PER = 24; // turns of stair, and ramp sections to a turn
 const TANKS = 200;
 
@@ -84,7 +84,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   {
     const treads = new THREE.InstancedMesh(new THREE.BoxGeometry(SW, 0.32, SLEN / 4 + 0.04), steel, N * 4);
     const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 1), steel, N * 2);
-    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steel, N);
+    const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steel, N * 4);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), s1 = new THREE.Vector3(1, 1, 1);
     const slope = Math.atan2(RISE, SLEN), rlen = Math.hypot(RISE, SLEN) + 0.05;
     for (let i = 0; i < N; i++) {
@@ -95,16 +95,18 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
         v.set(cx + x + Math.sin(yaw) * t * SLEN, y0 + RISE * ((s + 1) / 4) - 0.16, cz + z + Math.cos(yaw) * t * SLEN);
         treads.setMatrixAt(i * 4 + s, m4.compose(v, q.setFromEuler(e.set(0, yaw, 0)), s1));
       }
-      world.addBox(cx + x, y0 - 0.25, cz + z, SW / 2, 0.25, SLEN / 2 + 0.12, yaw, RISE);
+      world.addBox(cx + x, y0 - 0.25 + RISE / 8, cz + z, SW / 2, 0.25, SLEN / 2 + 0.12, yaw, RISE);   // through the middle of each tread's top, so the foot stands on the steps rather than sinking into them
       // the well side: a rail, and something solid behind it
       const ri = SR - SW / 2 + 0.05, rx = cx + Math.sin(am) * ri, rz = cz + Math.cos(am) * ri;
       q.setFromEuler(e.set(-slope, yaw, 0, 'YXZ'));
-      for (let k = 0; k < 2; k++) rails.setMatrixAt(i * 2 + k, m4.compose(v.set(rx, y0 + RISE / 2 + (k ? 1.1 : 0.58), rz), q, s1.set(1, 1, rlen)));
+      for (let k = 0; k < 2; k++) rails.setMatrixAt(i * 2 + k, m4.compose(v.set(rx, y0 + RISE / 2 + RISE / 8 + (k ? 1.05 : 0.55), rz), q, s1.set(1, 1, rlen)));
+      // a post on every tread, from the tread itself up to the handrail
+      for (let k = 0; k < 4; k++) {
+        const f = (k + 0.5) / 4, top = y0 + RISE * (k + 1) / 4, railY = y0 + RISE * f + RISE / 8 + 1.05, pa = am + (f - 0.5) * DA;
+        posts.setMatrixAt(i * 4 + k, m4.compose(v.set(cx + Math.sin(pa) * ri, (top + railY) / 2, cz + Math.cos(pa) * ri), q.setFromEuler(e.set(0, yaw, 0)), s1.set(1, (railY - top) / 1.1, 1)));
+      }
       s1.set(1, 1, 1);
-      posts.setMatrixAt(i, m4.compose(v.set(rx, y0 + RISE / 2 + 0.55, rz), q.setFromEuler(e.set(0, yaw, 0)), s1));
-      world.addBox(rx, y0 + RISE / 2 + 0.9, rz, 0.07, 1.9, SLEN / 2 + 0.1, yaw);
-      // the wall side: the tanks stand shoulder to shoulder there, and nobody gets between them
-      { const ro = SR + SW / 2 + 0.1; world.addBox(cx + Math.sin(am) * ro, y0 + RISE / 2 + 0.9, cz + Math.cos(am) * ro, 0.07, 1.9, SLEN / 2 + 0.1, yaw); }
+      world.addBox(rx, y0 + RISE / 2 + RISE / 8 + 0.9, rz, 0.07, 1.9, SLEN / 2 + 0.1, yaw);
     }
     for (const m of [treads, rails, posts]) { m.frustumCulled = false; m.receiveShadow = true; add(m); }
   }
@@ -159,17 +161,24 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   for (const m of [bodies, glass, caps, tlamps]) m.frustumCulled = false;
   interface Sleeper { home: THREE.Vector3; yaw: number; to: THREE.Vector3; t0: number; fall: number; spin: THREE.Vector3; rest: THREE.Euler }
   const sleepers: Sleeper[] = [];
+  const tankQ: THREE.Quaternion[] = [];
   const doorDir = new THREE.Vector3(Math.sin(da), 0, Math.cos(da));
   const heapC = new THREE.Vector3(cx + doorDir.x * 13.5, F0, cz + doorDir.z * 13.5), HEAP_R = 12.5;
   {
     const r = rng(733), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s1 = new THREE.Vector3(1, 1, 1), lq = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+    const tX = new THREE.Vector3(), tY = new THREE.Vector3(), tZ = new THREE.Vector3(), tB = new THREE.Matrix4();
     for (let i = 0; i < TANKS; i++) {
-      const tier = i % 2, u = (Math.floor(i / 2) + 0.5) / (TANKS / 2), a = A0 + u * TURNS * Math.PI * 2;
-      const home = at(a, 23.45, stairY(u) + 1.75 + tier * 3.35);
+      const tier = i % 2, u = (Math.floor(i / 2) + 0.5 + tier * 0.5) / (TANKS / 2), a = A0 + u * TURNS * Math.PI * 2;   // the upper row set over the gaps of the lower
+      const home = at(a, WR - 0.68, stairY(u) + RISE / 8 + 2.3 + tier * 1.5 + ((Math.floor(i / 2) % 2) ? 0.18 : -0.18));
       const yaw = a + Math.PI;                                    // facing the well
-      q.setFromEuler(e.set(0, yaw, 0));
+      // lying along the wall, tipped a little with the climb, the body facing the well
+      const tilt = 0.14 + ((i * 7) % 3 - 1) * 0.05;
+      tY.set(Math.cos(a), 0, -Math.sin(a)).multiplyScalar(Math.cos(tilt)); tY.y = Math.sin(tilt); tY.normalize();
+      tZ.set(-Math.sin(a), 0, -Math.cos(a)); tX.crossVectors(tY, tZ).normalize(); tZ.crossVectors(tX, tY).normalize();
+      q.setFromRotationMatrix(tB.makeBasis(tX, tY, tZ));
       glass.setMatrixAt(i, m4.compose(home, q, s1)); caps.setMatrixAt(i, m4);
-      tlamps.setMatrixAt(i, m4.compose(new THREE.Vector3(home.x, home.y + 1.24, home.z), lq, s1));
+      tlamps.setMatrixAt(i, m4.compose(home.clone().addScaledVector(tY, 1.24), q.clone().multiply(lq), s1));
+      tankQ.push(q.clone());
       // where each will lie when it is over: a mound against the way out, deepest at the door
       const ra = r() * Math.PI * 2, rr = Math.sqrt(r()) * HEAP_R, hx = heapC.x + Math.cos(ra) * rr, hz = heapC.z + Math.sin(ra) * rr;
       const dc = Math.hypot(hx - cx, hz - cz);
@@ -178,12 +187,13 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
       sleepers.push({ home, yaw, to: new THREE.Vector3(px, F0 + 0.2 + r() * depth, pz), t0: r() * 26 + (1 - u) * 3, fall: 0, spin: new THREE.Vector3(r() - 0.5, r() - 0.5, r() - 0.5).multiplyScalar(5), rest: new THREE.Euler(Math.PI / 2 + (r() - 0.5) * 0.9, r() * 6.283, (r() - 0.5) * 0.9) });
     }
   }
+  const _sq = new THREE.Quaternion();
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _one = new THREE.Vector3(1, 1, 1);
   /** place every sleeper for a moment T seconds into the jettison (T < 0: all still in their tanks; large T: all at rest) */
   function layBodies(T: number) {
     for (let i = 0; i < TANKS; i++) {
       const s = sleepers[i], t = T - s.t0;
-      if (t <= 0) { _v.copy(s.home); _v.y += 0.02 + Math.sin(tNow * 0.4 + i) * 0.015; _q.setFromEuler(_e.set(0, s.yaw, 0)); }
+      if (t <= 0) { _v.copy(s.home); _v.y += 0.02 + Math.sin(tNow * 0.4 + i) * 0.015; _q.copy(tankQ[i]); }
       else {
         // out of the tank and over the rail, then nothing but the fall
         const H = s.home.y - s.to.y, tf = Math.sqrt((2 * H) / 9.8);
@@ -191,7 +201,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
         else {
           const k = t / tf, out = Math.min(1, t / 1.1);
           _v.lerpVectors(s.home, s.to, k * k * 0.35 + k * 0.65); _v.y = s.home.y + 0.4 * Math.sin(out * Math.PI) - 4.9 * t * t;
-          _q.setFromEuler(_e.set(s.spin.x * t, s.yaw + s.spin.y * t, s.spin.z * t));
+          _q.copy(tankQ[i]).multiply(_sq.setFromEuler(_e.set(s.spin.x * t, s.spin.y * t, s.spin.z * t)));
         }
       }
       bodies.setMatrixAt(i, _m4.compose(_v, _q, _one));
