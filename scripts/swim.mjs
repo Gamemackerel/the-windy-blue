@@ -11,6 +11,10 @@ await page.mouse.click(640, 360);
 await page.keyboard.press('KeyF'); await page.waitForTimeout(900);
 console.log('anchored:', await st());
 await page.keyboard.press('KeyE'); await page.waitForTimeout(900);
+console.log('standing in the boat:', await st());
+// step over the side
+await ev(() => { const g = window.__game; g.rig.yaw = g.boat.state.psi + Math.PI / 2 + Math.PI; g.rig.pitch = 0; });
+await page.keyboard.down('KeyW'); for (let i = 0; i < 20; i++) { await page.waitForTimeout(150); if (await ev(() => window.__game.player.mode === 'swim')) break; } await page.keyboard.up('KeyW');
 console.log('over the side:', await st());
 await page.screenshot({ path: 'shots/swim1.png' });
 // swim toward the landing (at -247, -156.5)
@@ -20,7 +24,7 @@ for (let i = 0; i < 60 && !out; i++) {
   await ev(() => { const g = window.__game, p = g.player.pos; g.rig.yaw = Math.atan2(p.x + 254, p.z + 156.6); g.rig.pitch = 0.0; });
   await page.waitForTimeout(400);
   if (i % 3 === 2) await page.keyboard.press('Space');
-  out = await ev(() => window.__game.player.mode === 'foot');
+  out = await ev(() => window.__game.player.mode === 'foot' && window.__game.player.pos.z > -162);
 }
 await page.keyboard.up('KeyW');
 console.log('hauled out:', out, await st());

@@ -360,10 +360,11 @@ export class Player {
     this.busy = 0.5;
     this.velY = 0;
     if (best) { this.mode = 'foot'; this.pos.copy(best); return; }
-    // nothing to stand on: slip into the water on the side away from the boom
-    const sx = Math.cos(b.state.psi) * 1.5 * this.side, sz = -Math.sin(b.state.psi) * 1.5 * this.side;
-    this.mode = 'swim';
-    this.pos.set(b.position.x + sx, waveHeight(b.position.x + sx, b.position.z + sz, t) - 1.42, b.position.z + sz);
+    // nothing to stand on but the boat itself: get up off the seat and stand on the boards. Over the side is a step away.
+    void t;
+    b.local(0, -0.08, -0.35, _v);
+    this.mode = 'foot';
+    this.pos.copy(_v);
   }
 
   // ---------------------------------------------------------------- swimming
@@ -498,6 +499,17 @@ export class Player {
     // aft hand on the tiller, forward hand on the sheet
     const aSh = aftIsLeft ? J.shL : J.shR, aEl = aftIsLeft ? J.elL : J.elR, aHa = aftIsLeft ? J.haL : J.haR;
     f.group.worldToLocal(b.tillerGrip(_t));          // (the feet above borrowed _t)
+    {
+      // when the tiller swings out of easy reach, the body leans after it rather than the hand letting go
+      const reach = (LIMB.UARM + LIMB.FARM) * 0.9;
+      _u.subVectors(_t, p[aSh]);
+      const d = _u.length();
+      if (d > reach) {
+        _u.setY(0); if (_u.lengthSq() > 1e-6) _u.normalize().multiplyScalar(Math.min(0.42, (d - reach) * 1.1));
+        for (const j of [J.chest, J.shL, J.shR]) p[j].add(_u);
+        p[J.head].addScaledVector(_u, 1.15);
+      }
+    }
     solveIK(p[aSh], _t, LIMB.UARM, LIMB.FARM, POLE_ELBOW, p[aEl], p[aHa]);
     const fSh = aftIsLeft ? J.shR : J.shL, fEl = aftIsLeft ? J.elR : J.elL, fHa = aftIsLeft ? J.haR : J.haL;
     // the sheet comes back from its block to the outboard hand, held in front of the body and hauled in as it is trimmed
@@ -518,7 +530,8 @@ export class Player {
       (b.sheetHand ??= new THREE.Vector3()).copy(_w);
     }
 
-    f.skirtAmount = 0.55;
+    f.skirtAmount = 0;                                // seated: the coat is gathered under them
+    f.grip[0] = f.grip[1] = 1;                        // closed on the tiller and the sheet
     // eyes forward, glancing up at the sail now and then
     const glance = Math.max(0, Math.sin(t * 0.37) - 0.86) * 5;
     f.headYaw += (-this.sideSmooth * 0.5 + s.rudder * 0.3 - f.headYaw) * Math.min(1, dt * 3);

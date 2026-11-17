@@ -1,4 +1,5 @@
 // Prevailing wind with slow drift and gusts.
+import * as THREE from 'three';
 export class Wind {
   /** direction the wind blows toward, radians clockwise from +Z */
   dir = 0.35;
@@ -10,6 +11,11 @@ export class Wind {
   z = 0;
   private t = 0;
   private baseDir = 0.35;
+  /** turn the prevailing wind a little toward a direction (radians it blows toward), at most rate radians a second */
+  nudge(toward: number, rate: number, dt: number) {
+    const d = Math.atan2(Math.sin(toward - this.baseDir), Math.cos(toward - this.baseDir));
+    this.baseDir += THREE.MathUtils.clamp(d, -rate * dt, rate * dt);
+  }
 
   update(dt: number) {
     this.t += dt;

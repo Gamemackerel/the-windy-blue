@@ -112,12 +112,17 @@ export class Boat {
   stranded = false;
   /** 0 stowed in the bow .. 1 on the bottom, for the anchor's throw and recovery */
   anchorK = 0;
+  readonly bowLamp = new THREE.PointLight('#ff2a12', 0, 9, 1.8);
+  private bowLampMat!: THREE.MeshStandardMaterial;
+  /** 0 by day, 1 at night: set by the main loop */
+  night = 0;
   /** which side the helm sits (+1 or -1), and where their hand should be while handling the anchor (boat frame), if anywhere */
   helmSide = 1;
   anchorGrip: THREE.Vector3 | null = null;
   private throwSide = 1;
   private anchor = new THREE.Group();
   private anchorLine!: THREE.Mesh;
+  private anchorLine2!: THREE.Mesh;
   /** above zero while the boat is going down */
   sinking = 0;
   /** speed lost in the last grounding, for sound and feel */
@@ -309,10 +314,15 @@ export class Boat {
       this.mastParts.push(m);
     };
     wire(0, MAST_H - 0.6, MAST_Z, 0, sheer(1), LEN / 2 - 0.02);
-    const sx = halfBeam(0.6);
-    wire(0, MAST_H - 1.2, MAST_Z, sx, sheer(0.6), stationZ(0.6) - 0.2);
-    wire(0, MAST_H - 1.2, MAST_Z, -sx, sheer(0.6), stationZ(0.6) - 0.2);
 
+    // a small red lamp on the stem head, turned well down, lit after dark
+    {
+      this.bowLampMat = new THREE.MeshStandardMaterial({ color: '#2a0806', emissive: '#ff2a12', emissiveIntensity: 0 });
+      const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.07, 10), this.bowLampMat); glass.position.set(0, sheer(1) + 0.08, LEN / 2 - 0.12);
+      const capM = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.045, 0.03, 10), metal); capM.position.set(0, sheer(1) + 0.13, LEN / 2 - 0.12);
+      this.bowLamp.position.set(0, sheer(1) + 0.2, LEN / 2 - 0.05);
+      this.group.add(glass, capM, this.bowLamp);
+    }
     // the hull's fixed parts (ribs, rails, thwarts, coils...) become one mesh per material
     {
       const keep = new Set<THREE.Object3D>([lid, this.sail, this.sheetLine, this.pennant, mast, ...this.mastParts]);
@@ -380,6 +390,7 @@ export class Boat {
       if (world) this.collide(world, px, pz);
     }
     this.sync(t, dt);
+    if (world) this.syncDeck(world);
     this.updateSail(t, dt);
 
     // pennant streams with the apparent wind
@@ -412,7 +423,8 @@ export class Boat {
     this.anchor.traverse((m) => { m.castShadow = true; });
     this.anchorLine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 5), new THREE.MeshStandardMaterial({ color: '#8a7b5e', roughness: 1 }));
     this.anchorLine.geometry.translate(0, 0.5, 0);
-    this.group.add(this.anchor, this.anchorLine);
+    this.anchorLine2 = this.anchorLine.clone();
+    this.group.add(this.anchor, this.anchorLine, this.anchorLine2);
   }
   /**
    * The helm picks the anchor up off the boards, swings it up and out over their own side and lets go;
@@ -440,14 +452,30 @@ export class Boat {
     if (this.anchorGrip && k > 0.5) this.anchorGrip.lerpVectors(R, _v.set(sd * 0.3, 0.74, -0.86), sm((k - 0.5) / 0.1));   // follow through, and back
     const l = this.anchorLine;
     l.visible = k > 0.3;
+    if (!l.visible) this.anchorLine2.visible = false;
     if (l.visible) {
-      _v.set(0, 0.41, -0.72);                                  // made fast to the post
-      l.position.copy(_v);
-      _w3.copy(a.position).sub(_v);
-      const len = Math.max(0.05, _w3.length());
-      l.quaternion.setFromUnitVectors(_up3, _w3.multiplyScalar(1 / len));
-      l.scale.set(1, len, 1);
+      // made fast to the post, led over the gunwale on the side it went over, and down to the anchor
+      const gw = _a1.set(this.throwSide * (halfBeam(0.3) + 0.01), sheer(0.3) + 0.02, stationZ(0.3));
+      const seg = (m: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3) => {
+        m.position.copy(from); _w3.copy(to).sub(from);
+        const len = Math.max(0.05, _w3.length());
+        m.quaternion.setFromUnitVectors(_up3, _w3.multiplyScalar(1 / len)); m.scale.set(1, len, 1);
+      };
+      const overSide = k > 0.42;
+      seg(l, _v.set(0, 0.41, -0.72), overSide ? gw : a.position);
+      this.anchorLine2.visible = overSide;
+      if (overSide) seg(this.anchorLine2, gw, a.position);
     }
+  }
+
+  /** the floor boards, as something to stand on: only while the boat is not under way */
+  private deckCol: ReturnType<World['addBox']> | null = null;
+  private syncDeck(world: World) {
+    const c = (this.deckCol ??= world.addBox(0, -100, 0, 0.62, 0.1, 1.9));
+    const s = this.state, on = this.mode !== 'sailing' && !this.stranded;
+    _v.set(0, -0.2, -0.25).applyQuaternion(this.group.quaternion).add(this.group.position);
+    c.x = _v.x; c.z = _v.z; c.y = on ? _v.y : -100;
+    c.yaw = s.psi; c.sin = Math.sin(s.psi); c.cos = Math.cos(s.psi);
   }
 
   /** keep the hull out of land and structures; grounding scrapes rather than sinks */
@@ -540,6 +568,8 @@ export class Boat {
     this.group.rotation.set(-this.pitch - down * 0.5, s.psi, this.roll - s.heel + down * 0.9);
     if (this.stranded) { this.group.position.y = 0.25; this.group.rotation.set(0.08, s.psi, 0.5); }
     this.syncAnchor(dt);
+    this.bowLampMat.emissiveIntensity = this.night * 2.2;
+    this.bowLamp.intensity = this.night * 0.6;
     this.boomPivot.rotation.y = -s.boom;
     this.rudderPivot.rotation.y = -s.rudder * 0.5;
     // mainsheet: from the boom to its block, taut when the sail is drawing, hanging in a slack curve when it is not

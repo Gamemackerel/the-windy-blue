@@ -2,7 +2,7 @@
 // until there is something to do: reach for a thing, carry it, hold the tiller
 // and sheet, or climb.
 import * as THREE from 'three';
-import { Tube, ProfKey, bodyMaterial, fillHand, solveIK, LIMB } from './figure';
+import { Tube, ProfKey, bodyMaterial, fillHand, setGrip, solveIK, LIMB } from './figure';
 
 const _t = new THREE.Vector3(), _e = new THREE.Vector3(), _n = new THREE.Vector3(), _x = new THREE.Vector3(), _m = new THREE.Matrix4(), _pole = new THREE.Vector3();
 const FWD = new THREE.Vector3(0, 0, -1);
@@ -19,6 +19,8 @@ export class Arms {
   readonly group = new THREE.Group();
   /** something being carried in both hands (positioned by the main loop), with its width */
   carry: { obj: THREE.Object3D; size: number } | null = null;
+  /** what the right hand holds is the revolver (gripped) rather than something carried on the palm */
+  heldGun = false;
   private arms: Arm[] = [];
   private sway = 0;
 
@@ -65,18 +67,24 @@ export class Arms {
       const a = this.arms[i], s = a.s;
       // where this hand wants to be, in camera space
       const want = _t.set(-s * 0.25, -0.72 + Math.sin(this.sway + i * Math.PI) * 0.012 * Math.min(1, speed), -0.12);
-      let rate = 9, palmDown = 0;
+      let rate = 9, palmDown = 0, palmUp = 0, closed = false;
       if (this.carry) {
+        closed = true;
         cam.worldToLocal(want.copy(this.carry.obj.getWorldPosition(_e)));
         want.x += -s * (this.carry.size * 0.5 + 0.03); want.y -= 0.02; want.z += 0.03;
         rate = 16;
       } else if (grips) {
-        cam.worldToLocal(want.copy(i === 0 ? gl! : gr!)); rate = 14; palmDown = 1;
+        cam.worldToLocal(want.copy(i === 0 ? gl! : gr!)); rate = 14; palmDown = 1; closed = true;
         // the wrist stops short of the bar and a little under it, so it is the curled fingers that lie over it
         _e.subVectors(want, a.sh).normalize();
         want.addScaledVector(_e, -0.075); want.y -= 0.025;
       }
-      else if (i === 1 && held) { want.copy(held); want.x += 0.02; want.y -= 0.075; want.z += 0.09; rate = 18; }
+      else if (i === 1 && held) {
+        // the revolver is gripped; anything else rests on the open palm, held up to be seen
+        rate = 18;
+        if (this.heldGun) { want.copy(held); want.x += 0.02; want.y -= 0.075; want.z += 0.09; closed = true; }
+        else { want.copy(held); want.y -= 0.06; want.z += 0.06; palmUp = 1; }
+      }
       if (a.reachT > 0) {
         a.reachT += dt * 2.3;
         const k = Math.sin(Math.min(1, a.reachT) * Math.PI);
@@ -99,6 +107,8 @@ export class Arms {
       // hand: along the forearm, palm turned in (or down, when gripping a bar)
       _e.subVectors(a.wr, a.el).normalize();
       _n.set(s * (1 - palmDown), -palmDown - 0.15, 0);
+      if (palmUp) _n.set(0, 1, 0.25);
+      setGrip(a.hand, closed);
       _n.addScaledVector(_e, -_n.dot(_e));
       if (_n.lengthSq() < 1e-6) _n.copy(FWD);
       _n.normalize();

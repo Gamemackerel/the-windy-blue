@@ -206,8 +206,8 @@ const handGeo: Record<string, THREE.BufferGeometry> = {};
  * A hand as one continuous surface: wrist, palm, the heel of the thumb, four fingers lightly curled and a thumb,
  * all run together the way flesh does. Local +Y runs out along the forearm, the palm faces +Z; s is +1 for a left hand.
  */
-function handGeometry(s: number) {
-  const key = s > 0 ? 'L' : 'R';
+function handGeometry(s: number, fist = false) {
+  const key = (s > 0 ? 'L' : 'R') + (fist ? 'f' : '');
   if (handGeo[key]) return handGeo[key];
   type Cap = { ax: number; ay: number; az: number; bx: number; by: number; bz: number; r0: number; r1: number };
   const caps: Cap[] = [], thumb: Cap[] = [];
@@ -225,11 +225,14 @@ function handGeometry(s: number) {
   };
   for (let f = 0; f < 4; f++) {
     const k = 1 - Math.abs(f - 1.4) * 0.1;
-    chain(caps, (f - 1.5) * 0.0205, 0.08, 0.0, (f - 1.5) * 0.075, [0.036 * k, 0.024 * k, 0.019 * k], [0.3, 0.42, 0.36], 0.0093);
+    chain(caps, (f - 1.5) * 0.0205, 0.08, 0.0, (f - 1.5) * (fist ? 0.02 : 0.075), [0.036 * k, 0.024 * k, 0.019 * k], fist ? [1.0, 1.45, 1.15] : [0.3, 0.42, 0.36], 0.0093);
   }
   // the thumb leaves the side of the palm and comes round in front of it
   {
-    const o = { x: -s * 0.028, y: 0.022, z: 0.01 }, d1 = new THREE.Vector3(-s * 0.72, 0.6, 0.34).normalize(), d2 = new THREE.Vector3(-s * 0.4, 0.82, 0.4).normalize();
+    // open, it stands off the side of the palm; closed, it folds across the front of the curled fingers
+    const o = { x: -s * 0.028, y: 0.022, z: 0.01 };
+    const d1 = fist ? new THREE.Vector3(-s * 0.2, 0.72, 0.66).normalize() : new THREE.Vector3(-s * 0.72, 0.6, 0.34).normalize();
+    const d2 = fist ? new THREE.Vector3(s * 0.75, 0.35, 0.5).normalize() : new THREE.Vector3(-s * 0.4, 0.82, 0.4).normalize();
     thumb.push({ ax: o.x, ay: o.y, az: o.z, bx: o.x + d1.x * 0.036, by: o.y + d1.y * 0.036, bz: o.z + d1.z * 0.036, r0: 0.0125, r1: 0.0105 });
     const m = thumb[0];
     thumb.push({ ax: m.bx, ay: m.by, az: m.bz, bx: m.bx + d2.x * 0.028, by: m.by + d2.y * 0.028, bz: m.bz + d2.z * 0.028, r0: 0.0105, r1: 0.009 });
@@ -257,8 +260,16 @@ function handGeometry(s: number) {
   const g = meshField(field, new THREE.Vector3(-0.075, -0.05, -0.03), new THREE.Vector3(0.075, 0.175, 0.075), 0.0022);
   return (handGeo[key] = g);
 }
+/** an open hand and a closed one; setGrip(hand, true) shows the closed one */
 export function fillHand(hand: THREE.Group, s: number, skinMat: THREE.Material, skin: THREE.Color) {
-  hand.add(part(handGeometry(s).clone(), skinMat, skin, 0, 0, 0));
+  const open = part(handGeometry(s).clone(), skinMat, skin, 0, 0, 0), fist = part(handGeometry(s, true).clone(), skinMat, skin, 0, 0, 0);
+  fist.visible = false;
+  hand.add(open, fist);
+  hand.userData.open = open; hand.userData.fist = fist;
+}
+export function setGrip(hand: THREE.Group, closed: boolean) {
+  (hand.userData.open as THREE.Object3D).visible = !closed;
+  (hand.userData.fist as THREE.Object3D).visible = closed;
 }
 
 export class Figure {
@@ -272,6 +283,11 @@ export class Figure {
   private footL = new THREE.Group(); private footR = new THREE.Group();
   /** radians the head is turned relative to the body */
   headYaw = 0; headPitch = 0;
+  /** per hand (left, right): 1 closes it round what it holds; palmUp 1 turns the palm to the sky, to hold something out */
+  grip = [0, 0];
+  palmUp = [0, 0];
+  /** a point just above the middle of a palm (0 left, 1 right), in the world */
+  palmPoint(i: number, out: THREE.Vector3) { return (i ? this.handR : this.handL).localToWorld(out.set(0, 0.05, 0.05)); }
   readonly rightHandSlot = new THREE.Group();
   readonly mouthSlot = new THREE.Group();
   /** the air moving past the figure, in its own frame (m/s): lifts the coat and the scarf */
@@ -510,9 +526,11 @@ export class Figure {
     this.head.quaternion.multiply(_q);
 
     // hands continue the forearms, palms turned in toward the body
-    for (const [hand, el, ha, s] of [[this.handL, J.elL, J.haL, 1], [this.handR, J.elR, J.haR, -1]] as const) {
+    for (const [hand, el, ha, s, i] of [[this.handL, J.elL, J.haL, 1, 0], [this.handR, J.elR, J.haR, -1, 1]] as const) {
+      setGrip(hand, this.grip[i] > 0.5);
       _e.subVectors(p[ha], p[el]).normalize();                   // along the forearm
       _tmp.copy(_b).multiplyScalar(-s);                          // palm normal: toward the body's midline
+      if (this.palmUp[i] > 0) _tmp.lerp(_tmp2.set(0, 1, 0), this.palmUp[i]).normalize();
       _tmp.addScaledVector(_e, -_tmp.dot(_e));
       if (_tmp.lengthSq() < 1e-6) _tmp.copy(_c);
       _tmp.normalize();

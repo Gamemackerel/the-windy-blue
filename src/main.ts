@@ -530,6 +530,8 @@ reportText.addEventListener('keydown', (e) => {
 const pauseEl = document.getElementById('pause')!;
 const hintEl = document.getElementById('hint')!;
 let paused = false;
+let aimOn = false;
+let calmT = 0, cine = 0, cineDist = 11, holdT = 0, holdPsi = 0;
 let baseRatio = 1, resScale = 1, slowT = 0, fastT = 0, frameMs = 16;
 let quality = params.has('q') ? num('q', 2) : Number(localStorage.getItem('ww-quality') ?? 2);
 function applyQuality(q: number, remember = true) {
@@ -605,7 +607,7 @@ function frame() {
     debug = !debug;
     debugEl.style.display = debug ? 'block' : 'none';
   }
-  if (input.hit('Escape') && !title && !ending && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
+  if (input.hit('Escape') && !aimOn && !title && !ending && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
   if (paused || reporting) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   // Dynamic resolution: if frames are taking too long, draw slightly fewer pixels; when there is room, restore them.
   frameMs += (dt * 1000 - frameMs) * 0.08;
@@ -644,8 +646,15 @@ function frame() {
     else player.busy = Math.max(player.busy, 0.05);   // hands and feet stay still while the eye is at the glass
   }
   // aiming and firing
-  const canAim = player.held === 'revolver' && player.busy <= 0 && player.mode !== 'climb';
-  const aiming = canAim && input.mouse(2);
+  // both hands are on tiller and sheet while the boat is under way: nothing else can be held
+  if (player.mode === 'sail' && boat.mode === 'sailing' && player.held) player.setHeld(null);
+  // the revolver: a click brings it up to the eye; a click then fires; Esc, or any step, lowers it again
+  const canAim = player.held === 'revolver' && player.busy <= 0 && player.mode !== 'climb' && !satchel.open && !reading;
+  if (!canAim) aimOn = false;
+  else if (aimOn) {
+    if (input.hit('Escape') || input.axis('KeyS', 'KeyW') !== 0 || input.axis('KeyA', 'KeyD') !== 0 || input.hit('Space')) { aimOn = false; input.endFrame(); }
+  } else if (input.mouseHit(0) && input.locked) { aimOn = true; input.endFrame(); }
+  const aiming = aimOn;
   rig.aim = aiming;
   dotEl.style.opacity = aiming ? '0.85' : '0';
   if (aiming) { camera.getWorldDirection(aimDir); player.aimDir = aimDir; if (input.mouseHit(0)) fire(); }
@@ -735,6 +744,7 @@ function frame() {
     if (nagT > 0 && (nagT -= dt) <= 0) hintEl.style.opacity = '0';
   }
   if (player.mode !== 'sail') boat.sheetHand = null;
+  boat.night = 1 - env.daylight;
   // the view
   player.focus(focus);
   const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos) || tower.inside(player.pos);
@@ -745,6 +755,35 @@ function frame() {
   const pulledBack = sailing && !aiming && !rig.scope;
   if (pulledBack && !wasPulledBack && rig.pitch < 0.12) rig.pitch = 0.2;
   wasPulledBack = pulledBack;
+  // ---- a long straight run with nothing near: the view drifts out and round, and comes straight back at a touch ----
+  {
+    const s = boat.state;
+    const touched = helm.steer !== 0 || helm.sheet !== 0 || input.lookX !== 0 || input.lookY !== 0 || input.wheel !== 0 || aiming;
+    const under = sailing && boat.mode === 'sailing';
+    let nearLand = false;
+    if (under) {
+      const reach = Math.max(120, Math.abs(s.u) * 30);
+      const marks: [number, number, number][] = [[ISLAND.x, ISLAND.z, 230], [ATOLL.x, ATOLL.z, ATOLL.r + 20], [TOWER.x, TOWER.z, 40], [WINDMILL.x, WINDMILL.z, 20], [LAB.x, LAB.z, 20], ...Object.values(PLACES).map((p) => [p.x, p.z, 15] as [number, number, number])];
+      nearLand = marks.some(([x, z, r]) => Math.hypot(boat.position.x - x, boat.position.z - z) - r < reach);
+    }
+    calmT = under && !touched && !nearLand ? calmT + dt : 0;
+    const want = calmT > 10 ? 1 : 0;
+    if (want && cine === 0) cineDist = rig.dist;
+    cine += (want - cine) * Math.min(1, dt * (want ? 0.25 : 3));
+    if (cine < 0.002 && !want) cine = 0;
+    if (cine > 0) {
+      rig.yaw += dt * 0.045 * cine;
+      rig.dist = cineDist + (34 - cineDist) * cine;
+      rig.pitch += (0.22 * cine + rig.pitch * (1 - cine) - rig.pitch) * Math.min(1, dt * 0.5);
+    }
+    // making no way on one heading for a minute: the wind comes round onto the beam to help
+    if (under && Math.abs(Math.atan2(Math.sin(s.psi - holdPsi), Math.cos(s.psi - holdPsi))) < 0.25) holdT += dt; else { holdT = 0; holdPsi = s.psi; }
+    if (holdT > 60 && Math.abs(s.u) < 2) {
+      const a = s.psi + Math.PI / 2, b2 = s.psi - Math.PI / 2;
+      const pick = Math.abs(Math.atan2(Math.sin(a - wind.dir), Math.cos(a - wind.dir))) < Math.abs(Math.atan2(Math.sin(b2 - wind.dir), Math.cos(b2 - wind.dir))) ? a : b2;
+      wind.nudge(pick, 0.04, dt);
+    }
+  }
   rig.update(dt, t, input, eyePos, sailing ? boat.state.psi : null, player.mode === 'foot' ? player.speed : 0, pulledBack ? boat.position : null);
   const outside = rig.third > 0.3;
   player.figure.group.visible = outside && sailing;
@@ -775,6 +814,7 @@ function frame() {
     grips = [_g0, _g1];
   }
   arms.group.visible = !rig.scope && !outside && !title;
+  arms.heldGun = player.held === 'revolver';
   arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, player.held && !carry ? _held.copy(viewModel.position) : null, grips);
   // a small ring on whatever E would act on
   {

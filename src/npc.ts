@@ -212,6 +212,8 @@ export class Npc {
       hR.set(-0.28, 0.06, 0.42);
       fL.set(0.15, 0.03, 0.08); fR.set(-0.16, 0.03, -0.02);
       limbs(p, hL, hR, fL, fR);
+    this.figure.palmUp[0] = this.holdK;
+    this.figure.grip[1] = s.aims ? 1 : 0;
       return;
     }
     if (s.pose === 'sit') {
@@ -351,7 +353,7 @@ export class Npc {
     if (this.offered) {
       if (!this.offered.visible) this.offered = null;                                   // taken
       else {
-        f.group.localToWorld(_t.copy(f.joints[J.haL])); _t.y += 0.045;
+        f.palmPoint(0, _t);
         this.offered.position.copy(_t);
         (this.offered.userData.it as { pos: THREE.Vector3 }).pos.copy(_t);
       }
