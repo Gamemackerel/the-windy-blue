@@ -45,22 +45,22 @@ function shapeHead(v: THREE.Vector3) {
   if (w <= 0) return;
   const G = (a: number, s: number) => Math.exp(-(a * a) / s);
   let x = px, y = py, z = pz;
-  const jaw = Math.min(0.85, Math.max(0, -y - 0.15));
-  x *= (1 - jaw * 0.55) * 0.86;
+  const jq = -y - 0.15, jaw = Math.min(0.85, 0.5 * (jq + Math.sqrt(jq * jq + 0.006)));   // eased in, so the jawline starts without a crease
+  x *= (1 - jaw * 0.38) * 0.88;
   x *= 1 - G(y - 0.05, 0.05) * 0.05 * smooth(-0.4, 0.0, z);
-  y *= y < 0 ? 1.22 : 1.08;
+  y *= 1.08 + 0.14 * smooth(0.12, -0.12, y);                 // the face longer below the eyes than above, without a seam between
   z *= 1.04 + (z < 0 ? 0.16 * Math.max(0, 1 - Math.abs(y)) : 0);
   const front = smooth(0.0, 0.4, pz);
   if (front > 0) {
     const ax = Math.abs(x);
     let dz = -jaw * 0.12;
     dz += G(y - 0.24, 0.012) * 0.05 * (0.6 + 0.4 * Math.min(1, ax * 3));
-    dz -= G(ax - 0.36, 0.022) * G(y - 0.04, 0.02) * 0.17;
+    dz -= G(ax - 0.36, 0.05) * G(y - 0.04, 0.045) * 0.1;
     dz += G(x, 0.005) * G(y + 0.1, 0.06) * 0.13 * (y > -0.26 ? 1 : 0.4);
     dz += G(ax - 0.07, 0.0025) * G(y + 0.27, 0.003) * 0.03;
     dz -= G(ax - 0.05, 0.0012) * G(y + 0.3, 0.0012) * 0.035;
-    dz += G(ax - 0.45, 0.03) * G(y + 0.12, 0.03) * 0.035;
-    dz -= G(ax - 0.3, 0.02) * G(y + 0.45, 0.03) * 0.03;
+    dz += G(ax - 0.47, 0.05) * G(y + 0.2, 0.04) * 0.022;          // cheekbones, low and broad so they never fold against the socket
+    dz -= G(ax - 0.3, 0.02) * G(y + 0.45, 0.03) * 0.012;
     dz += G(x, 0.04) * G(y + 0.47, 0.004) * 0.035;
     dz += G(x, 0.035) * G(y + 0.58, 0.004) * 0.03;
     dz -= G(x, 0.07) * G(y + 0.525, 0.0006) * 0.045;
@@ -105,32 +105,33 @@ export function buildGiantBody(material: THREE.Material) {
   // ---------------------------------------------------------- the volumes
   const prims: Prim[] = [];
   const o = { r: 0, d: 0 };
-  const torsoP = profile([[0.001, 0.075], [0.06, 0.07], [0.12, 0.05], [0.2, 0.024], [0.25, -0.012], [0.265, -0.055], [0.25, -0.12], [0.215, -0.2], [0.176, -0.32], [0.155, -0.42], [0.172, -0.55], [0.15, -0.8]]);
+  const torsoP = profile([[0.258, -0.085], [0.25, -0.13], [0.215, -0.21], [0.178, -0.32], [0.158, -0.42], [0.172, -0.55], [0.15, -0.8]]);
   prims.push({ bone: idx(body), k: 0.02, cx: 0, cy: 0, cz: 0, br: 99, f: (x, y, z) => {
     let zz = z;
     if (z > 0) {
       const ax = Math.abs(x);
-      zz -= Math.exp(-(((y + 0.012 + ax * 0.12) / 0.014) ** 2)) * 0.011 * smooth(0.02, 0.06, ax) * smooth(0.2, 0.14, ax);   // collarbones
-      zz += Math.exp(-(x * x) / 0.0008 - (y * y) / 0.001) * 0.011;                                                             // throat notch
-      zz -= Math.exp(-((ax - 0.09) ** 2) / 0.005 - ((y + 0.13) ** 2) / 0.006) * 0.012;                                         // chest
-      zz += Math.exp(-(x * x) / 0.001 - ((y + 0.2) ** 2) / 0.03) * 0.007;                                                      // sternum line
+      zz -= Math.exp(-(((y + 0.02 + ax * 0.1) / 0.02) ** 2)) * 0.004 * smooth(0.03, 0.07, ax) * smooth(0.2, 0.14, ax);   // the faintest line of the collarbones
     } else zz -= Math.exp(-(x * x) / 0.0008) * 0.006 * smooth(0.0, -0.1, y);                                                   // spine furrow
     const rho = Math.hypot(x, zz / 0.6);
     if (y > torsoP.y1) return ((rho + (y - torsoP.y1) * 2) * 0.6) / 2.24;
     torsoP.at(y, o);
     return Math.max(((rho - o.r) * 0.6) / Math.sqrt(1 + o.d * o.d), torsoP.y0 - y);
   } });
-  const neckP = profile([[0.064, 0.21], [0.064, 0.13], [0.067, 0.09], [0.076, 0.062], [0.095, 0.04], [0.14, 0.018], [0.17, 0.0]]);
-  prims.push({ bone: idx(body), k: 0.025, cx: 0, cy: 0.1, cz: 0, br: 0.25, f: (x, y, z) => {
+  // the yoke of the shoulders: one broad smooth dome from the root of the neck out to each shoulder, laid over the top of the trunk
+  prims.push({ bone: idx(body), k: 0.05, cx: 0, cy: -0.05, cz: 0, br: 0.32, f: (x, y, z) => {
+    // the upper half of an ellipsoid whose rim is exactly the trunk's widest girth, so one runs straight on into the other
+    const px = x / 0.258, py = (y + 0.085) / 0.15, pz = z / 0.155;
+    const k0 = Math.hypot(px, py, pz), k1 = Math.hypot(px / 0.258, py / 0.15, pz / 0.155);
+    return Math.max((k0 * (k0 - 1)) / Math.max(k1, 1e-6), -(y + 0.085));
+  } });
+  const neckP = profile([[0.072, 0.21], [0.073, 0.14], [0.077, 0.1], [0.086, 0.075], [0.095, 0.055], [0.085, 0.03], [0.06, 0.01]]);   // into the slope of the shoulders, and no further
+  prims.push({ bone: idx(body), k: 0.045, cx: 0, cy: 0.1, cz: 0, br: 0.25, f: (x, y, z) => {
     neckP.at(y, o);
-    const rho = Math.hypot(x, (z - 0.005) / 0.8);
-    return Math.max(((rho - o.r) * 0.8) / Math.sqrt(1 + o.d * o.d), y - 0.21, -0.03 - y);
+    const rho = Math.hypot(x, (z - 0.005) / 0.82);
+    return Math.max(((rho - o.r) * 0.82) / Math.sqrt(1 + o.d * o.d), y - 0.21, 0.01 - y);
   } });
   prims.push({ bone: idx(head), k: 0.014, cx: G_HEAD.x, cy: G_HEAD.y, cz: G_HEAD.z, br: HR, f: (x, y, z) => Math.hypot(x - G_HEAD.x, y - G_HEAD.y, z - G_HEAD.z) - HR });
-  for (const s of [-1, 1]) {
-    const ex = G_HEAD.x + s * 0.112, ey = G_HEAD.y, ez = G_HEAD.z - 0.012;
-    prims.push({ bone: idx(head), k: 0.008, cx: ex, cy: ey, cz: ez, br: 0.04, f: (x, y, z) => (Math.hypot((x - ex) / 0.011, (y - ey) / 0.03, (z - ez) / 0.021) - 1) * 0.011 });
-  }
+  // (no ears: the shaping of the face draws the sides of the head in, and they came through the cheeks)
   const cone = (b: THREE.Bone, a: THREE.Vector3, c: THREE.Vector3, r0: number, r1: number, k: number) => {
     const bx = c.x - a.x, by = c.y - a.y, bz = c.z - a.z, bb = bx * bx + by * by + bz * bz;
     prims.push({ bone: idx(b), k, cx: (a.x + c.x) / 2, cy: (a.y + c.y) / 2, cz: (a.z + c.z) / 2, br: Math.sqrt(bb) / 2 + Math.max(r0, r1), f: (x, y, z) => {
@@ -182,7 +183,7 @@ export function buildGiantBody(material: THREE.Material) {
   const active: number[] = [];
   for (let bz = 0; bz < nbz; bz++) for (let by = 0; by < nby; by++) for (let bx = 0; bx < nbx; bx++) {
     const d = field(x0 + (bx + 0.5) * B * H, y0 + (by + 0.5) * B * H, z0 + (bz + 0.5) * B * H);
-    if (Math.abs(d) < B * H * 0.87 + 0.012) { active.push(bx, by, bz); continue; }
+    if (Math.abs(d) < B * H * 0.87 + 0.07) { active.push(bx, by, bz); continue; }   // generous: the blended field is not a true distance, and a block skipped wrongly leaves a hole
     for (let k = bz * B; k <= bz * B + B; k++) for (let j = by * B; j <= by * B + B; j++) for (let i = bx * B; i <= bx * B + B; i++) vals[at(i, j, k)] = d;
   }
   for (let n = 0; n < active.length; n += 3) {
@@ -257,6 +258,14 @@ export function buildGiantBody(material: THREE.Material) {
     }
     if (total <= 0) { skinWeight[v * 4] = 1; total = 1; }
     for (let s = 0; s < 4; s++) skinWeight[v * 4 + s] /= total;
+    // above the shoulders there are only two bones that matter: the head carries the face rigidly, and the neck shades
+    // from body to head along its length. Anything else here (a stray share of some other bone) pulls a point out of the skin.
+    if (y > 0.04 && Math.abs(x) < 0.16) {
+      const h = smooth(0.07, 0.15, y);
+      skinIndex[v * 4] = idx(head); skinWeight[v * 4] = h;
+      skinIndex[v * 4 + 1] = idx(body); skinWeight[v * 4 + 1] = 1 - h;
+      skinWeight[v * 4 + 2] = skinWeight[v * 4 + 3] = 0;
+    }
   }
 
   // ---------------------------------------------------------- the face, and the finished surface

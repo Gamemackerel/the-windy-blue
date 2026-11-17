@@ -22,6 +22,7 @@ const S = 250;                 // metres per model unit
 const DEATH_BEARING = 3.55;    // where on the reef it comes to rest
 const UARM = 0.42, FARM = 0.4;
 
+const _fx = new THREE.Vector3(), _fz = new THREE.Vector3(), _fm = new THREE.Matrix4(), _qb = new THREE.Quaternion();
 const angDiff = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
 function atollLocal(lx: number, lz: number) {
@@ -37,7 +38,7 @@ function atollLocal(lx: number, lz: number) {
 }
 export const atollHeight = (x: number, z: number) => atollLocal(x - ATOLL.x, z - ATOLL.z);
 
-type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'take' | 'hold' | 'throw' | 'submerge' | 'dying' | 'dead';
+type Phase = 'asleep' | 'emerge' | 'watch' | 'peer' | 'scoop' | 'slap' | 'blow' | 'bored' | 'stargaze' | 'take' | 'hold' | 'throw' | 'farewell' | 'submerge' | 'dying' | 'dead';
 
 export interface GiantHooks {
   wreck: () => void; push: (ax: number, az: number) => void;
@@ -47,6 +48,7 @@ export interface GiantHooks {
   /** take the swimmer into the hand, or let go */ hold: (on: boolean) => void;
   held: () => boolean;
   /** let fly */ fling: () => void;
+  /** nothing afloat may be within r of (x, z) */ keepOut: (x: number, z: number, r: number) => void;
 }
 export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   const { scene, world, state, boat } = ctx;
@@ -135,7 +137,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   const rot = { value: 0 };
   // Skin: the pattern is baked to the body (attribute lp) so it never slides as
   // the giant moves. Wet, faintly translucent at the edges, veined and mottled.
-  const skin = new THREE.MeshPhysicalMaterial({ color: '#8b999c', roughness: 0.5, clearcoat: 0.55, clearcoatRoughness: 0.28 });
+  const skin = new THREE.MeshPhysicalMaterial({ color: '#8b999c', roughness: 0.5, clearcoat: 0.55, clearcoatRoughness: 0.28, side: THREE.DoubleSide });   // two-sided: where the face is pressed in hard a few faces turn over, and would show as holes
   skin.onBeforeCompile = (sh) => {
     sh.uniforms.uRot = rot;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 lp;\nvarying vec3 vLp;\nvarying float vWY;')
@@ -244,7 +246,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   mouth.rotation.set(0.5, 0, 0); mouth.position.set(0, -0.07, 0.097); mouth.scale.set(1.0, 0.1, 1); mouth.visible = false;
   headFlesh.add(mouth);
   // eyes
-  const EYE_R = 0.027;
+  const EYE_R = 0.0245;
   const eyes: THREE.Group[] = [], lids: THREE.Mesh[] = [];
   const sclera = new THREE.MeshStandardMaterial({ color: '#b9c1bd', roughness: 0.12 });
   const iris = patch(new THREE.MeshStandardMaterial({ color: '#4a3418', roughness: 0.15, emissive: '#5a3a14', emissiveIntensity: 0.18 }), /* glsl */ `
@@ -253,11 +255,12 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   const lidMat = skin.clone(); lidMat.side = THREE.DoubleSide; lidMat.onBeforeCompile = skin.onBeforeCompile; lidMat.customProgramCacheKey = () => 'giantlid';
   for (const s of [-1, 1]) {
     const eye = new THREE.Group();
-    eye.position.set(s * 0.0415, 0.006, 0.076);
+    eye.position.set(s * 0.0415, 0.006, 0.0755);
     eye.add(new THREE.Mesh(new THREE.SphereGeometry(EYE_R, 24, 18), sclera));
     const ir = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.66, 20, 14), iris); ir.position.z = EYE_R * 0.58; ir.scale.z = 0.7; eye.add(ir);
     const pu = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 0.4, 16, 10), new THREE.MeshStandardMaterial({ color: '#000', roughness: 0.05 })); pu.position.z = EYE_R * 0.93; pu.scale.z = 0.36; eye.add(pu);
-    const cornea = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.03, 24, 18), new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, transparent: true, opacity: 0.16, clearcoat: 1, clearcoatRoughness: 0.02, depthWrite: false }));
+    const cornea = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.004, 24, 8, 0, Math.PI * 2, 0, 0.6).rotateX(Math.PI / 2),   // only a cap over the iris: a whole shell showed through the cheek
+      new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.02, transparent: true, opacity: 0.16, clearcoat: 1, clearcoatRoughness: 0.02, depthWrite: false }));
     eye.add(cornea);
     headFlesh.add(eye); eyes.push(eye);
     const lid = new THREE.Mesh(new THREE.SphereGeometry(EYE_R * 1.1, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2), lidMat);
@@ -371,7 +374,8 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   let blink = 0, blinkAt = 4, lidOpen = 1;
   let acting = 0;                // which hand is busy
   const strike = new THREE.Vector3();
-  let struck = false, away = 0, idle = 3, attention = 0, provoked = 0, onFoot = false;
+  let rollA = 0, forced = false;   // forced: woken for a test, whatever the hour
+  let struck = false, away = 0, idle = 3, attention = 0, provoked = 0, onFoot = false, subFrom = 0;
   let sheet = 0;                 // water still pouring off after surfacing
   let body: CylCollider | null = null;
   const bodyCols: CylCollider[] = [];
@@ -458,7 +462,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       setVisual();
     }
     // From midnight until a little before dawn it stands up out of its hole and watches the stars, whether or not anyone is near.
-    const starTime = ctx.env.time < 0.236;
+    const starTime = ctx.env.time < 0.236 || forced;
     const nightNow = ctx.env.daylight < 0.15;
     const far = pd > 900;
     if (far && alive && phase !== 'asleep' && phase !== 'stargaze' && phase !== 'emerge' && phase !== 'submerge') { setPhase('submerge'); sfx('giant-sink'); }
@@ -507,8 +511,8 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       root.position.set(cx, sink * S, cz);
       if (body) { world.remove(body); body = null; }
       if (hooks.held()) hooks.hold(false);
-      if ((sailing && bd < 62) || (hooks.swimming() && pd < 75)) { setPhase('emerge'); yaw = sailing ? toBoat : Math.atan2(pp.x - cx, pp.z - cz); sfx('giant-rise', 1.6); }
-      else if (starTime) { setPhase('emerge'); sfx('giant-rise', 1.6); }
+      // it keeps to the night: it comes up at midnight (and only then will a boat or a swimmer draw its eye)
+      if (starTime) { setPhase('emerge'); yaw = sailing && bd < 230 ? toBoat : hooks.swimming() && pd < 230 ? Math.atan2(pp.x - cx, pp.z - cz) : yaw; sfx('giant-rise', 1.6); }
       root.visible = false;
       return;
     }
@@ -519,7 +523,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       const dy = angDiff(toBoat, yaw);
       yaw += THREE.MathUtils.clamp(dy, -0.11 * dt, 0.11 * dt) * (phase === 'stargaze' ? 0 : 1);
       away = bd > 235 ? away + dt : 0;
-      if (away > 45 && phase === 'watch' && !(starTime && nightNow)) { setPhase('submerge'); sfx('giant-sink'); }
+      if (!starTime && phase !== 'submerge' && phase !== 'take' && phase !== 'hold' && phase !== 'throw') { setPhase('submerge'); sfx('giant-sink'); }   // before dawn it goes back down, whatever it was doing
     }
     root.updateMatrixWorld(true);
     rig.worldToLocal(boatL.copy(boatW));
@@ -536,10 +540,11 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
         if (k < 0.45) { b.r = 0; b.w = 70; b.a = 13 * Math.sin((k / 0.45) * Math.PI * 0.5); }
         else { b.r = (k - 0.45) * 420; b.w = 60; b.a = 13 * Math.max(0, 1 - (k - 0.45) / 0.55); }
         if (k > 0.2) for (let i = 0; i < 26; i++) { const a = Math.random() * 6.283, r = 22 + 44 * e + Math.random() * 6; emit(cx + Math.cos(a) * r, 0.5 + Math.random() * 2, cz + Math.sin(a) * r, Math.cos(a) * (5 + Math.random() * 9), 3 + Math.random() * 9, Math.sin(a) * (5 + Math.random() * 9)); }
-        if (sailing && bd < 190 && k < 0.85) {
-          const ox = (boatW.x - cx) / Math.max(bd, 1), oz = (boatW.z - cz) / Math.max(bd, 1), f = 15 * Math.sin((k / 0.85) * Math.PI) * (1 - bd / 230);
+        if (sailing && bd < 210 && k < 0.85) {
+          const ox = (boatW.x - cx) / Math.max(bd, 1), oz = (boatW.z - cz) / Math.max(bd, 1), f = 42 * Math.sin((k / 0.85) * Math.PI) * (1 - bd / 240);
           hooks.push(ox * f, oz * f);
         }
+        hooks.keepOut(cx, cz, 30 + 40 * e);
         if (k >= 1) { setPhase(nightSky && bd > 150 ? 'stargaze' : 'watch'); idle = 4; sheet = 12; sfx('giant-hum'); }
         break;
       }
@@ -572,8 +577,21 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
         break;
       }
       case 'submerge': {
-        leanT = 0; sinkT = -0.8;
-        if (sink < -0.76) { sink = sinkT = -0.78; setPhase('asleep'); }
+        leanT = 0.04;
+        if (tau < 0.05) subFrom = sink;
+        const EYES = -0.288;                                     // the sea at the lower lids
+        const sm = (x: number) => x * x * (3 - 2 * x);
+        if (tau < 9) sink = subFrom + (EYES - subFrom) * sm(tau / 9);
+        else if (tau < 13) { sink = EYES; if (tau > 11 && tau < 11.05) blink = 0.6; }
+        else sink = EYES + (-0.78 - EYES) * sm(Math.min(1, (tau - 13) / 8));
+        sinkT = sink;
+        if (tau > 21) { sink = sinkT = -0.78; setPhase('asleep'); }
+        break;
+      }
+      case 'farewell': {
+        // it watches where it threw them for a while, then goes down
+        leanT = 0.06; sinkT = 0;
+        if (tau > 7) { setPhase('submerge'); sfx('giant-sink'); }
         break;
       }
       case 'peer': {
@@ -626,7 +644,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
         const k = THREE.MathUtils.clamp((tau - 2.2) / 5, 0, 1);
         if (tau < 2.2) { a.target.set(_a.x + s * 0.3, -0.02, _a.z - 0.02); a.k = 5; a.c = 4.2; }
         else if (tau < 7.2) {
-          a.target.set(_a.x + s * (0.3 - 0.55 * k), -0.03, _a.z + 0.14 + 0.1 * Math.sin(k * Math.PI)); a.k = 12; a.c = 6;
+          a.target.set(_a.x + s * (0.3 - 0.55 * k), -0.03, _a.z + 0.14 + 0.1 * Math.sin(k * Math.PI)); a.k = 3.2; a.c = 3.6;   // heavy going through water
           rig.localToWorld(_b.copy(a.pos));
           const b = bumps[1 + acting];
           b.x = _b.x; b.z = _b.z; b.r = 0; b.w = 24; b.a = 4.2 * Math.sin(k * Math.PI);
@@ -641,7 +659,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
         const a = arms[acting];
         a.flatT = 1; a.curlT = 0.2; leanT = 0.12;
         rig.worldToLocal(_a.copy(pp));
-        a.target.set(_a.x, -0.07, _a.z - 0.03); a.k = 7; a.c = 4.6;
+        a.target.set(_a.x, -0.07, _a.z - 0.03); a.k = 2.6; a.c = 3.3;
         palmWorld(a, _b);
         if (!hooks.swimming() || tau > 14) { a.target.copy(REST[acting]); a.flatT = 0; a.curlT = 0.5; setPhase('watch'); idle = 4; break; }
         if (tau > 1.2 && Math.hypot(_b.x - pp.x, _b.z - pp.z) < 20 && _b.y < 12) { hooks.hold(true); setPhase('hold'); sfx('giant-curious'); }
@@ -664,7 +682,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
           a.target.set(s * 0.12, 0.46, 0.62); a.k = 42; a.c = 8;
           if (!struck && tau > 1.78) { struck = true; hooks.fling(); sfx('giant-blow', 1.5); }
         } else { a.target.copy(REST[acting]); a.k = 3; a.c = 3.4; a.flatT = 0; a.curlT = 0.5; }
-        if (tau > 6) { setPhase('watch'); idle = 6; }
+        if (tau > 4.5) setPhase('farewell');
         break;
       }
       case 'dying': {
@@ -697,13 +715,20 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       root.position.set(cx, sink * S + 17 + Math.sin(t * 0.55) * 1.3, cz);
       root.rotation.set(0, yaw, 0);
       lean.rotation.x = leanA;
+      {
+        // lifting an arm, the whole body leans over a little toward it, so it reads as one movement
+        let want = 0;
+        arms.forEach((a, i) => { want += (i === 0 ? -1 : 1) * THREE.MathUtils.clamp((a.pos.y - REST[i].y) * 0.16, 0, 0.13); });
+        rollA += (want - rollA) * Math.min(1, dt * 1.2);
+        lean.rotation.z = rollA;
+      }
       if (phase !== 'emerge') { const b = bumps[0]; b.x = cx; b.z = cz; b.r = 50 + leanA * 20; b.w = 7; b.a = 0.7 + Math.sin(t * 0.55) * 0.35; }
       // water keeps pouring off for a while after it surfaces
       sheet = Math.max(0, sheet - dt);
 
       // head and eyes
       const up = phase === 'stargaze';
-      if (phase === 'take' || phase === 'hold' || phase === 'throw' || onFoot) rig.worldToLocal(boatL.copy(pp));   // it watches the person, not the boat
+      if (phase === 'take' || phase === 'hold' || phase === 'throw' || phase === 'farewell' || onFoot) rig.worldToLocal(boatL.copy(pp));   // it watches the person, not the boat
       let hy = THREE.MathUtils.clamp(Math.atan2(boatL.x, boatL.z), -0.95, 0.95);
       let hp = THREE.MathUtils.clamp(Math.atan2(HEAD.y - boatL.y, Math.hypot(boatL.x, boatL.z)) - leanA, -0.2, 0.95);
       if (up) { hy = Math.sin(t * 0.05) * 0.3; hp = -0.85; }
@@ -721,9 +746,9 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
     // the eyes finish the look that the head begins
     root.updateMatrixWorld(true);
     if (alive) for (const e of eyes) {
-      headFlesh.worldToLocal(_a.copy(phase === 'stargaze' ? _b.set(cx, 4000, cz + 2000) : phase === 'take' || phase === 'hold' || phase === 'throw' || onFoot ? pp : boatW));
+      headFlesh.worldToLocal(_a.copy(phase === 'stargaze' ? _b.set(cx, 4000, cz + 2000) : phase === 'take' || phase === 'hold' || phase === 'throw' || phase === 'farewell' || onFoot ? pp : boatW));
       _a.sub(e.position);
-      e.rotation.set(THREE.MathUtils.clamp(-Math.atan2(_a.y, Math.hypot(_a.x, _a.z)), -0.45, 0.45), THREE.MathUtils.clamp(Math.atan2(_a.x, _a.z), -0.5, 0.5), 0, 'YXZ');
+      e.rotation.set(THREE.MathUtils.clamp(-Math.atan2(_a.y, Math.hypot(_a.x, _a.z)), -0.3, 0.3), THREE.MathUtils.clamp(Math.atan2(_a.x, _a.z), -0.38, 0.38), 0, 'YXZ');
     }
     solveArms(dt);
     if (hooks.held() && (phase === 'hold' || phase === 'throw')) { root.updateMatrixWorld(true); palmWorld(arms[acting], _b); pp.copy(_b); }
@@ -759,12 +784,18 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
       _c.set(s * 0.7, -0.5, -0.6);
       solveIK(SH[i], a.pos, UARM, FARM, _c, a.elbow, a.wrist);
       const g = a.gb;
-      g.upper.quaternion.setFromUnitVectors(g.bindDir, _a.subVectors(a.elbow, SH[i]).normalize()).multiply(g.armQ);
+      const frame = (dir: THREE.Vector3, out: THREE.Quaternion) => {
+        // y along the limb; x square to the plane of the limb and the pole, so roll comes from the pole, not from chance
+        _fx.crossVectors(dir, _c).normalize(); _fz.crossVectors(_fx, dir);
+        return out.setFromRotationMatrix(_fm.makeBasis(_fx, dir, _fz));
+      };
+      frame(g.bindDir, _qb).invert();
+      frame(_a.subVectors(a.elbow, SH[i]).normalize(), g.upper.quaternion).multiply(_qb).multiply(g.armQ);
       g.fore.position.copy(a.elbow);
       place(a.bUpper, SH[i], a.elbow); place(a.bFore, a.elbow, a.wrist);
       // hand: in line with the forearm at rest, flat to the water when it strikes
       _a.subVectors(a.wrist, a.elbow).normalize();
-      const qArm = _q.setFromUnitVectors(g.bindDir, _a).clone();
+      const qArm = frame(_a, _q).multiply(_qb).clone();
       g.fore.quaternion.copy(qArm).multiply(g.armQ);
       qArm.multiply(g.handQ);
       _b.copy(_a).setY(0);
@@ -781,7 +812,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   return {
     get phase() { return phase; },
     /** testing: bring it up without sailing in */
-    wake() { if (phase === 'asleep') { setPhase('emerge'); yaw = Math.atan2(boat.position.x - cx, boat.position.z - cz); } },
+    wake() { forced = true; if (phase === 'asleep') { setPhase('emerge'); yaw = Math.atan2(boat.position.x - cx, boat.position.z - cz); } },
     /** is the giant up and able to be shot? returns true if this ray strikes an eye */
     shoot(origin: THREE.Vector3, dir: THREE.Vector3): boolean {
       if (phase === 'asleep' || phase === 'dead' || phase === 'dying') return false;

@@ -168,6 +168,7 @@ const giant = buildAtoll(ctx, {
   },
   held: () => player.mode === 'held',
   fling: () => fling(),
+  keepOut: (x, z, r) => { if (boat.mode !== 'sailing') return; const s = boat.state, d = Math.hypot(s.x - x, s.z - z); if (d < r) { const k = r / Math.max(d, 0.1); s.x = x + (s.x - x) * k; s.z = z + (s.z - z) * k; } },
 });
 const tower = buildTower(ctx, {
   // a security screen's picture: the plain scene from a fixed camera, with the sea and sky put back for the moment
@@ -298,14 +299,14 @@ function fling() {
   const g = 12;
   let dx = 0, dz = 0;
   for (let i = 0; i < 40; i++) {
-    const a = Math.random() * 6.283, d = 380 + Math.random() * 520;
+    const a = Math.random() * 6.283, d = 1100 + Math.random() * 700;
     dx = ATOLL.x + Math.sin(a) * d; dz = ATOLL.z + Math.cos(a) * d;
     if (world.terrainHeight(dx, dz) > -3) continue;
     if (Object.values(PLACES).some((p) => Math.hypot(p.x - dx, p.z - dz) < 70)) continue;
     if (Math.hypot(dx - ISLAND.x, dz - ISLAND.z) < 260 || Math.hypot(dx - TOWER.x, dz - TOWER.z) < 80) continue;
     break;
   }
-  const p = player.pos, dist = Math.hypot(dx - p.x, dz - p.z), T = THREE.MathUtils.clamp(dist / 55, 7, 15);
+  const p = player.pos, dist = Math.hypot(dx - p.x, dz - p.z), T = THREE.MathUtils.clamp(dist / 80, 9, 22);
   player.fly.set((dx - p.x) / T, (0 - p.y) / T + 0.5 * g * T, (dz - p.z) / T);
   player.mode = 'flung';
   audio.play('giant-blow', p, 1.5);
@@ -951,4 +952,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { THREE, fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
