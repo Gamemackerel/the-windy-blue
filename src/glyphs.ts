@@ -9,14 +9,14 @@ type Stroke = ['l', number, number, number, number] | ['c', number, number, numb
 /** each glyph in a box from -1 to 1; arcs are given in degrees, anticlockwise from the +x axis */
 export const NUMERALS: Stroke[][] = [
   [['c', 0, 0, 0.62]],                                                                  // 0: the empty ring
-  [['l', 0, -0.8, 0, 0.8]],                                                             // 1: one staff
-  [['l', -0.3, -0.8, -0.3, 0.8], ['l', 0.3, -0.8, 0.3, 0.8]],                           // 2: two staves
-  [['l', -0.7, -0.6, 0.7, -0.6], ['l', 0.7, -0.6, 0, 0.75], ['l', 0, 0.75, -0.7, -0.6]],   // 3: the three-sided mark
+  [['l', 0, -0.8, 0, 0.3], ['c', 0, 0.52, 0.22]],                                     // 1: a stem with a ring on its head
+  [['l', 0.6, 0.7, -0.55, 0], ['l', -0.55, 0, 0.6, -0.7], ['l', -0.1, 0, 0.75, 0]],    // 2: the open angle with its bar
+  [['a', 0, 0, 0.6, 90, 360], ['l', 0, 0, 0.6, 0]],                                     // 3: the ring cut open, with a spoke
   [['l', 0, -0.8, 0, 0.8], ['l', -0.7, 0, 0.7, 0]],                                     // 4: the crossing
   [['a', 0, 0.2, 0.55, 0, 180], ['l', 0, -0.8, 0, 0.2]],                                // 5: a hand raised
   [['c', 0, 0, 0.62], ['c', 0, 0, 0.14]],                                               // 6: the ring with its eye
   [['l', -0.6, 0.7, 0.5, 0.25], ['l', 0.5, 0.25, -0.5, -0.25], ['l', -0.5, -0.25, 0.6, -0.7]],   // 7: the wave
-  [['c', 0, 0.42, 0.34], ['c', 0, -0.42, 0.34]],                                        // 8: two rings
+  [['a', -0.32, -0.05, 0.32, 180, 360], ['a', 0.32, -0.05, 0.32, 180, 360], ['l', 0, -0.05, 0, 0.7]],   // 8: two cups and a mast
   [['a', 0.1, 0, 0.6, 60, 300], ['l', -0.75, -0.8, 0.75, -0.8]],                        // 9: the open ring on its line
 ];
 /** the two keys that are not numbers: wipe what has been entered, and a blank */

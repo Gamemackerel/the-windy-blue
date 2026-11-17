@@ -96,8 +96,8 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   const keys: THREE.MeshStandardMaterial[] = [];
   const keyMeshes: THREE.Mesh[] = [];
   const _rc = new THREE.Raycaster(), _ndc = new THREE.Vector2();
-  // keys: the ten numerals in three rows, nought below, with a key that wipes what has been entered
-  const KEYMAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, -1, 0, -2];      // -1: wipe, -2: blank
+  // keys: the ten numerals read down the columns (1-4, 5-8, 9 0), then the key that wipes what has been entered
+  const KEYMAP = [1, 5, 9, 2, 6, 0, 3, 7, -1, 4, 8, -2];      // by row: -1 wipe, -2 blank
   const mark = new THREE.MeshStandardMaterial({ color: '#8a8f96', roughness: 0.35, metalness: 0.7 });
   // eight small lamps over the keys: one lights for each figure entered
   const tally = Array.from({ length: 8 }, (_, i) => { const m = new THREE.MeshStandardMaterial({ color: '#0a0a0b', emissive: '#9fb6c8', emissiveIntensity: 0 }); const d = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.02), m); d.position.set(-0.385 + i * 0.11, 1.0, 0.26); pad.add(d); return m; });

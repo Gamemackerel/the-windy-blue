@@ -25,7 +25,7 @@ const pad = await ev(() => { const g = window.__game, w = g.world; const it = w.
 await put(pad[0][0], 63.2, pad[0][2], 0); await wait(500);
 await page.keyboard.press('KeyE'); await wait(500);
 // click each figure on the pad (keys in rows 1 2 3 / 4 5 6 / 7 8 9 / wipe 0 blank)
-const KEYMAP = [1, 2, 3, 4, 5, 6, 7, 8, 9, -1, 0, -2];
+const KEYMAP = [1, 5, 9, 2, 6, 0, 3, 7, -1, 4, 8, -2];
 await ev(() => { const g = window.__game, T3 = g.THREE; const ks = []; g.scene.traverse((o) => { if (o.isMesh && o.geometry?.parameters?.width === 0.24 && o.geometry.parameters.height === 0.24) ks.push(o); }); const v = new T3.Vector3(); for (const k of ks) v.add(k.getWorldPosition(new T3.Vector3())); v.multiplyScalar(1 / ks.length); { const p = g.player.pos, dx = p.x - v.x, dz = p.z - v.z, d = Math.hypot(dx, dz); p.x = v.x + (dx / d) * 1.9; p.z = v.z + (dz / d) * 1.9; } g.camera.position.set(g.player.pos.x, g.player.pos.y + 1.64, g.player.pos.z); const c = g.camera.position; g.rig.yaw = Math.atan2(v.x - c.x, v.z - c.z) + Math.PI; g.rig.pitch = Math.atan2(c.y - v.y, Math.hypot(v.x - c.x, v.z - c.z)); });
 await wait(900);
 for (const d of T.code) {
