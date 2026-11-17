@@ -15,6 +15,8 @@ import { Figure, J } from './figure';
 import { Npc } from './npc';
 import { addPickup } from './items';
 import { rng } from './noise';
+import { softDot } from './npc';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface TowerHooks {
   /** draw the world from a fixed camera into a small picture, for the security screens */
@@ -24,7 +26,8 @@ export interface TowerHooks {
 }
 
 const WR = 24.5;             // inside radius of the wall
-const SW = 11.0, SR = 24.5 - SW / 2;   // the stair: width, and centre radius - broad, from the wall well out toward the middle
+const TANK_R = 2.75;                  // the band along the wall where the tanks lie
+const SW = 24.5 - TANK_R - 13.0, SR = 13.0 + SW / 2;   // the stair: from 13 m out to the inner ends of the tanks
 const TURNS = 11, PER = 24; // turns of stair, and ramp sections to a turn
 const TANKS = 200;
 
@@ -50,8 +53,8 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   scene.add(room);
   room.visible = false;
   const add = <T extends THREE.Object3D>(m: T) => { room.add(m); return m; };
-  const wallM = new THREE.MeshStandardMaterial({ color: '#232a30', roughness: 0.6, metalness: 0.25, side: THREE.BackSide });
-  const steel = new THREE.MeshStandardMaterial({ color: '#30363c', roughness: 0.5, metalness: 0.35 });
+  const wallM = new THREE.MeshStandardMaterial({ color: '#232a30', roughness: 0.6, metalness: 0.25, side: THREE.BackSide, emissive: '#3c505b', emissiveIntensity: 1 });
+  const steel = new THREE.MeshStandardMaterial({ color: '#30363c', roughness: 0.5, metalness: 0.35, emissive: '#2a363e', emissiveIntensity: 1 });
   const pale = new THREE.MeshStandardMaterial({ color: '#59626a', roughness: 0.55, metalness: 0.3 });
 
   // ------------------------------------------------------------ shell, floors
@@ -85,9 +88,9 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   {
     // each tread a true wedge of the ring between the inner edge and the wall, so the stair bends with the tower instead of
     // going round it in straight pieces. Built once, about the tower's axis, and turned into place for every step.
-    const dT = DA / ST, TH = 0.32;
+    const dT = DA / ST, TH = 0.07;
     const wedge = (() => {
-      const r0 = SR - SW / 2, r1 = SR + SW / 2, n = 4, sh = new THREE.Shape(), a1 = dT * 1.04;
+      const r0 = SR - SW / 2, r1 = SR + SW / 2, n = 4, sh = new THREE.Shape(), a1 = dT * 0.93;   // a narrow gap between each plate and the next
       for (let k = 0; k <= n; k++) { const a = (k / n) * a1; const px = Math.sin(a) * r1, py = -Math.cos(a) * r1; if (k === 0) sh.moveTo(px, py); else sh.lineTo(px, py); }
       for (let k = n; k >= 0; k--) { const a = (k / n) * a1; sh.lineTo(Math.sin(a) * r0, -Math.cos(a) * r0); }
       const g = new THREE.ExtrudeGeometry(sh, { depth: TH, bevelEnabled: false });
@@ -96,10 +99,11 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
     })();
     const treads = new THREE.InstancedMesh(wedge, steel, N * ST);
     const ri0 = SR - SW / 2 + 0.05;
-    for (const hh of [1.05, 0.55]) {
+    // handrail and mid rail on the open side; and along both edges a bar at the foot that ties the floating plates into one stair
+    for (const [hh, rr] of [[1.05, ri0], [0.55, ri0], [-0.06, ri0], [-0.06, SR + SW / 2 - 0.05]] as const) {
       const pts: THREE.Vector3[] = [];
-      for (let i = 0; i <= N * 2; i++) { const f = i / (N * 2), a = A0 + f * N * DA; pts.push(new THREE.Vector3(cx + Math.sin(a) * ri0, F0 + f * (GAL - F0) + HALF + hh, cz + Math.cos(a) * ri0)); }
-      const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), N * 8, hh > 1 ? 0.035 : 0.025, 6), steel);
+      for (let i = 0; i <= N * 2; i++) { const f = i / (N * 2), a = A0 + f * N * DA; pts.push(new THREE.Vector3(cx + Math.sin(a) * rr, F0 + f * (GAL - F0) + HALF + hh, cz + Math.cos(a) * rr)); }
+      const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), N * 8, hh > 1 ? 0.035 : hh < 0 ? 0.06 : 0.025, 6), steel);
       rail.frustumCulled = false; add(rail);
     }
     const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steel, N * ST);
@@ -112,7 +116,8 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
         v.set(cx, y0 + RISE * ((s + 1) / ST), cz);
         treads.setMatrixAt(i * ST + s, m4.compose(v, q.setFromEuler(e.set(0, A0 + i * DA + s * dT, 0)), s1));
       }
-      world.addBox(cx + x, y0 - 0.25 + HALF, cz + z, SW / 2, 0.25, SLEN / 2 + 0.12, yaw, RISE);   // through the middle of each tread's top, so the foot stands on the steps rather than sinking into them
+      { const rIn = SR - SW / 2, rOut = WR - 0.1, rm = (rIn + rOut) / 2, w2 = (rOut - rIn) / 2, len = rm * DA;
+        world.addBox(cx + Math.sin(am) * rm, y0 - 0.25 + HALF, cz + Math.cos(am) * rm, w2, 0.25, len / 2 + 0.12, yaw, RISE); }   // the stair and the tank band under one floor: no gap to fall through   // through the middle of each tread's top, so the foot stands on the steps rather than sinking into them
       // the well side: a rail, and something solid behind it
       const ri = SR - SW / 2 + 0.05, rx = cx + Math.sin(am) * ri, rz = cz + Math.cos(am) * ri;
       q.setFromEuler(e.set(-slope, yaw, 0, 'YXZ'));
@@ -160,7 +165,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   })();
   const bodyM = new THREE.MeshStandardMaterial({ color: '#9aa39f', roughness: 0.6, emissive: '#2c4a56', emissiveIntensity: 1.3 });
   const bodies = add(new THREE.InstancedMesh(bodyGeo, bodyM, TANKS));
-  const glass = add(new THREE.InstancedMesh(new THREE.CylinderGeometry(0.62, 0.62, 2.5, 14, 1, true), new THREE.MeshStandardMaterial({ color: '#6fa3b4', roughness: 0.08, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, emissive: '#2f7088', emissiveIntensity: 0.9 }), TANKS));
+  const glass = add(new THREE.InstancedMesh(new THREE.CylinderGeometry(0.62, 0.62, 2.5, 14, 1, true), new THREE.MeshStandardMaterial({ color: '#6fa3b4', roughness: 0.08, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, emissive: '#3f93b2', emissiveIntensity: 1.6 }), TANKS));
   const capGeo = (() => {
     const a = new THREE.CylinderGeometry(0.7, 0.74, 0.3, 14).toNonIndexed(), b = new THREE.CylinderGeometry(0.72, 0.68, 0.34, 14).toNonIndexed();
     a.translate(0, -1.4, 0); b.translate(0, 1.42, 0);
@@ -178,7 +183,7 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
   for (const m of [bodies, glass, caps, tlamps]) m.frustumCulled = false;
   interface Sleeper { home: THREE.Vector3; yaw: number; to: THREE.Vector3; t0: number; fall: number; spin: THREE.Vector3; rest: THREE.Euler }
   const sleepers: Sleeper[] = [];
-  const tankQ: THREE.Quaternion[] = [];
+  const tankQ: THREE.Quaternion[] = [], tankA: number[] = [];
   const doorDir = new THREE.Vector3(Math.sin(da), 0, Math.cos(da));
   const heapC = new THREE.Vector3(cx + doorDir.x * 13.5, F0, cz + doorDir.z * 13.5), HEAP_R = 12.5;
   {
@@ -189,8 +194,9 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
       const u = (i + 0.5) / TANKS, a = A0 + u * TURNS * Math.PI * 2;
       const tr = WR - 1.36;                                      // the head end against the wall
       const tilt0 = 0.2 + ((i * 7) % 3 - 1) * 0.04;
-      const home = at(a, tr, stairY(u) + HALF_T + 0.64 + Math.sin(tilt0) * 1.22);      // the low inner end of the tank resting on the tread
+      const home = at(a, tr, stairY(u) + HALF_T + 0.12);                 // sunk down among the steps, its upper half standing above the walk
       world.addBox(home.x, home.y, home.z, 0.66, 0.66 + Math.sin(tilt0) * 1.25, 1.28, a);
+      tankA.push(a);
       const yaw = a + Math.PI;
       // run out from the wall toward the middle, the inner end dipped: the sleeper's head at the wall, lying on their back
       const tilt = tilt0;
@@ -207,6 +213,41 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
       const depth = Math.max(0, 1 - rr / HEAP_R) * 3.6 + 0.25;
       sleepers.push({ home, yaw, to: new THREE.Vector3(px, F0 + 0.2 + r() * depth, pz), t0: r() * 26 + (1 - u) * 3, fall: 0, spin: new THREE.Vector3(r() - 0.5, r() - 0.5, r() - 0.5).multiplyScalar(5), rest: new THREE.Euler(Math.PI / 2 + (r() - 0.5) * 0.9, r() * 6.283, (r() - 0.5) * 0.9) });
     }
+  }
+  {
+    const ro = SR + SW / 2 - 0.05, gap = (0.66 + 0.35) / ro, parts: THREE.BufferGeometry[] = [];
+    const yAt = (a: number) => stairY((a - A0) / (TURNS * Math.PI * 2)) + HALF_T;
+    for (let i = 0; i + 1 < tankA.length; i++) {
+      const a0 = tankA[i] + gap, a1 = tankA[i + 1] - gap;
+      if (a1 <= a0) continue;
+      for (const hh of [1.05, 0.55]) {
+        const pts: THREE.Vector3[] = [];
+        for (let k = 0; k <= 6; k++) { const a = a0 + ((a1 - a0) * k) / 6; pts.push(new THREE.Vector3(cx + Math.sin(a) * ro, yAt(a) + hh, cz + Math.cos(a) * ro)); }
+        parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 10, hh > 1 ? 0.035 : 0.025, 6));
+      }
+      // posts at both ends of the run, and in between
+      const runs = Math.max(2, Math.round(((a1 - a0) * ro) / 1.4));
+      for (let k = 0; k <= runs; k++) {
+        const a = a0 + ((a1 - a0) * k) / runs, y = yAt(a);
+        const post = new THREE.BoxGeometry(0.05, 1.05, 0.05); post.translate(cx + Math.sin(a) * ro, y + 0.525, cz + Math.cos(a) * ro);
+        parts.push(post.toNonIndexed().index ? post : post);
+      }
+      // and something solid along it, so nobody walks off into the space between the tanks
+      const am = (a0 + a1) / 2, len = (a1 - a0) * ro;
+      world.addBox(cx + Math.sin(am) * ro, yAt(am) + 0.9, cz + Math.cos(am) * ro, 0.07, 1.9, len / 2, am + Math.PI / 2);
+    }
+    // the stair hangs from the wall: a bracket every third tank, a beam out under the plates and a strut down to the wall
+    for (let i = 1; i < tankA.length; i += 3) {
+      const a = (tankA[i] + tankA[i - 1]) / 2, y = yAt(a) - 0.12;
+      const rIn = SR - SW / 2 + 0.4, rW = WR - 0.05, ca = Math.sin(a), sa = Math.cos(a);
+      const beam = new THREE.BoxGeometry(0.22, 0.24, rW - rIn); beam.rotateY(a); beam.translate(cx + ca * (rIn + rW) / 2, y - 0.12, cz + sa * (rIn + rW) / 2); parts.push(beam);
+      const dx = rW - (rIn + 2.5), drop = 2.4, sl = Math.hypot(dx, drop);
+      const strut = new THREE.BoxGeometry(0.16, 0.16, sl); strut.rotateX(Math.atan2(drop, dx)); strut.rotateY(a);
+      strut.translate(cx + ca * (rIn + 2.5 + dx / 2), y - 0.24 - drop / 2, cz + sa * (rIn + 2.5 + dx / 2)); parts.push(strut);
+      const plate = new THREE.BoxGeometry(0.5, 2.9, 0.06); plate.rotateY(a); plate.translate(cx + ca * (rW - 0.02), y - 1.4, cz + sa * (rW - 0.02)); parts.push(plate);
+    }
+    const merged = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)).map((g) => { for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); return g; }));
+    if (merged) { const rail = new THREE.Mesh(merged, steel); rail.frustumCulled = false; add(rail); }
   }
   const _sq = new THREE.Quaternion();
   const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _one = new THREE.Vector3(1, 1, 1);
@@ -237,13 +278,18 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
 
   // ------------------------------------------------------------ light
   const lamps: THREE.PointLight[] = [];
-  for (let i = 0; i < N; i += 11) {
-    const u = (i + 0.5) / N, l = new THREE.PointLight('#bfe6f5', 0, 30, 1.5);
-    l.position.copy(at(A0 + u * TURNS * Math.PI * 2, 17.5, stairY(u) + 4.2));
+  // a white lamp on the wall above every bracket, lighting the stair below it
+  const fixM = new THREE.MeshStandardMaterial({ color: '#222', emissive: '#f4f8fa', emissiveIntensity: 6 });
+  const glowM = new THREE.SpriteMaterial({ map: softDot(), color: '#cfdde6', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+  for (let i = 1; i < tankA.length; i += 3) {
+    const a = (tankA[i] + tankA[i - 1]) / 2, y = stairY((a - A0) / (TURNS * Math.PI * 2)) + 4.4;
+    const fix = add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.3), fixM)); fix.position.copy(at(a, WR - 0.2, y)); fix.rotation.y = a;
+    const glow = new THREE.Sprite(glowM); glow.position.copy(at(a, WR - 0.6, y - 0.2)); glow.scale.set(9, 7, 1); add(glow);
+    const l = new THREE.PointLight('#eef4f8', 0, 26, 1.3);
+    l.position.copy(at(a, WR - 2.2, y - 0.3));
     scene.add(l); lamps.push(l);
   }
-  const galLamp = new THREE.PointLight('#cfe8f2', 0, 34, 1.4); galLamp.position.copy(at(da + Math.PI, 16, GAL + 4)); scene.add(galLamp); lamps.push(galLamp);
-  const floorLamp = new THREE.PointLight('#bfe6f5', 0, 40, 1.3); floorLamp.position.set(cx, F0 + 9, cz); scene.add(floorLamp); lamps.push(floorLamp);
+  const galLamp = lamps[lamps.length - 1];
   // alarm beacons
   const beaconM = new THREE.MeshStandardMaterial({ color: '#300', emissive: '#ff1a0a', emissiveIntensity: 0 });
   const beacons: THREE.PointLight[] = [];
@@ -445,7 +491,9 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
     plant.visible = down || atDesk();
     heapPrompt.pos.set(pp.x, F0 + 1, pp.z);
     const alarm = floodT >= 0;
-    for (const l of lamps) l.intensity = here ? (alarm ? 10 : l === galLamp ? 70 : 220) : 0;
+    for (const l of lamps) l.intensity = here ? (alarm ? 6 : 90) : 0;
+    fixM.emissiveIntensity = alarm ? 0.3 : 6; glowM.opacity = alarm ? 0.05 : 0.55; wallM.emissiveIntensity = steel.emissiveIntensity = alarm ? 0.25 : 1;
+    void galLamp;
     for (const l of plantLights) l.intensity = down && !alarm ? 260 : 0;
     plasmaM.emissiveIntensity = alarm ? Math.max(0, 3.2 - floodT * 0.6) : 3.2 + Math.sin(t * 7) * 0.3;
     const pulse = alarm ? 0.5 + 0.5 * Math.sin(t * 5.2) : 0;
@@ -457,8 +505,8 @@ export function buildTowerInterior(ctx: Ctx, o: { cx: number; cz: number; floor:
     if (any) {
       // sealed and windowless: nothing of the day gets in
       const un = ctx.env.under;
-      un.amount = 1; un.density = 0.004; un.intensity = alarm ? 0.9 : 1.9;
-      un.fog.copy(fog.set(alarm ? '#120303' : '#04080b')); un.ambient.copy(amb.set(alarm ? '#5a1c16' : down ? '#5a5080' : '#56747f'));
+      un.amount = 1; un.density = 0.004; un.intensity = alarm ? 4 : 20;   // the whole height of the well softly lit, so looking up it shows the stair winding away, not darkness   // a faint cold fill, so the stair can always just be made out
+      un.fog.copy(fog.set(alarm ? '#120303' : '#04080b')); un.ambient.copy(amb.set(alarm ? '#5a1c16' : down ? '#5a5080' : '#7792a0'));
     }
     if (alarm) {
       floodT += dt;
