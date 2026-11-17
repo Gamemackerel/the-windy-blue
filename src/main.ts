@@ -824,7 +824,13 @@ function frame() {
   }
   arms.group.visible = !rig.scope && !outside && !title;
   arms.heldGun = player.held === 'revolver';
-  arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, player.held && !carry ? _held.copy(viewModel.position) : null, grips);
+  let heldAt: THREE.Vector3 | null = null;
+  if (player.held && !carry) {
+    heldAt = _held.copy(viewModel.position);
+    const gp = arms.heldGun ? viewModel.getObjectByName('grip') : null;
+    if (gp) { viewModel.updateMatrixWorld(true); camera.worldToLocal(gp.getWorldPosition(_held)); heldAt = _held; }
+  }
+  arms.update(dt, t, player.mode === 'foot' ? player.speed : 0, heldAt, grips);
   // a small ring on whatever E would act on
   {
     let show = false;
@@ -849,7 +855,7 @@ function frame() {
       const o = makeItem(viewHeld as ItemId);
       const box = new THREE.Box3().setFromObject(o);
       o.scale.multiplyScalar(0.13 / Math.max(0.01, box.getSize(_hand).length()));
-      if (viewHeld === 'revolver') { o.rotation.y = Math.PI; o.scale.multiplyScalar(1.7); }
+      if (viewHeld === 'revolver') { o.rotation.y = Math.PI; o.scale.multiplyScalar(2.3); }   // a heavy old revolver: the frame and barrel stand well clear of the fist
       else if (viewHeld === 'chart') { o.rotation.set(0.5, 0, 0); o.scale.multiplyScalar(1.7); }
       else o.rotation.set(0.2, 0.6, 0);
       o.traverse((m) => { m.castShadow = false; m.frustumCulled = false; });
@@ -962,4 +968,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { THREE, fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { THREE, arms, viewModel, fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

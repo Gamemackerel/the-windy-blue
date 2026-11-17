@@ -82,7 +82,12 @@ export class Arms {
       else if (i === 1 && held) {
         // the revolver is gripped; anything else rests on the open palm, held up to be seen
         rate = 18;
-        if (this.heldGun) { want.copy(held); want.x += 0.02; want.y -= 0.075; want.z += 0.09; closed = true; }
+        if (this.heldGun) {
+          // the wrist sits just behind the grip, so the closed fingers come round it
+          // the closed fingers lie on the palm side of the wrist: put the wrist half a fist to the outside of the grip, and they close round it
+          want.copy(held); want.x -= s * 0.022; want.y += 0.004; want.z += 0.012;
+          closed = true; rate = 30;
+        }
         else { want.copy(held); want.y -= 0.045; want.z += 0.075; palmUp = 1; }
       }
       if (a.reachT > 0) {

@@ -317,10 +317,11 @@ export function scatterJunk(ctx: Ctx) {
   const taken: { x: number; z: number; r: number }[] = [];
   const room = (k: string) => (k === 'mannequin' ? 1.0 : LARGE.includes(k) ? 0.5 : SMALL.includes(k) ? 0.22 : 0.38);   // a fallen mannequin takes its whole length
   const strew = (seed: number, n: number, kinds: string[], x0: number, x1: number, z0: number, z1: number, hint: number, skip?: (x: number, z: number) => boolean, lift = 0) => {
-    const r = rng(seed);
+    const r = rng(seed), once = new Set<string>();
     for (let i = 0, tries = 0; i < n && tries < n * 30; tries++) {
       const x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0);
       const kind = kinds[(r() * kinds.length) | 0], rad = room(kind);
+      if (STONE.includes(kind) || LARGE.includes(kind)) { if (once.has(kind)) continue; once.add(kind); }   // one of each big thing in a pile: two of the same head side by side looks made
       if (skip?.(x, z)) continue;
       if (taken.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + rad)) continue;
       put(kind, x, z, { y: world.groundAt(x, z, hint) + lift, r });

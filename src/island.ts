@@ -7,6 +7,7 @@ import { localOf, MAT, patch } from './materials';
 import { fbm, ridge, smooth, rng } from './noise';
 import { calmZones } from './waves';
 import { makeItem, addPickup } from './items';
+import { meshField } from './sdfmesh';
 
 export const ISLAND = { x: -700, z: -600 };
 const IX = ISLAND.x, IZ = ISLAND.z;
@@ -1085,6 +1086,76 @@ export function buildIsland(ctx: Ctx) {
     lamp.intensity = night * 60;
     houseLight.intensity = night * 18;
   });
+
+  // ---------- in the hollow below the summit: a marble giant of a man with two heads, gone a little into the ground ----------
+  {
+    // modelled at the size of a man (feet at 0, 1.8 m), as one surface, then raised to fourteen metres
+    type Cap = [number, number, number, number, number, number, number, number];
+    const caps: Cap[] = [
+      [0, 0.92, 0, 0, 1.12, 0, 0.17, 0.2],                          // belly to chest
+      [-0.21, 1.44, -0.01, 0.21, 1.44, -0.01, 0.075, 0.075],         // the line of the shoulders
+      [0.24, 1.43, 0, 0.29, 1.14, -0.02, 0.058, 0.048],              // left arm, hanging
+      [0.29, 1.14, -0.02, 0.3, 0.88, 0.02, 0.046, 0.04],
+      [-0.24, 1.43, 0, -0.3, 1.16, -0.03, 0.058, 0.048],             // right arm, the forearm brought across the body
+      [-0.3, 1.16, -0.03, -0.08, 1.06, 0.15, 0.046, 0.04],
+      [0.09, 0.9, 0, 0.11, 0.5, 0.02, 0.085, 0.06],                  // the weight on the left leg
+      [0.11, 0.5, 0.02, 0.11, 0.08, -0.01, 0.058, 0.045],
+      [-0.09, 0.9, 0, -0.13, 0.5, 0.07, 0.08, 0.058],                // the right knee eased forward
+      [-0.13, 0.5, 0.07, -0.15, 0.09, 0.0, 0.056, 0.044],
+      [0.11, 0.04, 0.03, 0.12, 0.03, 0.14, 0.045, 0.035],            // feet
+      [-0.15, 0.04, 0.02, -0.17, 0.03, 0.13, 0.045, 0.035],
+      [-0.075, 1.5, 0.0, -0.13, 1.62, 0.01, 0.052, 0.05],            // two necks from one pair of shoulders
+      [0.075, 1.5, 0.0, 0.13, 1.62, 0.01, 0.052, 0.05],
+    ];
+    const ell = (x: number, y: number, z: number, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number) => {
+      const px = (x - cx) / rx, py = (y - cy) / ry, pz = (z - cz) / rz, k0 = Math.hypot(px, py, pz), k1 = Math.hypot(px / rx, py / ry, pz / rz);
+      return (k0 * (k0 - 1)) / Math.max(k1, 1e-6);
+    };
+    const cap = (x: number, y: number, z: number, c: Cap) => {
+      const bx = c[3] - c[0], by = c[4] - c[1], bz = c[5] - c[2], px = x - c[0], py = y - c[1], pz = z - c[2];
+      const t = Math.min(1, Math.max(0, (px * bx + py * by + pz * bz) / (bx * bx + by * by + bz * bz)));
+      return Math.hypot(px - bx * t, py - by * t, pz - bz * t) - (c[6] + (c[7] - c[6]) * t);
+    };
+    const smin = (a: number, b: number, k: number) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+    const field = (x: number, y: number, z: number) => {
+      let d = ell(x, y, z, 0, 1.28, 0, 0.22, 0.27, 0.135);                    // chest
+      d = smin(d, ell(x, y, z, 0, 0.95, 0, 0.18, 0.14, 0.125), 0.06);        // hips
+      for (const c of caps) d = smin(d, cap(x, y, z, c), 0.04);
+      for (const s of [-1, 1]) {
+        // a head on each neck, turned a little away from the other; a brow, a nose, a chin
+        const hx = s * 0.15, hy = 1.73, hz = 0.02;
+        let hd = ell(x, y, z, hx, hy, hz, 0.08, 0.105, 0.095);
+        hd = smin(hd, ell(x, y, z, hx + s * 0.012, hy - 0.035, hz + 0.088, 0.016, 0.03, 0.022), 0.012);   // nose
+        hd = smin(hd, ell(x, y, z, hx + s * 0.01, hy - 0.085, hz + 0.06, 0.04, 0.03, 0.035), 0.02);       // chin
+        hd = smin(hd, ell(x, y, z, hx + s * 0.008, hy + 0.025, hz + 0.075, 0.07, 0.022, 0.025), 0.02);   // brow
+        d = smin(d, hd, 0.03);
+      }
+      // the plinth he stood on, mostly buried now
+      const qx = Math.abs(x) - 0.36, qy = Math.abs(y + 0.08) - 0.1, qz = Math.abs(z) - 0.26;
+      return Math.min(d, Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0));
+    };
+    const geo = meshField(field, new THREE.Vector3(-0.45, -0.22, -0.32), new THREE.Vector3(0.45, 1.88, 0.32), 0.009);
+    const marble = patch(new THREE.MeshStandardMaterial({ color: '#cfc8b8', roughness: 0.45 }), /* glsl */ `
+      float n = tri(wp, wn, 0.18), v = tri(wp, wn, 0.11) + n * 0.15;
+      float vein = (1.0 - smoothstep(0.0, 0.012, abs(v - 0.52))) * smoothstep(0.35, 0.6, tri(wp, wn, 0.07));   // a few veins, in places, not contour lines everywhere                     // thin grey veins wandering through it
+      col *= 0.9 + 0.14 * n;
+      col = mix(col, vec3(0.42, 0.42, 0.44), vein * 0.55);
+      col = mix(col, col * vec3(0.62, 0.6, 0.52), smoothstep(0.35, 0.8, streaks(wp, wn, 0.6)) * 0.55 * (1.0 - wn.y * 0.5));   // weather run down from the shoulders
+      col = mix(col, vec3(0.32, 0.3, 0.22), smoothstep(0.62, 0.8, wn.y) * smoothstep(0.55, 0.8, tri(wp, wn, 0.9)) * 0.6); // lichen where water sits
+      rough = mix(0.4, 0.75, n);
+      bump = tri3(wp, wn, 4.0) * 0.006 + vein * 0.002;`, 'marble');
+    const statue = new THREE.Mesh(geo, marble);
+    statue.castShadow = statue.receiveShadow = true;
+    const SX = -55, SZ = -93, SCALE = 7.6;
+    const gy = localHeight(SX, SZ);
+    statue.scale.setScalar(SCALE);
+    statue.position.set(IX + SX, gy - 1.6, IZ + SZ);                // sunk to above the ankles
+    statue.rotation.set(0.07, 1.06, -0.09);                         // leaning a little forward and to one side, looking up the path from the summit
+    statue.userData.static = true;
+    scene.add(statue);
+    world.addCyl(IX + SX, IZ + SZ, 2.2, gy - 2, gy + 12);
+    world.addBox(IX + SX, gy - 0.6, IZ + SZ, 2.8, 0.6, 2.0, 0.75);   // the top of the plinth, still showing
+  }
 
   // ---------- the summit: a telescope someone took the eyepiece from ----------
   {

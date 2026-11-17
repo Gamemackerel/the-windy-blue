@@ -48,15 +48,28 @@ export function makeItem(id: ItemId): THREE.Group {
       break;
     }
     case 'revolver': {
-      const steel = std('#2a2c30', 0.35, 0.9);
-      const barrel = m(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 8), steel, 0, 0.03, 0.11);
-      barrel.rotation.x = Math.PI / 2;
-      const drum = m(new THREE.CylinderGeometry(0.03, 0.03, 0.055, 10), steel, 0, 0.022, 0.0);
-      drum.rotation.x = Math.PI / 2;
-      g.add(barrel, drum, m(new THREE.BoxGeometry(0.024, 0.04, 0.1), steel, 0, 0.02, 0.0));
-      const grip = m(new THREE.BoxGeometry(0.026, 0.11, 0.04), std('#4a3220', 0.6), 0, -0.04, -0.055);
-      grip.rotation.x = -0.35;
-      g.add(grip);
+      // barrel along +Z; the origin is the middle of the grip, where the hand closes
+      const blued = std('#25272b', 0.32, 0.9), worn = std('#3a3c40', 0.45, 0.85), wood = std('#5a3a22', 0.55);
+      const gy = 0.07, gz = 0.012;                                  // from the grip up to the frame
+      const frame = m(new THREE.BoxGeometry(0.022, 0.046, 0.075), blued, 0, gy, gz + 0.01); g.add(frame);
+      const top = m(new THREE.BoxGeometry(0.02, 0.012, 0.07), worn, 0, gy + 0.029, gz + 0.012); g.add(top);
+      // the cylinder, with flutes cut round it
+      const cyl = m(new THREE.CylinderGeometry(0.026, 0.026, 0.046, 18), blued, 0, gy + 0.004, gz + 0.012); cyl.rotation.x = Math.PI / 2; g.add(cyl);
+      for (let k = 0; k < 6; k++) { const a2 = (k / 6) * Math.PI * 2 + 0.5; const f = m(new THREE.BoxGeometry(0.006, 0.006, 0.038), worn, Math.cos(a2) * 0.025, gy + 0.004 + Math.sin(a2) * 0.025, gz + 0.012); f.rotation.z = a2; g.add(f); }
+      // barrel, its rod beneath, and the front sight
+      const barrel = m(new THREE.CylinderGeometry(0.0085, 0.0095, 0.13, 12), blued, 0, gy + 0.018, gz + 0.11); barrel.rotation.x = Math.PI / 2; g.add(barrel);
+      const rod = m(new THREE.CylinderGeometry(0.0035, 0.0035, 0.1, 6), worn, 0, gy + 0.004, gz + 0.1); rod.rotation.x = Math.PI / 2; g.add(rod);
+      g.add(m(new THREE.BoxGeometry(0.003, 0.008, 0.012), blued, 0, gy + 0.03, gz + 0.168));
+      // hammer, trigger guard, trigger
+      const hammer = m(new THREE.BoxGeometry(0.008, 0.024, 0.012), worn, 0, gy + 0.036, gz - 0.03); hammer.rotation.x = -0.6; g.add(hammer);
+      const guard = m(new THREE.TorusGeometry(0.019, 0.003, 6, 14, Math.PI), blued, 0, gy - 0.022, gz + 0.006); guard.rotation.set(0, Math.PI / 2, Math.PI); g.add(guard);
+      const trig = m(new THREE.BoxGeometry(0.004, 0.018, 0.005), worn, 0, gy - 0.03, gz + 0.004); trig.rotation.x = 0.35; g.add(trig);
+      // the grip: a curved back-strap with a wooden panel each side, swept down and back
+      const gripG = new THREE.Group(); gripG.rotation.x = -0.32; g.add(gripG);
+      const strap = m(new THREE.BoxGeometry(0.018, 0.1, 0.03), blued, 0, 0.0, -0.002); gripG.add(strap);
+      for (const sx of [-1, 1]) { const pnl = m(new THREE.BoxGeometry(0.006, 0.088, 0.032), wood, sx * 0.011, -0.002, 0.0); pnl.scale.z = 1.05; gripG.add(pnl); }
+      const butt = m(new THREE.SphereGeometry(0.018, 10, 6), blued, 0, -0.05, -0.004); butt.scale.set(0.6, 0.5, 1.1); gripG.add(butt);
+      const at = new THREE.Object3D(); at.name = 'grip'; at.position.set(0, -0.012, -0.006); g.add(at);           // where the hand goes
       break;
     }
     case 'bullet': {
