@@ -766,14 +766,20 @@ function frame() {
   }
   // ---- hints ----
   if (hints && !title) {
-    if (walkHint > 0 && (walkHint -= dt) <= 0) { showKeys(WALK_KEYS, 10); if (!state.loaded) nag('ESC', 10); sinceHelp = 0; }
+    // the first words: the sailing card if the game opens with you at the helm, the walking ones otherwise
+    if (walkHint > 0 && (walkHint -= dt) <= 0) {
+      if (player.mode === 'sail') { sailCardShown = true; wasHelm = true; showKeys(SAIL_KEYS, 16); }
+      else showKeys(WALK_KEYS, 10);
+      if (!state.loaded) nag('ESC', 10);
+      sinceHelp = 0;
+    }
     // every so often, when someone has stood still on foot for a few seconds, the help comes back for a moment
     sinceHelp += dt;
     const still = player.mode === 'foot' && player.speed < 0.05 && !reading && !satchel.open && !rig.scope && keysT <= 0;
     idleT = still ? idleT + dt : 0;
     if (idleT > 6 && sinceHelp > 420) { showKeys(WALK_KEYS, 8); sinceHelp = 0; idleT = 0; }
     const helm = player.mode === 'sail';
-    if (helm && !wasHelm) {
+    if (helm && !wasHelm && walkHint <= 0) {          // (at the very start, the first words above take care of it)
       if (!sailCardShown) { sailCardShown = true; showKeys(SAIL_KEYS, 16); }
       else nag('H · controls', 6);
     }

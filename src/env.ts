@@ -276,16 +276,16 @@ export class Environment {
     // One light does for both. Each fades to nothing before the other takes over, so nothing ever pops:
     // the sun is gone by the time it is 7 degrees under; the moon only begins to count once it is properly dark.
     const sunI = (S(sy, -0.06, 0.25) * 5.2 + tw * 0.9 * S(sy, -0.12, -0.02)) * (1 - gloom * 0.72);
-    const moonI = (0.1 + 1.0 * this.moonLit) * moonUp * (1 - S(sy, -0.22, -0.1)) * (1 - gloom * 0.8);
+    const moonI = (0.07 + 0.48 * this.moonLit) * moonUp * (1 - S(sy, -0.22, -0.1)) * (1 - gloom * 0.8);
     const useSun = sunI >= moonI;
     this.lightDir.copy(useSun ? this.sunDir : this.moonDir);
     if (this.lightDir.y < 0.06) { this.lightDir.y = 0.06; this.lightDir.normalize(); }
     const lc = u.uLightCol.value;
     if (useSun) lc.copy(u.uSunCol.value).multiplyScalar(sunI);
-    else lc.set(0.55, 0.68, 0.9).multiplyScalar(moonI);
+    else lc.set(0.5, 0.62, 0.86).multiplyScalar(moonI);
 
     // night is never pitch black (starlight), and a bright moon lifts it further
-    const nightLift = night * (0.55 + 1.3 * this.moonLit * moonUp) * (1 - gloom * 0.4);
+    const nightLift = night * (0.55 + 0.75 * this.moonLit * moonUp) * (1 - gloom * 0.4);
     u.uAmbient.value.copy(u.uZenith.value).lerp(u.uHorizon.value, 0.5).multiplyScalar(0.9 + nightLift);
 
     this.sun.color.copy(lc);

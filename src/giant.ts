@@ -134,15 +134,15 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
   const flesh = new THREE.Group(), bones = new THREE.Group();
   rig.add(flesh, bones);
 
-  const rot = { value: 0 };
+  const rot = { value: 0 }, dayU = { value: 1 };
   // Skin: the pattern is baked to the body (attribute lp) so it never slides as
   // the giant moves. Wet, faintly translucent at the edges, veined and mottled.
   const skin = new THREE.MeshPhysicalMaterial({ color: '#8b999c', roughness: 0.5, clearcoat: 0.55, clearcoatRoughness: 0.28, side: THREE.DoubleSide });   // two-sided: where the face is pressed in hard a few faces turn over, and would show as holes
   skin.onBeforeCompile = (sh) => {
-    sh.uniforms.uRot = rot;
+    sh.uniforms.uRot = rot; sh.uniforms.uDay = dayU;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 lp;\nvarying vec3 vLp;\nvarying float vWY;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvLp = lp * 250.0;\nvWY = (modelMatrix * vec4(transformed, 1.0)).y;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vLp;\nvarying float vWY;\nuniform float uRot;\n${NOISE_GLSL}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vLp;\nvarying float vWY;\nuniform float uRot;\nuniform float uDay;\n${NOISE_GLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         float wwBump = 0.0;
         {
@@ -162,6 +162,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
           rotCol = mix(rotCol, vec3(0.03, 0.02, 0.02), smoothstep(0.6, 0.8, fine) * 0.5);
           diffuseColor.rgb = mix(col, rotCol, uRot);
           roughnessFactor = mix(0.3 + 0.25 * fine - wet * 0.12, 0.85, uRot);
+          diffuseColor.rgb *= mix(0.45, 1.0, uDay);                                         // by night the wet grey reads darker, not silver
           wwBump = (fine * 0.5 + pore * 0.12 - vein * 0.25 + smoothstep(0.55, 0.8, big) * uRot * 2.0);
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -181,7 +182,7 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
             float back = pow(clamp(dot(normalize(-vViewPosition), -directionalLights[0].direction) * 0.5 + 0.5, 0.0, 1.0), 2.0);
             outgoingLight += vec3(0.5, 0.36, 0.3) * directionalLights[0].color * rim * back * 0.16 * (1.0 - uRot);
           #endif
-          outgoingLight += diffuseColor.rgb * rim * 0.1 * (1.0 - uRot);
+          outgoingLight += diffuseColor.rgb * rim * 0.1 * (1.0 - uRot) * uDay;            // its own soft glow at the edges is a thing of daylight
         }
         #include <opaque_fragment>`);
   };
@@ -448,6 +449,8 @@ export function buildAtoll(ctx: Ctx, hooks: GiantHooks) {
 
   world.updaters.push((dt, t) => {
     tau += dt;
+    dayU.value = 0.25 + 0.75 * ctx.env.daylight;
+    skin.clearcoat = 0.12 + 0.43 * ctx.env.daylight; skin.envMapIntensity = 0.35 + 0.65 * ctx.env.daylight;   // a wet sheen, not a mirror of the night sky
     boatW.copy(boat.position);
     const bd = Math.hypot(boatW.x - cx, boatW.z - cz);
     const pp = ctx.playerPos();
