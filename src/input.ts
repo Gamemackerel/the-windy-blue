@@ -1,4 +1,6 @@
 // Keyboard and mouse through an action map, so other devices can be added later.
+/** the arrow keys do whatever W A S D do */
+const ALIAS: Record<string, string> = { KeyW: 'ArrowUp', KeyS: 'ArrowDown', KeyA: 'ArrowLeft', KeyD: 'ArrowRight' };
 export class Input {
   private keys = new Set<string>();
   private pressed = new Set<string>();
@@ -28,7 +30,7 @@ export class Input {
       if (this.suspended) return;
       if (!this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
-      if (e.code === 'Tab') e.preventDefault();
+      if (e.code === 'Tab' || e.code.startsWith('Arrow')) e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
@@ -52,9 +54,9 @@ export class Input {
     addEventListener('wheel', (e) => { this.wheel += e.deltaY; }, { passive: true });
   }
 
-  down(code: string) { return this.keys.has(code); }
+  down(code: string) { return this.keys.has(code) || (ALIAS[code] !== undefined && this.keys.has(ALIAS[code])); }
   /** true once per key press */
-  hit(code: string) { return this.pressed.has(code); }
+  hit(code: string) { return this.pressed.has(code) || (ALIAS[code] !== undefined && this.pressed.has(ALIAS[code])); }
   axis(neg: string, pos: string) { return (this.down(pos) ? 1 : 0) - (this.down(neg) ? 1 : 0); }
 
   mouse(button: number) { return this.buttons.has(button); }

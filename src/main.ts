@@ -612,12 +612,13 @@ setSound(localStorage.getItem('ww-sound') !== '0');
 const keysEl = document.getElementById('keys')!;
 const hints = location.search === '';                 // never in test or report views
 let keysT = 0, sailSlow = 0, nagT = 0;
-const WALK_KEYS = '<b>W A S D</b>move<i>·</i><b>Mouse</b>look<i>·</i><b>E</b>use';
+const WALK_KEYS = '<b>↑ ↓ ← →</b>move<i>·</i><b>E</b>interact<i>·</i><b>Tab</b>satchel';
 const SAIL_KEYS = '<b>A D</b>tiller<i>·</i><b>W S</b>haul in, let out<br><b>F</b>anchor<i>·</i><b>E</b>ashore<i>·</i><b>Wheel</b>view<i>·</i><b>H</b>this';
 function showKeys(html: string, secs: number) { keysEl.innerHTML = html; keysEl.style.opacity = '0.9'; keysT = secs; }
 function hideKeys() { keysEl.style.opacity = '0'; keysT = 0; }
 function nag(text: string, secs: number) { hintEl.textContent = text; hintEl.style.opacity = '0.6'; nagT = secs; }
-let walkHint = hints && !state.loaded ? 2.5 : -1;     // seconds until the first words appear, once the game is under way
+let walkHint = hints ? (state.loaded ? 40 : 2.5) : -1;     // seconds until the first words appear, once the game is under way
+let idleT = 0, sinceHelp = 0;
 // on a first run, step the quality down if the machine is struggling
 let probe = localStorage.getItem('ww-quality') === null ? 0 : -1, probeFrames = 0;
 
@@ -769,7 +770,12 @@ function frame() {
   }
   // ---- hints ----
   if (hints && !title) {
-    if (walkHint > 0 && (walkHint -= dt) <= 0) { showKeys(WALK_KEYS, 10); nag('ESC', 10); }
+    if (walkHint > 0 && (walkHint -= dt) <= 0) { showKeys(WALK_KEYS, 10); if (!state.loaded) nag('ESC', 10); sinceHelp = 0; }
+    // every so often, when someone has stood still on foot for a few seconds, the help comes back for a moment
+    sinceHelp += dt;
+    const still = player.mode === 'foot' && player.speed < 0.05 && !reading && !satchel.open && !rig.scope && keysT <= 0;
+    idleT = still ? idleT + dt : 0;
+    if (idleT > 6 && sinceHelp > 420) { showKeys(WALK_KEYS, 8); sinceHelp = 0; idleT = 0; }
     const helm = player.mode === 'sail';
     if (helm && !state.flag('sailHint')) { state.set('sailHint'); showKeys(SAIL_KEYS, 16); }
     if (helm && input.hit('KeyH')) { if (keysT > 0) hideKeys(); else showKeys(SAIL_KEYS, 14); }
