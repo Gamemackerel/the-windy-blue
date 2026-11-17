@@ -62,8 +62,24 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   }
   const aEnd = a0 + TURNS * Math.PI * 2, top = 1.2 + RISE;
   const tR = towerR(top);
-  const lx = Math.sin(aEnd + 0.12) * (tR + 2.4), lz = Math.cos(aEnd + 0.12) * (tR + 2.4);
-  b.box(lx, top - 0.5, lz, 14, 1.0, 5, matte, aEnd + 0.12);           // a shelf against the wall at the head of the stair
+  // the head of the stair: the stair simply stops climbing and runs on level, the same width and tight to the wall,
+  // past the door and the keypad
+  {
+    const rr = rsAt(top), span = 0.42, N = 10;
+    for (let i = 0; i < N; i++) {
+      const am = aEnd + ((i + 0.5) / N) * span, len = (rr * span) / N + 0.06, yaw = am + Math.PI / 2;
+      const tread = new THREE.Mesh(new THREE.BoxGeometry(W, 0.5, len), matte);
+      tread.position.set(cx + Math.sin(am) * rr, top - 0.25, cz + Math.cos(am) * rr);
+      tread.rotation.y = yaw; tread.receiveShadow = true; tread.userData.static = true;
+      scene.add(tread);
+      world.addBox(cx + Math.sin(am) * rr, top - 0.25, cz + Math.cos(am) * rr, W / 2, 0.25, len / 2, yaw);
+    }
+    // a lip at the far end, so it does not just stop in the air
+    const ae = aEnd + span;
+    const end = new THREE.Mesh(new THREE.BoxGeometry(W, 1.1, 0.25), matte);
+    end.position.set(cx + Math.sin(ae) * rr, top + 0.3, cz + Math.cos(ae) * rr); end.rotation.y = ae + Math.PI / 2; scene.add(end);
+    world.addBox(end.position.x, top + 0.3, end.position.z, W / 2, 0.55, 0.13, ae + Math.PI / 2);
+  }
   // the door: a seam in the stone and a slab a shade less reflective
   const da = aEnd + 0.12;
   const door = new THREE.Mesh(new THREE.BoxGeometry(7, 15, 0.5), new THREE.MeshStandardMaterial({ color: '#030304', roughness: 0.03, metalness: 0.8 }));
@@ -98,7 +114,12 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   const _rc = new THREE.Raycaster(), _ndc = new THREE.Vector2();
   // keys: the ten numerals read down the columns (1-4, 5-8, 9 0), then the key that wipes what has been entered
   const KEYMAP = [1, 5, 9, 2, 6, 0, 3, 7, -1, 4, 8, -2];      // by row: -1 wipe, -2 blank
-  const mark = new THREE.MeshStandardMaterial({ color: '#8a8f96', roughness: 0.35, metalness: 0.7 });
+  const mark = new THREE.MeshStandardMaterial({ color: '#8a8f96', roughness: 0.35, metalness: 0.7, emissive: '#9fb6c8', emissiveIntensity: 0 });
+  // a small hooded lamp over the pad, lit after dark, just enough to read the keys by
+  const hoodM = new THREE.MeshStandardMaterial({ color: '#0a0a0b', emissive: '#bcd4e2', emissiveIntensity: 0 });
+  { const hood = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.14), matte); hood.position.set(0, 1.28, 0.3); pad.add(hood); const strip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.012, 0.03), hoodM); strip.position.set(0, 1.25, 0.34); pad.add(strip); }
+  const padLight = new THREE.PointLight('#bcd4e2', 0, 2.6, 2);
+  padLight.position.set(0, 1.15, 0.6); pad.add(padLight);
   // eight small lamps over the keys: one lights for each figure entered
   const tally = Array.from({ length: 8 }, (_, i) => { const m = new THREE.MeshStandardMaterial({ color: '#0a0a0b', emissive: '#9fb6c8', emissiveIntensity: 0 }); const d = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.02), m); d.position.set(-0.385 + i * 0.11, 1.0, 0.26); pad.add(d); return m; });
   for (let i = 0; i < 12; i++) {
@@ -130,9 +151,11 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   });
   world.updaters.push((dt) => {
     cool = Math.max(0, cool - dt);
+    const night = 1 - ctx.env.daylight;
+    padLight.intensity = night * 0.35; hoodM.emissiveIntensity = night * 0.9; mark.emissiveIntensity = night * 0.12;
     for (let i = 0; i < 12; i++) {
       flash[i] = Math.max(0, flash[i] - dt * 2.5);
-      keys[i].emissiveIntensity = flash[i] * 2.5 + (active && i === sel ? 0.5 : 0);
+      keys[i].emissiveIntensity = flash[i] * 2.5 + (active && i === sel ? 0.5 : 0) + night * 0.025;   // at night the keys hold a faint glow
     }
     tally.forEach((m, i) => { m.emissiveIntensity = isOpen() ? 1.2 : i < entered.length ? 2.2 : 0; });
     if (!active) return;
