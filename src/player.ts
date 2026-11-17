@@ -21,7 +21,7 @@ export class Player {
   readonly pos = new THREE.Vector3();
   yaw = 0;
   /** held: in the giant's hand, going where it goes. flung: thrown, on a ballistic path until something stops it */
-  mode: 'foot' | 'sail' | 'climb' | 'swim' | 'held' | 'flung' = 'foot';
+  mode: 'foot' | 'sail' | 'climb' | 'swim' | 'held' | 'flung' | 'ended' = 'foot';
   readonly fly = new THREE.Vector3();
   /** set for one frame when a throw ends in the sea */
   splashed = false;
@@ -43,6 +43,8 @@ export class Player {
   used: Interactable | null = null;
   /** set while carrying something: called when E is pressed with nothing in reach */
   dropHook: (() => boolean) | null = null;
+  /** E with nothing in reach: use the thing in the hand, if it has a use */
+  useHeld: (() => boolean) | null = null;
   /** hands full: slower, and no climbing or boarding */
   encumbered = false;
   /** world direction the revolver is being aimed along, or null */
@@ -105,7 +107,7 @@ export class Player {
     const free = this.busy <= 0;
     if (this.mode !== 'swim') { this.swimT = Math.max(0, this.swimT - dt * 4); this.dip *= Math.max(0, 1 - dt * 4); }
     this.splashed = false;
-    if (this.mode === 'held') { this.speed = 0; this.yaw = camYaw + Math.PI; return; }
+    if (this.mode === 'held' || this.mode === 'ended') { this.speed = 0; this.yaw = camYaw + Math.PI; return; }
     if (this.mode === 'flung') {
       // thrown: nothing to do but fall. Gravity is light enough for a long arc across the sea.
       this.speed = 0; this.yaw = camYaw + Math.PI;
@@ -187,6 +189,7 @@ export class Player {
       const lad = w.nearestLadder(this.pos);
       if (this.target) { this.used = this.target; this.target.use(); this.busy = 0.45; this.reach = 1; }
       else if (this.dropHook?.()) this.busy = 0.35;
+      else if (this.useHeld?.()) this.busy = 0.4;
       else if (lad && !this.encumbered) this.startClimb(lad.ladder, lad.atTop);
       else if (!this.encumbered) this.tryBoard();
     }

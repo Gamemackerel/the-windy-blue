@@ -12,6 +12,7 @@ export const LAB = { x: 720, z: 220 };
 const FLOOR = -14, CEIL = -10;
 const _bm = new THREE.Matrix4();
 
+import { numeralsJournalHtml } from './glyphs';
 export const JOURNALS = [
   'Subject has outgrown the third tank. We have stopped pretending the growth curve means anything.\n\nMoving it to the sea pen tonight.',
   'We do not say "the break" aloud.\n\nThe pen was not forced. It was opened, from the inside, the way one opens a door one has been watching others use.',
@@ -241,7 +242,8 @@ export function buildLab(ctx: Ctx) {
   b.box(9.6, FLOOR + 0.85, -4.25, 1.0, 0.03, 0.4, rib, 0, false);
 
   // journals on the desks: seen in the dark, readable only in the light
-  const jSpots: [number, number, number, number][] = [[-7.6, 3.75, 0.2, 0], [-4.6, 3.8, -0.4, 1], [2.2, 3.8, 0.3, 2], [4.2, 3.7, -0.2, 3], [13.6, 3.5, 0.5, 4], [15.3, 3.6, -0.3, 5]];
+  JOURNALS[6] ??= numeralsJournalHtml();
+  const jSpots: [number, number, number, number][] = [[6.6, 0.15, 1.3, 6], [-7.6, 3.75, 0.2, 0], [-4.6, 3.8, -0.4, 1], [2.2, 3.8, 0.3, 2], [4.2, 3.7, -0.2, 3], [13.6, 3.5, 0.5, 4], [15.3, 3.6, -0.3, 5]];
   for (const [x, z, rot, i] of jSpots) {
     const g = new THREE.Group();
     g.position.set(cx + x, FLOOR + 0.93, cz + z);

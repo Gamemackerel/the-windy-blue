@@ -214,6 +214,7 @@ const RECIPES: Record<string, Recipe> = {
   gull: (a, o, t) => { for (let i = 0; i < 3; i++) a.sine(o, t + i * 0.24, 0.2, 1500 - i * 90, 1050, 0.07, 'triangle', 0.02, 5); },
   thump: (a, o, t) => { a.sine(o, t, 0.5, 75, 32, 1.0, 'sine', 0.003); a.noise(o, t, 0.25, 'lowpass', 500, 120, 0.7, 0.6, 0.002); a.noise(o, t + 0.05, 0.9, 'bandpass', 1200, 500, 0.6, 0.2, 0.05); },
   whale: (a, o, t) => { a.sine(o, t, 5, 120, 62, 0.5, 'sine', 0.8, 3); a.sine(o, t + 0.6, 4, 240, 150, 0.12, 'triangle', 0.8, 4); a.noise(o, t + 1, 4, 'lowpass', 300, 900, 0.5, 0.25, 1.5); },
+  siren: (a, o, t) => { a.sine(o, t, 1.2, 420, 760, 0.22, 'sawtooth', 0.05); a.sine(o, t + 1.25, 1.2, 760, 420, 0.22, 'sawtooth', 0.05); },
   anchor: (a, o, t) => { for (let i = 0; i < 9; i++) a.noise(o, t + i * 0.07, 0.05, 'bandpass', 1700, 1000, 4, 0.12); a.noise(o, t + 0.5, 0.9, 'lowpass', 900, 200, 0.5, 0.4, 0.02); },
   hm: (a, o, t) => { const f = 105 + Math.random() * 30; a.sine(o, t, 0.32, f, f * 0.86, 0.16, 'sawtooth', 0.05, 7); a.noise(o, t, 0.3, 'bandpass', 420, 300, 2, 0.06, 0.05); },
   grunt: (a, o, t) => { a.sine(o, t, 0.35, 150, 95, 0.25, 'sawtooth', 0.02, 9); a.noise(o, t, 0.3, 'bandpass', 600, 400, 2, 0.2, 0.02); a.noise(o, t + 0.5, 0.25, 'lowpass', 500, 150, 0.7, 0.25); },

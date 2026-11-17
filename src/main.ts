@@ -5,7 +5,7 @@ import { Wind } from './wind';
 import { Boat } from './boat';
 import { Input } from './input';
 import { ViewRig } from './camera';
-import { makeItem } from './items';
+import { makeItem, addPickup } from './items';
 import { World } from './world';
 import { GameState } from './state';
 import { Player } from './player';
@@ -17,6 +17,7 @@ import { buildWindmill, WINDMILL } from './windmill';
 import { buildLab, LAB } from './lab';
 import { buildAtoll, ATOLL, atollHeight } from './giant';
 import { buildTower, TOWER } from './tower';
+import { noteHtml } from './glyphs';
 import { buildFauna, FaunaKind } from './fauna';
 import { Floats } from './floats';
 import { floraTick } from './plants';
@@ -140,7 +141,7 @@ const ctx: Ctx = {
     if (on) { rig.pitch = Math.min(rig.pitch, 0.05); player.busy = 0.4; }
   },
   scopeView: () => (rig.scope ? { yaw: rig.yaw, pitch: rig.pitch } : null),
-  read: (text) => { (pageEl.firstElementChild as HTMLElement).textContent = text; pageEl.style.display = 'flex'; reading = true; player.busy = 0.3; audio.play('page'); },
+  read: (text) => { const pg = pageEl.firstElementChild as HTMLElement; if (text.startsWith('<')) pg.innerHTML = text; else pg.textContent = text; pageEl.style.display = 'flex'; reading = true; player.busy = 0.3; audio.play('page'); },
   sfx: (name, pos, gain) => audio.play(name, pos, gain),
 };
 
@@ -151,6 +152,10 @@ const windmill = buildWindmill(ctx);
 const lab = buildLab(ctx);
 let pushX = 0, pushZ = 0, wrecking = false;
 let homeT = 2;
+/** 0: playing. 1: on the roof with nothing left to do. 2: falling. 3: over. */
+let ending = 0;
+const leap = new THREE.Vector3(), endCam = new THREE.Vector3();
+const creditsEl = document.getElementById('credits')!;
 let turnTo = 0;   // seconds left of being turned to face the giant after it picks you up
 const giant = buildAtoll(ctx, {
   wreck: wreckBoat, push: (ax, az) => { pushX += ax; pushZ += az; },
@@ -164,7 +169,25 @@ const giant = buildAtoll(ctx, {
   held: () => player.mode === 'held',
   fling: () => fling(),
 });
-const tower = buildTower(ctx);
+const tower = buildTower(ctx, {
+  // a security screen's picture: the plain scene from a fixed camera, with the sea and sky put back for the moment
+  feed: (cam, rt) => {
+    const ov = ocean.mesh.visible, sv = env.sky.visible, av = arms.group.visible, vv = viewModel.visible;
+    ocean.mesh.visible = env.sky.visible = true; arms.group.visible = viewModel.visible = false;
+    renderer.setRenderTarget(rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    ocean.mesh.visible = ov; env.sky.visible = sv; arms.group.visible = av; viewModel.visible = vv;
+  },
+  kill: () => killed(),
+});
+npcs.push(tower.keeper);
+player.useHeld = () => { if (player.held !== 'note') return false; ctx.read(noteHtml(state.flag('seed'))); return true; };
+// the message in the bottle: washed up on the shingle north of the dock
+{
+  let lz = 22;
+  while (lz < 70 && islandHeight(ISLAND.x + 97, ISLAND.z + lz) > 0.5) lz += 0.5;
+  const at = new THREE.Vector3(ISLAND.x + 97, islandHeight(ISLAND.x + 97, ISLAND.z + lz) + 0.05, ISLAND.z + lz);
+  addPickup(ctx, 'note', 'note', at, { scale: 1.7, rot: 0.7, radius: 1.8, onTake: () => { player.setHeld('note'); ctx.read(noteHtml(state.flag('seed'))); } });
+}
 const fauna = buildFauna(ctx, {
   push: (ax, az) => { pushX += ax; pushZ += az; },
   use: () => input.hit('KeyE') && !paused,
@@ -444,7 +467,9 @@ function fire() {
     const r = j === J.head ? 0.15 : j === J.chest || j === J.hips ? 0.22 : 0.11;
     if (miss < r && (!best || along < best.d)) best = { n, joint: j, d: along };
   }
-  if (best) { best.n.hit(best.joint, aimDir); return; }
+  if (best) best.n.hit(best.joint, aimDir);
+  if (!best || best.n !== tower.keeper) tower.answer();      // fire on the roof and miss him, and he does not miss
+  if (best) return;
   giant.shoot(_o, aimDir);
 }
 
@@ -580,7 +605,7 @@ function frame() {
     debug = !debug;
     debugEl.style.display = debug ? 'block' : 'none';
   }
-  if (input.hit('Escape') && !title && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
+  if (input.hit('Escape') && !title && !ending && !satchel.open && !reading && !tower.padActive() && !rig.scope) setPaused(!paused);
   if (paused || reporting) { input.endFrame(); post.render(scene, camera, env.elapsed, env.air); requestAnimationFrame(frame); return; }
   // Dynamic resolution: if frames are taking too long, draw slightly fewer pixels; when there is room, restore them.
   frameMs += (dt * 1000 - frameMs) * 0.08;
@@ -659,7 +684,7 @@ function frame() {
     // the bow wave travels with the hull
     wk[0].set(s.x + Math.sin(s.psi) * 0.9, s.z + Math.cos(s.psi) * 0.9, 0.85, moving * 0.3);   // small, and tucked under the forefoot: never out ahead of the stem
   }
-  player.dry = lab.inside() || island.dockDry(player.pos);
+  player.dry = lab.inside() || island.dockDry(player.pos) || tower.inside(player.pos);
   player.update(dt, t, input, rig.yaw, wind);
   // the anchor going down or coming up
   if (player.anchorHit) audio.play('anchor', boat.position, 1.2);
@@ -712,7 +737,7 @@ function frame() {
   if (player.mode !== 'sail') boat.sheetHand = null;
   // the view
   player.focus(focus);
-  const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos);
+  const indoors = windmill.inside(player.pos) || lab.inside() || island.indoors(player.pos) || tower.inside(player.pos);
   player.eye(eyePos);
   if (player.mode === 'foot' && player.pos.y < 8) eyePos.y += floats.lift(player.pos.x, player.pos.z);   // standing on something afloat
   if (rig.scope && scopeAt) eyePos.set(scopeAt.x, scopeAt.y + 0.85, scopeAt.z); // above the ring wall, so nothing near blocks the view
@@ -725,7 +750,7 @@ function frame() {
   player.figure.group.visible = outside && sailing;
   viewModel.visible = !rig.scope && !outside && !title;
   // under the surface: the light goes green-blue and close
-  if (!lab.inside() && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.03) {
+  if (!lab.inside() && !tower.inside(player.pos) && !ending && camera.position.y < waveHeight(camera.position.x, camera.position.z, t) - 0.03) {
     const un = env.under;
     un.amount = 1; un.density = 0.11; un.intensity = 0.55 * (0.25 + env.daylight);
     un.fog.set('#0b3442').multiplyScalar(0.15 + 0.85 * env.daylight); un.ambient.set('#3a7080');
@@ -795,6 +820,36 @@ function frame() {
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
   }
   if (title) markEl.style.opacity = '0';
+  // ---- the end: alone on the roof with the tower emptied, seen from very far off ----
+  if (ending === 0 && tower.over() && player.mode === 'foot' && !wrecking) { ending = 1; player.mode = 'ended'; endCam.set(player.pos.x - TOWER.x, 0, player.pos.z - TOWER.z).normalize(); }
+  if (ending > 0) {
+    if (ending === 1 && input.hit('KeyE')) {
+      // off the edge
+      ending = 2;
+      leap.set(endCam.x * 7, 2.5, endCam.z * 7);
+      player.pos.set(TOWER.x + endCam.x * 27.5, tower.roofY, TOWER.z + endCam.z * 27.5);
+      audio.play('cloth', player.pos, 1.5);
+    }
+    if (ending === 2) {
+      leap.y -= 5.2 * dt;
+      player.pos.addScaledVector(leap, dt);
+      if (player.pos.y < tower.roofY * 0.25) { ending = 3; creditsEl.style.display = 'flex'; requestAnimationFrame(() => { creditsEl.style.opacity = '1'; }); }
+    }
+    if (ending === 3 && (input.hit('Escape') || input.hit('Enter'))) location.reload();
+    // side-on from far out over the sea: the whole height of the tower, and a speck on top of it
+    const sx = -endCam.z, sz = endCam.x;
+    const lookY = ending === 1 ? tower.roofY - 70 : Math.max(tower.roofY * 0.32, player.pos.y - 40);
+    camera.position.set(TOWER.x + endCam.x * 140 + sx * 520, lookY - 30, TOWER.z + endCam.z * 140 + sz * 520);
+    camera.lookAt(TOWER.x + endCam.x * 40, lookY, TOWER.z + endCam.z * 40);
+    if (Math.abs(camera.fov - 44) > 0.01) { camera.fov = 44; camera.updateProjectionMatrix(); }
+    focus.copy(player.pos);
+    const fg = player.figure.group;
+    fg.visible = ending < 3; fg.position.copy(player.pos); fg.rotation.set(ending === 2 ? -1.2 : 0, Math.atan2(endCam.x, endCam.z), 0, 'YXZ'); fg.scale.setScalar(2.4);   // still only a speck at this distance
+    camera.updateMatrixWorld();
+    arms.group.visible = viewModel.visible = false;
+    if (ending === 1) { _mk.copy(player.pos); _mk.y += 9; _mk.project(camera); markEl.style.opacity = '1'; markEl.style.transform = `translate(${((_mk.x * 0.5 + 0.5) * innerWidth).toFixed(1)}px, ${((-_mk.y * 0.5 + 0.5) * innerHeight).toFixed(1)}px)`; }
+    else markEl.style.opacity = '0';
+  }
 
   // shadows hug the action
   const sc = env.sun.shadow.camera;
@@ -856,4 +911,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // handle for automated screenshots and tuning
-(window as any).__game = { fauna, floats, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };
+(window as any).__game = { fauna, floats, tower, get ending() { return ending; }, get res() { return resScale; }, weather, get fps() { return fps; }, post, env, boat, wind, rig, renderer, scene, camera, player, world, state, input, npcs, satchel, giant, fire, wreckBoat, PLACES, LAB, ATOLL, TOWER, WINDMILL };

@@ -5,7 +5,7 @@ import { Ctx } from './ctx';
 import { MAT } from './materials';
 import { Input } from './input';
 
-export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart' | 'lens';
+export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart' | 'lens' | 'note' | 'keycard';
 
 const m = (geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => {
   const o = new THREE.Mesh(geo, mat);
@@ -120,6 +120,24 @@ export function makeItem(id: ItemId): THREE.Group {
       ring.rotation.x = Math.PI / 2;
       const glass = m(new THREE.CylinderGeometry(0.042, 0.042, 0.008, 16), std('#9fc3cf', 0.03, 0.2), 0, 0.05, 0);
       g.add(barrel, ring, glass, m(new THREE.CylinderGeometry(0.052, 0.052, 0.012, 16), MAT.dark, 0, -0.05, 0));
+      break;
+    }
+    case 'note': {
+      // a green bottle, corked, with a roll of paper inside
+      const glassM = std('#2f4a34', 0.08, 0, { transparent: true, opacity: 0.55 });
+      const body = m(new THREE.CylinderGeometry(0.034, 0.034, 0.13, 12), glassM, 0, 0, 0);
+      const sh = m(new THREE.SphereGeometry(0.034, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), glassM, 0, 0.065, 0);
+      const neck = m(new THREE.CylinderGeometry(0.012, 0.014, 0.06, 8), glassM, 0, 0.115, 0);
+      const cork = m(new THREE.CylinderGeometry(0.011, 0.012, 0.022, 8), std('#8a6a44', 0.9), 0, 0.15, 0);
+      const paper = m(new THREE.CylinderGeometry(0.016, 0.016, 0.1, 8), std('#d8cfb4', 0.95), 0, -0.005, 0);
+      g.add(paper, body, sh, neck, cork);
+      g.rotation.z = 1.2;
+      break;
+    }
+    case 'keycard': {
+      g.add(m(new THREE.BoxGeometry(0.085, 0.004, 0.054), std('#d9d6cc', 0.4)));
+      g.add(m(new THREE.BoxGeometry(0.085, 0.0045, 0.012), std('#111', 0.3), 0, 0, 0.014));
+      g.add(m(new THREE.BoxGeometry(0.014, 0.005, 0.014), MAT.brass, -0.024, 0, -0.012));
       break;
     }
     case 'chart': {

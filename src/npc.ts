@@ -44,6 +44,10 @@ export interface NpcSpec {
   wants?: ItemId;
   gives?: ItemId;
   giveSpot?: THREE.Vector3; // where a traded item is set down
+  /** stands with a revolver levelled at the player */
+  aims?: boolean;
+  /** any hit at all kills */
+  frail?: boolean;
 }
 
 export class Npc {
@@ -80,6 +84,7 @@ export class Npc {
     this.figure.group.rotation.y = spec.yaw;
     if (spec.pose === 'sit') this.figure.skirtAmount = 0;   // seated, the coat is gathered under them rather than hanging through the chair
 
+    if (spec.aims) { const gun = makeItem('revolver'); gun.rotation.set(Math.PI / 2, 0, 0); gun.position.set(0, 0.09, 0.03); this.figure.rightHandSlot.add(gun); }
     if (spec.smokes) {
       // held between the first two fingers, lit end away from the face
       const cig = new THREE.Group();
@@ -160,7 +165,7 @@ export class Npc {
   /** a bullet has struck this joint, travelling along dir */
   hit(joint: number, dir: THREE.Vector3) {
     if (this.condition === 2) { this.ragdoll?.impulse(joint, dir, 3); return; }
-    const fatal = joint === J.head || joint === J.chest || joint === J.shL || joint === J.shR;
+    const fatal = !!this.spec.frail || joint === J.head || joint === J.chest || joint === J.shL || joint === J.shR;
     this.ctx.sfx(fatal ? 'bodyfall' : 'grunt', this.pos);
     if (fatal) {
       this.condition = 2;
@@ -220,6 +225,14 @@ export class Npc {
       p[J.hips].x = sway;
       hL.set(SH_W + 0.05, p[J.chest].y - 0.58, 0.06); hR.set(-SH_W - 0.05, p[J.chest].y - 0.58, 0.06);
       fL.set(0.11, 0.03, 0.02); fR.set(-0.11, 0.03, -0.03);
+    }
+    // covering whoever has come up: the right arm out straight along the line to them, the body turned a little behind it
+    if (s.aims) {
+      this.figure.group.worldToLocal(_t.copy(this.playerPos())); _t.y += 1.35;
+      _t.sub(p[J.shR]).normalize();
+      _t.x = THREE.MathUtils.clamp(_t.x, -0.7, 0.7); _t.z = Math.max(0.5, _t.z); _t.normalize();
+      hR.copy(p[J.shR]).addScaledVector(_t, (UARM + FARM) * 0.97);
+      hR.y += Math.sin(t * 0.8) * 0.004;
     }
     // smoking: the right hand travels to the mouth and back
     let atMouth = false;

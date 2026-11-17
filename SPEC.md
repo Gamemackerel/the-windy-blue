@@ -384,6 +384,15 @@ Shown only in ordinary play, small and letter-spaced at the foot of the screen, 
 
 The pan hangs on a fixed chain from its end of the beam. Overloaded, it goes down to the ground. Underloaded, the mast hangs low; the winch swings it toward the dock, it strikes the rail and swings back. Only in balance does it clear the rail and step. The stepped mast keeps its four bands.
 
+### 4.17 The black tower (opens)
+
+- **Code.** Every game draws its own eight-figure code. It is written in the sea people's numerals on a note in a bottle washed up on the starting island's shingle north of the dock, with the fourth figure blotted out. One journal in the laboratory (on the operating table) translates the ten numerals and says they count in tens, so the fourth figure is found by trying all ten. The keypad shows the numerals; a lamp lights for each figure entered; a wipe key starts again.
+- **Inside.** A cold store: an open well up the middle, a stair winding five and a half times up the wall to a gallery under the roof, and two hundred people sleeping in lit tanks set along the stair. A ladder from the gallery leads through a hatch to the roof.
+- **The keeper** stands on the roof with a revolver levelled. Any hit kills him. Fire and miss and he fires back, and the player wakes at the start. He has a key card.
+- **The plant.** The card opens a door across the floor from the entrance, down to a fusion plant under the sea, cooled by sea water. Three journals on the desk there tell what the place is and how it is kept.
+- **The control room.** The card opens a room on the gallery: four screens fed live from cameras (the entrance, the well, the outside stair, the plant) and a desk with two procedures of three controls each, marked by a wave and a falling figure. Flooding the reactor stops it: sirens, red beacons, the cold lights failing. Jettisoning drops all two hundred sleepers down the well, where they pile over the door and block the way out. Trying to move them barely shifts one.
+- **The end.** Back on the roof after the jettison, the view pulls out until the player is a speck on top of the tower, with only the interaction ring. E: they step off and fall toward the sea; three quarters of the way down it cuts to black and the credits.
+
 ## 14. Build status
 
 Everything in this spec is implemented and playable from start to finish. An automated playthrough (`node scripts/flow.mjs`, with the dev server running) drives the whole chain and reports each step.
