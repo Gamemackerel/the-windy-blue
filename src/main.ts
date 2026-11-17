@@ -193,6 +193,7 @@ const fauna = buildFauna(ctx, {
   push: (ax, az) => { pushX += ax; pushZ += az; },
   use: () => input.hit('KeyE') && !paused,
   bullet: () => { state.set('ammo', state.flag('ammo') + 1); },
+  outdoors: () => !lab.inside() && !tower.inside(player.pos) && !island.indoors(player.pos) && !windmill.inside(player.pos),
 });
 if (params.has('fauna')) world.after(9, () => fauna.trigger(params.get('fauna') as FaunaKind));
 ocean.setShoal(ATOLL.x, ATOLL.z, ATOLL.r - 14, ATOLL.hole);

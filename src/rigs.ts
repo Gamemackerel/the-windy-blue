@@ -10,7 +10,7 @@ import { calmZones } from './waves';
 import { addPickup } from './items';
 import { Npc } from './npc';
 import { Figure, J } from './figure';
-import { buildHull } from './boat';
+import { buildHull, buildDeck, hullSheer } from './boat';
 import { ISLAND } from './island';
 
 /** the floating home tied up to the jungle rig */
@@ -336,9 +336,16 @@ export function buildRigs(ctx: Ctx) {
       b.bar(hx - 3.9, FY + 0.1, hz - 3, 9.6, DY - 0.5, -2, 0.02, MAT.rope, 4); b.bar(hx - 3.9, FY + 0.1, hz + 3, 9.6, DY - 0.5, 6, 0.02, MAT.rope, 4);
       ladder(b, 10.15, hz, FY, DY, -Math.PI / 2, MAT.rust);
       world.moorings.push({ name: 'home', x: cx + hx, z: cz + hz - 6.2, psi: Math.PI / 2, dock: new THREE.Vector3(cx + hx - 2.6, FY, cz + hz - 2.7) });
-      // the jungle has started on the roof
-      for (let i = 0; i < 16; i++) clumps.push({ x: cx + cxh - 2.6 + r() * 3, y: FY + CH + 0.55 + r() * 0.3, z: cz + hz - 2 + r() * 4, r: 0.35 + r() * 0.25, n: 40 });
-      for (let i = 0; i < 10; i++) { const z = hz - 2.1 + r() * 4.2, len = 0.6 + r() * 1.5; b.bar(cxh - CW / 2 - 0.1, FY + CH, z, cxh - CW / 2 - 0.15, FY + CH - len, z, 0.02, vine, 4); clumps.push({ x: cx + cxh - CW / 2 - 0.15, y: FY + CH - len * 0.6, z: cz + z, r: 0.3, n: 16 }); }
+      // the jungle has started on the roof and is coming down over the door side. Grown into its own group, which floats with the home.
+      {
+        const flora = new THREE.Group();
+        flora.userData.float = 'home';
+        scene.add(flora);
+        const roofY = FY + CH + 0.13, homeC: Clump[] = [];
+        for (let i = 0; i < 9; i++) homeC.push({ x: cx + cxh - 2.4 + r() * 3.2, y: roofY + 0.3, z: cz + hz - 1.9 + r() * 3.8, r: 0.32 + r() * 0.25, n: 30, g: roofY, kind: r() < 0.5 ? 'fern' : 'bush' });
+        for (let i = 0; i < 14; i++) { const zz = hz - 2.3 + (i / 13) * 4.6 + (r() - 0.5) * 0.2; if (Math.abs(zz - hz) < 0.7) continue; homeC.push({ x: cx + cxh - CW / 2 - 0.36, y: roofY, z: cz + zz, r: 0.5 + r() * 1.0, n: 1, kind: 'curtain' }); }   // the doorway kept clear
+        growPlants(flora, homeC, 77, 0.5);
+      }
     }
     leaves(ctx, clumps, 9, 0.5);
     // grasses pushing up through the litter: thin blades in tufts, greener in the open, yellowing in the shade
@@ -407,6 +414,13 @@ export function buildRigs(ctx: Ctx) {
     skiff.rotation.set(0.02, Math.PI / 2 + 0.1, 0.04);
     skiff.castShadow = true;
     scene.add(skiff);
+    {
+      // a lid over it that only fills the depth buffer, so the sea is not drawn inside the hull
+      const lid = new THREE.Mesh(buildDeck((s) => hullSheer(s) - 0.01), new THREE.MeshBasicMaterial({ colorWrite: false }));
+      lid.renderOrder = 1; skiff.add(lid);
+      const boards = new THREE.Mesh(buildDeck(() => -0.1, 0.02, 0.9), MAT.paleWood); boards.receiveShadow = true; skiff.add(boards);
+      for (const st of [0.3, 0.6]) { const th = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.26), MAT.wood); th.position.set(0, 0.3, (st - 0.5) * 5.2); skiff.add(th); }
+    }
     world.addBox(cx + 0.6, 0, cz + 3.6, 2, 0.5, 0.75);
     b.bar(-1, 0.4, 2.3, -0.6, 0.35, 3.3, 0.012, MAT.rope, 4);
     // fishing rod and line

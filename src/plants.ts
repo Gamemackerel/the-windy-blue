@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { rng } from './noise';
 
-export type PlantKind = 'canopy' | 'bush' | 'vine' | 'fern' | 'broad' | 'tomato' | 'squash' | 'greens';
+export type PlantKind = 'canopy' | 'bush' | 'vine' | 'fern' | 'broad' | 'tomato' | 'squash' | 'greens' | 'curtain';
 export interface Clump { x: number; y: number; z: number; r: number; n: number; kind?: PlantKind; /** height of the ground it grows from */ g?: number }
 
 const sway = { t: { value: 0 }, w: { value: 0.4 } };
@@ -205,6 +205,15 @@ export function growPlants(scene: THREE.Object3D, clumps: Clump[], seed: number,
         o.set(c.x, c.y + c.r * 0.5, c.z);
         const L = c.r * (1.6 + r() * 1.2);
         spray(o.clone(), d.clone(), L, L * 0.25, 0.008, 6, size * 0.5, col.clone().multiplyScalar(0.8 + r() * 0.4));
+      }
+    } else if (kind === 'curtain') {
+      // trailing stems that have grown over an edge and hang straight down it, leaves all the way, a little apart from each other
+      const col = green(0.9), N = 2 + ((r() * 2) | 0);
+      for (let i = 0; i < N; i++) {
+        o.set(c.x + (r() - 0.5) * 0.25, c.y, c.z + (r() - 0.5) * 0.25);
+        d.set((r() - 0.5) * 0.12, -1, (r() - 0.5) * 0.12).normalize();
+        const L = c.r * (0.6 + r() * 0.5);
+        spray(o.clone(), d.clone(), L, -L * 0.04, 0.006, Math.round(L * 9), size * 0.42, col.clone().multiplyScalar(0.8 + r() * 0.4));
       }
     } else if (kind === 'fern') {
       // a shuttlecock of fronds from one crown

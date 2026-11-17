@@ -16,6 +16,8 @@ const BEAM = 1.9;
 const DRAFT = 0.42;
 const MAST_Z = 0.85;
 const MAST_H = 6.4;
+/** height of the gunwale at a station along the hull (0 stern .. 1 stem) */
+export const hullSheer = (s: number) => sheer(s);
 const BOOM_Y = 1.25;
 const BOOM_LEN = 2.9;
 
@@ -74,7 +76,7 @@ export function buildHull() {
 }
 
 /** flat strip across the hull at a given height (floor boards, depth lid) */
-function buildDeck(height: (s: number) => number, s0 = 0, s1 = 1, n = 24) {
+export function buildDeck(height: (s: number) => number, s0 = 0, s1 = 1, n = 24) {
   const pos: number[] = [], idx: number[] = [];
   for (let i = 0; i <= n; i++) {
     const s = s0 + ((s1 - s0) * i) / n;

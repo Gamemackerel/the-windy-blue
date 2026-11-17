@@ -28,7 +28,8 @@ export class Floats {
     }
     scene.updateMatrixWorld(true);
     for (const o of [...scene.children]) {
-      if (skip.has(o) || (o as any).isInstancedMesh || (o as any).isScene || (o as any).isCamera) continue;
+      if (skip.has(o) || (o as any).isScene || (o as any).isCamera) continue;
+      if ((o as any).isInstancedMesh && !o.userData.float) continue;
       const m = o as THREE.Mesh;
       if (m.isMesh) {
         if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
@@ -37,7 +38,7 @@ export class Floats {
         if (_box.max.x - _box.min.x > 40 || _box.max.z - _box.min.z > 40) continue;
       } else if (o.type === 'Group' || (o as any).isLight || (o as any).isPoints) _c.copy(o.position);
       else continue;
-      const f = this.list.find((k) => Math.abs(_c.x - k.x) < k.hx && Math.abs(_c.z - k.z) < k.hz && _c.y > -3 && _c.y < 9);
+      const f = o.userData.float ? this.list.find((k) => k.name === o.userData.float) : this.list.find((k) => Math.abs(_c.x - k.x) < k.hx && Math.abs(_c.z - k.z) < k.hz && _c.y > -3 && _c.y < 9);
       if (f && o !== f.group) f.group.attach(o);
     }
     for (const f of this.list) {

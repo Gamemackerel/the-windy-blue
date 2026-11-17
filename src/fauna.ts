@@ -17,7 +17,9 @@ import { WINDMILL } from './windmill';
 import { LAB } from './lab';
 
 export type FaunaKind = 'fish' | 'gulls' | 'dolphins' | 'seal' | 'sharks' | 'whale' | 'driftwood' | 'kelp' | 'body';
-const WEIGHTS: [FaunaKind, number][] = [['fish', 30], ['gulls', 15], ['driftwood', 14], ['dolphins', 12], ['seal', 11], ['kelp', 10], ['sharks', 5], ['whale', 2], ['body', 1]];
+const WEIGHTS: [FaunaKind, number][] = [['gulls', 27], ['fish', 24], ['driftwood', 14], ['seal', 11], ['kelp', 10], ['dolphins', 6], ['sharks', 5], ['whale', 2], ['body', 1]];
+/** what can be seen happening far off, from the deck or the shore */
+const FAR: [FaunaKind, number][] = [['gulls', 40], ['dolphins', 25], ['fish', 20], ['whale', 15]];
 const Z = new THREE.Vector3(0, 0, 1);
 const _v = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 
@@ -43,7 +45,7 @@ function aim(o: THREE.Object3D, dir: THREE.Vector3, roll = 0) {
   if (roll) o.quaternion.multiply(_q2.setFromAxisAngle(Z, roll));
 }
 
-export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => void; use: () => boolean; bullet: () => void }) {
+export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => void; use: () => boolean; bullet: () => void; outdoors: () => boolean }) {
   const { scene, world, boat } = ctx;
   const skin = (c: string, rough = 0.32, metal = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal, side: THREE.DoubleSide });
 
@@ -86,7 +88,7 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
     g.add(fin([0, 0, -1.05], [0.34, 0, -1.3], [-0.34, 0, -1.3], dolMat));
     for (const s of [-1, 1]) g.add(fin([s * 0.2, -0.08, 0.45], [s * 0.55, -0.2, 0.15], [s * 0.2, -0.08, 0.2], dolMat));
     const beak = new THREE.Mesh(spindle(0.5, 0.07, 1, 8), dolMat); beak.position.z = 1.1; g.add(beak);
-    return { g: hide(g), side: i === 1 ? -1 : 1, lat: 5 + i * 2.6, along: 3 - i * 3.2, ph: i * 1.3 };
+    return { g: hide(g), side: i === 1 ? -1 : 1, lat: 5 + i * 2.6, along: 3 - i * 3.2, ph: i / 3 + 0.05 };   // evenly staggered: one of them is up every couple of seconds
   });
   // sharks: only ever a fin and a shadow of back, until one comes in
   const shMat = skin('#3b4246', 0.4);
@@ -136,6 +138,7 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
   });
 
   // ------------------------------------------------------------ the schedule
+  let farNext = 30 + Math.random() * 40;
   let kind: FaunaKind | null = null, tau = 0, next = 35 + Math.random() * 50, struck = false, barks = 0;
   const at = new THREE.Vector3(), heading = new THREE.Vector3();
   const openSea = () => {
@@ -183,32 +186,37 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
   const prompt = new THREE.Vector3();
   let promptOn = false;
 
-  const start = (k: FaunaKind) => {
+  // near: the encounter happens round the boat. far: round a fixed point out at sea, seen from wherever you are.
+  const anc = { x: 0, z: 0, psi: 0, u: 0, far: false };
+  const track = () => { if (!anc.far) { anc.x = boat.position.x; anc.z = boat.position.z; anc.psi = boat.state.psi; anc.u = boat.state.u; } else { anc.x += Math.sin(anc.psi) * anc.u * 0.016; anc.z += Math.cos(anc.psi) * anc.u * 0.016; } };
+  const start = (k: FaunaKind, far = false) => {
     kind = k; tau = 0; struck = false; barks = 0;
-    const s = boat.state, sn = Math.sin(s.psi), cs = Math.cos(s.psi);
+    anc.far = far;
+    track();
+    const s = anc, sn = Math.sin(s.psi), cs = Math.cos(s.psi);
     heading.set(sn, 0, cs);
     if (k === 'fish') {
       const side = Math.random() < 0.5 ? -1 : 1, ang = s.psi + side * (0.5 + Math.random() * 0.6);
       fish.forEach((f, i) => {
         const d = 14 + Math.random() * 22;
-        f.x = boat.position.x + Math.sin(ang) * d + (Math.random() - 0.5) * 8; f.z = boat.position.z + Math.cos(ang) * d + (Math.random() - 0.5) * 8;
+        f.x = anc.x + Math.sin(ang) * d + (Math.random() - 0.5) * 8; f.z = anc.z + Math.cos(ang) * d + (Math.random() - 0.5) * 8;
         const dir = s.psi + side * 1.2 + (Math.random() - 0.5) * 0.5;
         f.dx = Math.sin(dir); f.dz = Math.cos(dir); f.v = 6 + Math.random() * 3; f.up = 3.6 + Math.random() * 1.6; f.t0 = 0.3 + i * (0.12 + Math.random() * 0.25); f.wet = true;
       });
     } else if (k === 'seal') {
       const side = Math.random() < 0.5 ? -1 : 1;
-      at.set(boat.position.x + sn * 22 + cs * side * 13, 0, boat.position.z + cs * 22 - sn * side * 13);
+      at.set(anc.x + sn * 22 + cs * side * 13, 0, anc.z + cs * 22 - sn * side * 13);
     } else if (k === 'driftwood' || k === 'kelp' || k === 'body') {
       // somewhere ahead and a little off the bow, so the boat comes up on it
       const side = Math.random() < 0.5 ? -1 : 1, d = k === 'body' ? 70 : 60 + Math.random() * 40, off = side * (k === 'body' ? 5 : 6 + Math.random() * 14);
-      at.set(boat.position.x + sn * d + cs * off, 0, boat.position.z + cs * d - sn * off);
+      at.set(anc.x + sn * d + cs * off, 0, anc.z + cs * d - sn * off);
       const scatter = (list: { x: number; z: number; yaw: number }[], rad: number) => list.forEach((o) => { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * rad; o.x = at.x + Math.cos(a) * r; o.z = at.z + Math.sin(a) * r; o.yaw = Math.random() * 6.283; });
       if (k === 'driftwood') scatter(wood, 9);
       if (k === 'kelp') scatter(kelp, 8);
       if (k === 'body') body.rotation.y = Math.random() * 6.283;
     } else if (k === 'whale') {
       const side = Math.random() < 0.5 ? -1 : 1, d = 110 + Math.random() * 60;
-      at.set(boat.position.x + sn * d * 0.8 + cs * side * d * 0.6, 0, boat.position.z + cs * d * 0.8 - sn * side * d * 0.6);
+      at.set(anc.x + sn * d * 0.8 + cs * side * d * 0.6, 0, anc.z + cs * d * 0.8 - sn * side * d * 0.6);
       heading.set(Math.sin(s.psi + side * 1.9), 0, Math.cos(s.psi + side * 1.9));
     }
   };
@@ -233,13 +241,31 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
       pGeo.attributes.position.needsUpdate = true;
     } else spray.visible = false;
 
-    const sailing = boat.mode === 'sailing';
+    const sailing = anc.far || boat.mode === 'sailing';
     if (!kind) {
-      if (sailing && openSea()) { next -= dt; if (next <= 0) { let r = Math.random() * 100; for (const [k, w] of WEIGHTS) { if ((r -= w) < 0) { start(k === 'body' && ctx.state.flag('seaBody') ? 'driftwood' : k); break; } } } }
+      if (boat.mode === 'sailing' && openSea()) { next -= dt; if (next <= 0) { let r = Math.random() * 100; for (const [k, w] of WEIGHTS) { if ((r -= w) < 0) { start(k === 'body' && ctx.state.flag('seaBody') ? 'driftwood' : k); break; } } } }
+      else if (hooks.outdoors()) {
+        // now and then, something happens a long way off: somewhere out at sea between 150 and 500 m away
+        farNext -= dt;
+        if (farNext <= 0) {
+          farNext = 50 + Math.random() * 90;
+          const pp = ctx.playerPos();
+          for (let tries = 0; tries < 20; tries++) {
+            const a = Math.random() * 6.283, d = 150 + Math.random() * 350, x = pp.x + Math.sin(a) * d, z = pp.z + Math.cos(a) * d;
+            if (world.terrainHeight(x, z) > -4) continue;
+            let r = Math.random() * 100, k: FaunaKind = 'gulls';
+            for (const [kk, w] of FAR) { if ((r -= w) < 0) { k = kk; break; } }
+            anc.x = x; anc.z = z; anc.psi = Math.random() * 6.283; anc.u = k === 'dolphins' ? 4 : 0;
+            start(k, true);
+            break;
+          }
+        }
+      }
       return;
     }
     tau += dt;
-    const bx = boat.position.x, bz = boat.position.z, s = boat.state, sn = Math.sin(s.psi), cs = Math.cos(s.psi);
+    track();
+    const bx = anc.x, bz = anc.z, s = anc, sn = Math.sin(s.psi), cs = Math.cos(s.psi);
     const sea = (x: number, z: number) => waveHeight(x, z, t);
 
     if (kind === 'fish') {
@@ -260,14 +286,14 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
     } else if (kind === 'dolphins') {
       const leave = Math.max(0, tau - 38) * 2.2;
       for (const d of dolphins) {
-        d.ph += dt * (0.34 + Math.min(1.2, Math.abs(s.u) * 0.05));
+        d.ph += dt * 0.13;
         const u = d.ph % 1, lat = d.side * (d.lat + leave * 3), along = d.along + Math.sin(tau * 0.31 + d.lat) * 2 + leave;
         const x = bx + sn * along + cs * lat, z = bz + cs * along - sn * lat;
-        const air = u < 0.38, k = u / 0.38;
-        const y = air ? Math.sin(k * Math.PI) * 1.25 - 0.3 : -0.9;
+        const air = u < 0.13, k = u / 0.13;
+        const y = air ? Math.sin(k * Math.PI) * 1.25 - 0.3 : -0.32 + Math.sin(tau * 2.2 + d.lat) * 0.05;     // in between, just under: a dark shape and a fin
         if (air && k < 0.08 && d.g.userData.wet) { d.g.userData.wet = false; splash(x, z, 10, 2.2); }
         if (!air && !d.g.userData.wet) { d.g.userData.wet = true; splash(x + sn * 1.2, z + cs * 1.2, 14, 2.6); }
-        d.g.visible = y > -0.85;
+        d.g.visible = true;
         d.g.position.set(x, sea(x, z) + y, z);
         aim(d.g, _v.set(sn, air ? Math.cos(k * Math.PI) * 0.75 : 0, cs));
       }
@@ -310,8 +336,8 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
           struck = true;
           ctx.sfx('thump', boat.position, 1.6);
           splash(x, z, 40, 3.5);
-          s.heel += (Math.cos(sh.a) * cs - Math.sin(sh.a) * sn > 0 ? 1 : -1) * 0.3;
-          s.u *= 0.5;
+          boat.state.heel += (Math.cos(sh.a) * cs - Math.sin(sh.a) * sn > 0 ? 1 : -1) * 0.3;
+          boat.state.u *= 0.5;
         }
         if (i === 0 && struck && tau < 23.9) hooks.push(-Math.cos(sh.a) * 16, -Math.sin(sh.a) * 16);
       });
@@ -366,5 +392,7 @@ export function buildFauna(ctx: Ctx, hooks: { push: (ax: number, az: number) => 
     get prompt() { return promptOn ? prompt : null; },
     /** testing: bring something on now */
     trigger(k: FaunaKind) { stop(); start(k); },
+    /** testing: something far off, at a given point */
+    sight(k: FaunaKind, x: number, z: number) { stop(); anc.x = x; anc.z = z; anc.psi = 0.5; anc.u = k === 'dolphins' ? 4 : 0; start(k, true); },
   };
 }
