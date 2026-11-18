@@ -5,7 +5,7 @@ import { Ctx } from './ctx';
 import { MAT } from './materials';
 import { Input } from './input';
 
-export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart' | 'lens' | 'note' | 'keycard';
+export type ItemId = 'sail' | 'fruit' | 'cigarettes' | 'key' | 'revolver' | 'bullet' | 'wheel' | 'contactor' | 'card' | 'orchid' | 'chart' | 'lens' | 'note' | 'keycard' | 'elevkey';
 
 const m = (geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0) => {
   const o = new THREE.Mesh(geo, mat);
@@ -146,6 +146,12 @@ export function makeItem(id: ItemId): THREE.Group {
       const paper = m(new THREE.CylinderGeometry(0.016, 0.016, 0.1, 8), std('#d8cfb4', 0.95), 0, -0.005, 0);
       g.add(paper, body, sh, neck, cork);
       g.rotation.z = 1.2;
+      break;
+    }
+    case 'elevkey': {
+      g.add(m(new THREE.BoxGeometry(0.085, 0.004, 0.054), std('#e3ddd0', 0.4)));
+      g.add(m(new THREE.BoxGeometry(0.085, 0.0045, 0.014), std('#9a1a12', 0.4), 0, 0, -0.012));
+      g.add(m(new THREE.BoxGeometry(0.012, 0.005, 0.012), MAT.brass, 0.028, 0, 0.014));
       break;
     }
     case 'keycard': {

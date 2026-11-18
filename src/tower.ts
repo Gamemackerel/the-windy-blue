@@ -20,7 +20,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
   const obsidian = new THREE.MeshStandardMaterial({ color: '#040405', roughness: 0.1, metalness: 0.55 });
   const matte = new THREE.MeshStandardMaterial({ color: '#070708', roughness: 0.45, metalness: 0.3 });
 
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.86, R, TOWER.h + 40, 96, 1), obsidian);
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.86, R, TOWER.h + 40, 96, 1, true), obsidian);   // its top is laid by the interior, with the hatch cut in it
   tower.position.set(cx, TOWER.h / 2 - 20, cz);
   scene.add(tower);
   // a shell: there is a great deal of room inside. It narrows as it rises, so the upper part is the thinner ring.
@@ -184,7 +184,7 @@ export function buildTower(ctx: Ctx, hooks: TowerHooks) {
 
   // through the door
   const outside = new THREE.Vector3(cx + Math.sin(da) * (tR + 2.5), top, cz + Math.cos(da) * (tR + 2.5));
-  const inner = buildTowerInterior(ctx, { cx, cz, floor: top, top: TOWER.h, doorAngle: da, hooks, exit: outside });
+  const inner = buildTowerInterior(ctx, { cx, cz, floor: top, top: TOWER.h, doorAngle: da, hooks, exit: outside, topR: R * 0.86, roofMat: obsidian });
   openingM.map = inner.portal; openingM.needsUpdate = true;
   world.interactables.push({
     pos: new THREE.Vector3(cx + Math.sin(da) * (tR + 0.8), top + 1.2, cz + Math.cos(da) * (tR + 0.8)), radius: 2.6,

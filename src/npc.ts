@@ -84,7 +84,14 @@ export class Npc {
     this.figure.group.rotation.y = spec.yaw;
     if (spec.pose === 'sit') this.figure.skirtAmount = 0;   // seated, the coat is gathered under them rather than hanging through the chair
 
-    if (spec.aims) { const gun = makeItem('revolver'); gun.rotation.set(Math.PI / 2, 0, 0); gun.position.set(0, 0.09, 0.03); this.figure.rightHandSlot.add(gun); }
+    if (spec.aims) {
+      // the hand's frame: y runs along the fingers, z out of the palm, x across the back of the hand (up, when the arm is levelled).
+      // So the barrel goes along y, the grip down along -x, and the gun's own side out of the palm.
+      const gun = makeItem('revolver');
+      gun.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)));
+      gun.position.set(0.0, 0.055, 0.03);
+      this.figure.rightHandSlot.add(gun);
+    }
     if (spec.smokes) {
       // held between the first two fingers, lit end away from the face
       const cig = new THREE.Group();
@@ -115,6 +122,7 @@ export class Npc {
     for (let i = 0; i < J.COUNT; i++) this.figure.joints[i].copy(this.target[i]);
     if (this.condition === 2) this.startRagdoll(new THREE.Vector3(0, 0, -1), J.chest, true);
     this.figure.refresh(0);
+    this.figure.group.userData.noCull = true;        // a body that falls goes limp at the world's origin: never cull it by distance
 
     ctx.world.interactables.push({
       pos: this.chest, radius: 2.7,
@@ -193,6 +201,9 @@ export class Npc {
     f.group.updateMatrixWorld();
     f.skirtAmount = 0.8;
     for (let i = 0; i < J.COUNT; i++) f.joints[i].copy(pts[i]);
+    // the body now lives in world coordinates far from where its parts were built: never cull it by their old bounds
+    f.group.traverse((ob) => { (ob as THREE.Mesh).frustumCulled = false; });
+    // (and its group now sits at the world's origin, so the far-away culling must leave it alone: see noCull below)
     this.ragdoll = new Ragdoll(f.joints, this.ctx.world);
     this.ragdoll.impulse(joint, dir, settled ? 2 : 5.5);
     if (settled) for (let i = 0; i < 360; i++) this.ragdoll.step(1 / 60, 0);
